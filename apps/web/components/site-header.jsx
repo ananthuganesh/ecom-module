@@ -23,10 +23,10 @@ export function SiteHeader() {
   return (
     <header className="fixed top-0 right-0 left-0 z-50 flex h-14 w-full shrink-0 items-center gap-2 border-b border-white/10 bg-[#0a0a0a] text-white">
       <div className="grid w-full grid-cols-[1fr_minmax(0,40rem)_1fr] items-center gap-3 px-4 lg:px-6">
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href="/admin/dashboard"
-            className="inline-flex items-center"
+            className="inline-flex shrink-0 items-center"
             aria-label="Urban Aana Admin"
           >
             <Image
@@ -38,6 +38,22 @@ export function SiteHeader() {
               className="h-7 w-auto object-contain"
             />
           </Link>
+          <div className="hidden min-w-0 sm:block">
+            <p className="m-0 truncate text-[11px] leading-tight text-white/55">
+              Custom Shopify Solution
+            </p>
+            <p className="m-0 truncate text-[11px] leading-tight text-white/55">
+              by{" "}
+              <a
+                href="https://bridnetwork.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/80 underline-offset-2 hover:text-white hover:underline"
+              >
+                Brid Network
+              </a>
+            </p>
+          </div>
         </div>
         <div className="min-w-0">
           {saveBar.active ? (
