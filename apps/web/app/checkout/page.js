@@ -744,7 +744,7 @@ export default function CheckoutPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <Link href="/" className="inline-flex items-center">
             <Image
-              src="/urban/Logo.png"
+              src="/urban/logo.png"
               alt="URBAN AANA"
               width={120}
               height={40}

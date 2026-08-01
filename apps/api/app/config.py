@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     ga4_credentials_file: str = ""
     ga4_enabled: bool = True
 
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 1.0
+
     def is_production(self) -> bool:
         return (
             str(self.environment or "").lower() == "production"

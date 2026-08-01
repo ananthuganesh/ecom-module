@@ -31,11 +31,11 @@ const Footer = () => {
           <div className="col-span-2 sm:col-span-2 lg:col-span-1 flex flex-col gap-5">
             <Link href="/" className="inline-block w-fit">
               <Image
-                src="/urban/Logo.png"
+                src="/urban/logo-dark.png"
                 alt="URBAN AANA"
                 width={140}
                 height={50}
-                className="object-contain h-10 w-auto brightness-0 invert"
+                className="object-contain h-10 w-auto"
                 priority={false}
               />
             </Link>

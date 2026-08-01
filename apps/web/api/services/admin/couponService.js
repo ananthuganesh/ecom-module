@@ -1,18 +1,13 @@
-import axiosInstance from '../../axios/client.js';
+import axiosInstance from "../../axios/client.js";
 
 export const adminCouponService = {
   getAll: async () => {
-    const response = await axiosInstance.get('/admin/coupons');
-    return response.data;
-  },
-
-  getById: async (id) => {
-    const response = await axiosInstance.get(`/admin/coupons/${id}`);
+    const response = await axiosInstance.get("/admin/coupons");
     return response.data;
   },
 
   create: async (couponData) => {
-    const response = await axiosInstance.post('/admin/coupons', couponData);
+    const response = await axiosInstance.post("/admin/coupons", couponData);
     return response.data;
   },
 
@@ -23,11 +18,6 @@ export const adminCouponService = {
 
   delete: async (id) => {
     const response = await axiosInstance.delete(`/admin/coupons/${id}`);
-    return response.data;
-  },
-
-  validate: async (code, amount) => {
-    const response = await axiosInstance.post('/admin/coupons/validate', { code, amount });
     return response.data;
   },
 };

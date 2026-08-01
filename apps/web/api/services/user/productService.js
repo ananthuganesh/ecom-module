@@ -27,6 +27,8 @@ export const productService = {
     if (params.priceRange) searchParams.append("priceRange", params.priceRange);
     if (params.keyword) searchParams.append("keyword", params.keyword);
     if (params.sort) searchParams.append("sort", params.sort);
+    if (params.pageSize != null) searchParams.append("pageSize", String(params.pageSize));
+    if (params.pageNum != null) searchParams.append("pageNum", String(params.pageNum));
     const query = searchParams.toString();
     const url = query ? `${e.base}?${query}` : e.base;
     return client.get(url).then((res) => res.data);
@@ -43,7 +45,9 @@ export const productService = {
   getBySlug: (slug) =>
     client.get(`${e.base}/slug/${slug}`).then((res) => res.data),
   getSuggestions: (keyword) =>
-    client.get(`${e.base}/search/suggestions`, { params: { keyword } }).then((res) => res.data),
+    client
+      .get(`${e.base}/search/suggestions`, { params: { q: keyword } })
+      .then((res) => res.data),
 };
 
 export default productService;

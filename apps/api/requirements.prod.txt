@@ -1,5 +1,6 @@
 # Production API deps only (no pytest / mongomock)
 fastapi==0.140.0
+sentry-sdk[fastapi]==2.66.1
 uvicorn[standard]==0.35.0
 beanie==2.0.0
 motor==3.7.1

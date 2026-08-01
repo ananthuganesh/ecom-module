@@ -1,5 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, '../..');
@@ -154,4 +155,15 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Upload a wider set of client source files for better stack traces
+  widenClientFileUpload: true,
+
+  // Tunnel can 404 under Turbopack/dev; send straight to Sentry ingest instead.
+  // Re-enable with tunnelRoute: "/monitoring" after a production build if needed.
+  silent: !process.env.CI,
+});

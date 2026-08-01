@@ -8,7 +8,7 @@ export const adminOrderService = {
     client.get(e.base, { params }).then((res) => res.data),
 
   getStats: (params) =>
-    client.get(e.counts, { params }).then((res) => res.data),
+    client.get(e.stats, { params }).then((res) => res.data),
 
   getCounts: () =>
     client.get(e.counts).then((res) => res.data),

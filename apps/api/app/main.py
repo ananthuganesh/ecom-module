@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,25 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db import close_db, init_db
 from app.routers import abandoned, admin, collections, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
+
+
+def _init_sentry() -> None:
+    """Initialize Sentry before the FastAPI app is created (auto FastAPI integration)."""
+    settings = get_settings()
+    dsn = str(settings.sentry_dsn or "").strip()
+    if not dsn:
+        return
+    rate = float(settings.sentry_traces_sample_rate)
+    if settings.is_production() and rate >= 1.0:
+        rate = 0.1
+    sentry_sdk.init(
+        dsn=dsn,
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/
+        send_default_pii=True,
+        traces_sample_rate=max(0.0, min(1.0, rate)),
+        environment=str(settings.environment or settings.node_env or "development"),
+    )
 
 
 @asynccontextmanager
@@ -82,6 +102,12 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     async def health():
         return {"status": "ok", "backend": "fastapi"}
 
+    # Verify Sentry capture: open /sentry-debug after deploy to confirm events.
+    if str(settings.sentry_dsn or "").strip():
+        @app.get("/sentry-debug")
+        async def trigger_error():
+            division_by_zero = 1 / 0  # noqa: F841
+
     app.include_router(users.router)
     app.include_router(products.router)
     app.include_router(orders.router)
@@ -101,4 +127,5 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     return app
 
 
+_init_sentry()
 app = create_app()

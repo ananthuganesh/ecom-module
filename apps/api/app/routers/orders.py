@@ -578,6 +578,9 @@ async def stats(
         "abandonedOrders": abandoned_orders,
         "abandonedRate": abandoned_rate,
         "totalRevenue": total_revenue,
+        # Paying customers in the selected range (dashboard "New customers").
+        "newCustomers": current_customers,
+        # Distinct paying customers all-time (kept for analytics).
         "totalCustomers": total_customers,
         "registeredCustomers": registered_customers,
         "avgOrderValue": avg,

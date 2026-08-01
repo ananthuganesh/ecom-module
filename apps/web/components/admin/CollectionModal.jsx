@@ -74,17 +74,15 @@ export default function CollectionModal({ isOpen, onClose, collection, onSuccess
     };
 
     const fetchProducts = async (categoryId) => {
-        console.log('[Frontend] Fetching products for category:', categoryId || 'ALL');
-        setProducts([]); // Clear while loading
+        setProducts([]);
         setLoadingProducts(true);
         try {
             const params = categoryId ? { category: categoryId } : {};
-            const data = await adminProductService.getProducts(params);
-            const productList = Array.isArray(data) ? data : data.products || [];
-            console.log('[Frontend] Products received:', productList.length);
-            setProducts(productList);
+            const productList = await adminProductService.getAllProducts(params);
+            setProducts(Array.isArray(productList) ? productList : []);
         } catch (error) {
             console.error("Error fetching products:", error);
+            setProducts([]);
         } finally {
             setLoadingProducts(false);
         }

@@ -98,7 +98,7 @@ const Navbar = () => {
           <div className="flex items-center justify-center">
             <Link href="/" onClick={closeMenu} className="flex items-center">
               <Image
-                src="/urban/Logo.png"
+                src={transparent ? "/urban/logo-dark.png" : "/urban/logo.png"}
                 alt="URBAN AANA"
                 width={100}
                 height={36}

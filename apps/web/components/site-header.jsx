@@ -1,6 +1,8 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdminOrderSearch from "@/components/admin/AdminOrderSearch";
 import { NavUser } from "@/components/nav-user";
@@ -21,7 +23,22 @@ export function SiteHeader() {
   return (
     <header className="fixed top-0 right-0 left-0 z-50 flex h-14 w-full shrink-0 items-center gap-2 border-b border-white/10 bg-[#0a0a0a] text-white">
       <div className="grid w-full grid-cols-[1fr_minmax(0,40rem)_1fr] items-center gap-3 px-4 lg:px-6">
-        <div />
+        <div className="flex min-w-0 items-center">
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center"
+            aria-label="Urban Aana Admin"
+          >
+            <Image
+              src="/urban/logo-dark.png"
+              alt="Urban Aana"
+              width={110}
+              height={32}
+              priority
+              className="h-7 w-auto object-contain"
+            />
+          </Link>
+        </div>
         <div className="min-w-0">
           {saveBar.active ? (
             <div className="flex h-[38px] items-center justify-between gap-3 rounded-lg bg-[#303030] px-3">

@@ -10,15 +10,14 @@ const users = {
 const products = {
   base: "/admin/products",
   byId: (id) => `/admin/products/${id}`,
-  pricing: (id) => `/admin/products/${id}/pricing`,
-  stock: (id) => `/admin/products/${id}/stock`,
-  variant: (id) => `/admin/products/${id}/variant`,
   bulkUpdate: "/admin/products/bulk-update",
 };
 
 const orders = {
   base: "/admin/orders",
   counts: "/admin/orders/counts",
+  /** Paid-order analytics (dashboard / analytics pages). Not the nav badge endpoint. */
+  stats: "/orders/stats",
   byId: (id) => `/admin/orders/${id}`,
   status: (id) => `/admin/orders/${id}/status`,
   archive: (id) => `/admin/orders/${id}/archive`,

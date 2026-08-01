@@ -143,7 +143,9 @@ export default function AdminDashboardPage() {
 
   const paid = Number(statsData?.paidOrders ?? 0);
   const revenue = Number(statsData?.totalRevenue ?? 0);
-  const customers = Number(statsData?.totalCustomers ?? 0);
+  const customers = Number(
+    statsData?.newCustomers ?? statsData?.totalCustomers ?? 0
+  );
   const abandoned = Number(statsData?.abandonedOrders ?? 0);
   const abandonedRate = Number(statsData?.abandonedRate ?? 0);
   const prev = statsData?.previous || {};

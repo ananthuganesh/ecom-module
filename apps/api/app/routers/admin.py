@@ -449,12 +449,26 @@ async def admin_products(
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=200),
+    category: str | None = Query(default=None),
 ):
     from app.services.pagination import parse_pagination
     from app.services.product_url_id import ensure_product_url_id
 
     sk, lim, _pg = parse_pagination(page=page, skip=skip, limit=limit)
-    products = await Product.find_all().sort([("createdAt", -1)]).skip(sk).limit(lim).to_list()
+    query: dict[str, Any] = {}
+    cat = (category or "").strip()
+    if cat:
+        # Products store category as name or id string — accept either.
+        matches = [cat]
+        if ObjectId.is_valid(cat):
+            matches.append(cat)
+            cat_doc = await Category.get(ObjectId(cat))
+            if cat_doc and getattr(cat_doc, "name", None):
+                matches.append(str(cat_doc.name))
+        query["category"] = {"$in": list(dict.fromkeys(matches))}
+
+    cursor = Product.find(query).sort([("createdAt", -1)]).skip(sk).limit(lim)
+    products = await cursor.to_list()
     out = []
     for product in products:
         try:

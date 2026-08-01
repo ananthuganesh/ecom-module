@@ -96,7 +96,7 @@ export default function AdminDiscountsPage() {
     try {
       const [c, p, col] = await Promise.all([
         adminCouponService.getAll(),
-        adminProductService.getProducts().catch(() => []),
+        adminProductService.getAllProducts().catch(() => []),
         adminCollectionService.getCollections().catch(() => []),
       ]);
       setCoupons(Array.isArray(c) ? c : []);

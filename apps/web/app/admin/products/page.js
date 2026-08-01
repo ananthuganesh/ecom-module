@@ -55,14 +55,8 @@ export default function AdminProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const data = await adminProductService.getProducts();
-      setProducts(
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data?.products)
-            ? data.products
-            : []
-      );
+      const data = await adminProductService.getAllProducts();
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching admin products:", error);
       setProducts([]);
