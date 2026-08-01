@@ -55,7 +55,12 @@ export function LoginForm({ className, mode = "customer", ...props }) {
           name: data.name,
           email: data.email,
           isAdmin: data.isAdmin,
-          token: data.token,
+        });
+        persistAuth({
+          _id: data._id,
+          name: data.name,
+          email: data.email,
+          isAdmin: data.isAdmin,
         });
         toast.success("Signed in");
         router.push("/admin/dashboard");

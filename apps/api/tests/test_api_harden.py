@@ -35,12 +35,13 @@ def test_parse_pagination_caps_limit():
     assert skip == 200
 
 
-def test_rate_limit_trips():
+@pytest.mark.asyncio
+async def test_rate_limit_trips():
     _buckets.clear()
     for _ in range(3):
-        enforce_rate_limit("t:ip", limit=3, window_seconds=60)
+        await enforce_rate_limit("t:ip", limit=3, window_seconds=60)
     with pytest.raises(HTTPException) as exc:
-        enforce_rate_limit("t:ip", limit=3, window_seconds=60)
+        await enforce_rate_limit("t:ip", limit=3, window_seconds=60)
     assert exc.value.status_code == 429
 
 

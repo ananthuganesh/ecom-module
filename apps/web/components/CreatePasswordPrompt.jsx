@@ -18,7 +18,7 @@ export default function CreatePasswordPrompt() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  if (!userInfo?.token || userInfo?.hasPassword || done) {
+  if (!userInfo || userInfo?.hasPassword || done) {
     if (done) {
       return (
         <p className="mt-6 text-[13px] text-emerald-700 font-medium">

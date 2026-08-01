@@ -12,11 +12,9 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str | None) -> bool:
-    if not hashed:
+    """Verify password against bcrypt hash only (no plaintext compare)."""
+    if not hashed or not str(hashed).startswith("$2"):
         return False
-    if not hashed.startswith("$2"):
-        # legacy plaintext migration path
-        return plain == hashed
     try:
         return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except ValueError:

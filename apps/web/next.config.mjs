@@ -67,6 +67,37 @@ const nextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "base-uri 'self'",
+              "frame-ancestors 'none'",
+              "object-src 'none'",
+              "img-src 'self' data: blob: https:",
+              "font-src 'self' data: https://fonts.gstatic.com",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://checkout.razorpay.com",
+              "connect-src 'self' https: http://127.0.0.1:* http://localhost:*",
+              "frame-src https://api.razorpay.com https://checkout.razorpay.com https://www.googletagmanager.com",
+            ].join("; "),
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     const apiBase = (process.env.INTERNAL_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 

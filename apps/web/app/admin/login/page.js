@@ -22,12 +22,12 @@ function AdminLoginInner() {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (userInfo?.token && userInfo?.isAdmin) {
+    if (userInfo?.isAdmin && (userInfo?.token || userInfo?.authenticated || userInfo?._id)) {
       router.replace("/admin/dashboard");
     }
   }, [hydrated, userInfo, router]);
 
-  if (!hydrated || (userInfo?.token && userInfo?.isAdmin)) {
+  if (!hydrated || (userInfo?.isAdmin && (userInfo?.token || userInfo?.authenticated || userInfo?._id))) {
     return (
       <div className="flex min-h-svh w-full items-center justify-center">
         <Spinner className="size-8 text-muted-foreground" />

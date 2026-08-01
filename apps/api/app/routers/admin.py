@@ -8,9 +8,15 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
-from app.deps import AdminUser
+from app.deps import (
+    AdminUser,
+    CustomersReader,
+    OrdersReader,
+    OrdersWriter,
+    PaymentsWriter,
+)
 from app.config import get_settings
 from app.documents import (
     AbandonedCheckout,
@@ -32,6 +38,7 @@ from app.documents import (
 )
 from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
 from app.services import erp_ops
+from app.services.rate_limit import rate_limit_dependency
 from app.services.stock import apply_order_commitments, reserve_order_stock
 from app.services.store_settings import (
     get_notification_prefs,
@@ -217,7 +224,7 @@ async def _clear_other_defaults(except_id: ObjectId | None = None) -> None:
 
 @router.get("/users")
 async def admin_users(
-    _: AdminUser,
+    _: CustomersReader,
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=200),
@@ -355,7 +362,7 @@ async def admin_users(
 
 
 @router.post("/users", status_code=201)
-async def admin_create_customer(body: dict, _: AdminUser):
+async def admin_create_customer(body: dict, _: CustomersReader):
     """Create a storefront customer (not an admin). Used from Customers page only."""
     first_name = str(body.get("firstName") or "").strip()
     last_name = str(body.get("lastName") or "").strip()
@@ -429,7 +436,7 @@ async def admin_create_customer(body: dict, _: AdminUser):
 
 
 @router.get("/users/{user_id}")
-async def admin_user(user_id: str, _: AdminUser):
+async def admin_user(user_id: str, _: CustomersReader):
     user = await User.get(ObjectId(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -437,7 +444,7 @@ async def admin_user(user_id: str, _: AdminUser):
 
 
 @router.get("/users/{user_id}/orders")
-async def admin_user_orders(user_id: str, _: AdminUser):
+async def admin_user_orders(user_id: str, _: OrdersReader):
     orders = await Order.find(Order.customerId == ObjectId(user_id)).to_list()
     return await enrich_orders(orders)
 
@@ -992,7 +999,7 @@ def _apply_order_view_filters(
 
 @router.get("/orders")
 async def admin_orders(
-    _: AdminUser,
+    _: OrdersReader,
     status: str | None = None,
     scope: str | None = None,
     shippingStatus: str | None = None,
@@ -1120,7 +1127,7 @@ async def admin_orders(
 
 
 @router.get("/orders/counts")
-async def admin_order_counts(_: AdminUser):
+async def admin_order_counts(_: OrdersReader):
     """Lightweight badge counts for admin nav (Shopify-style unfulfilled)."""
     query: dict[str, Any] = {"status": {"$nin": ["draft", "abandoned"]}}
     query = _apply_order_view_filters(query, view="unfulfilled", hide_archived=True)
@@ -1165,7 +1172,7 @@ async def _build_order_items(raw_items: list) -> tuple[list[OrderItem], float]:
 
 
 @router.post("/orders", status_code=201)
-async def admin_create_order(body: dict, admin: AdminUser):
+async def admin_create_order(body: dict, admin: OrdersWriter):
     raw_items = body.get("items") or body.get("orderItems") or []
     items, subtotal = await _build_order_items(raw_items)
     delivery = float(body.get("deliveryAmount") or body.get("shippingPrice") or 0)
@@ -1258,7 +1265,7 @@ async def admin_create_order(body: dict, admin: AdminUser):
 
 
 @router.get("/orders/{order_id}")
-async def admin_order(order_id: str, _: AdminUser):
+async def admin_order(order_id: str, _: OrdersReader):
     from app.services.order_resolve import resolve_order
     from app.services import payment_instrument as pay_instrument
 
@@ -1273,7 +1280,7 @@ async def admin_order(order_id: str, _: AdminUser):
 
 
 @router.get("/orders/{order_id}/neighbors")
-async def admin_order_neighbors(order_id: str, _: AdminUser):
+async def admin_order_neighbors(order_id: str, _: OrdersReader):
     """Previous (newer) / next (older) order for detail-page ↑ ↓ navigation."""
     from app.services.order_resolve import resolve_order
 
@@ -1324,7 +1331,7 @@ async def admin_order_neighbors(order_id: str, _: AdminUser):
 
 
 @router.patch("/orders/bulk-update")
-async def bulk_orders(body: dict, _: AdminUser):
+async def bulk_orders(body: dict, _: OrdersWriter):
     from app.services.fulfillment import apply_shipping_status_from_order_status
 
     ids = body.get("ids") or body.get("orderIds") or []
@@ -1345,7 +1352,7 @@ async def bulk_orders(body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/status")
-async def order_status(order_id: str, body: dict, _: AdminUser):
+async def order_status(order_id: str, body: dict, _: OrdersWriter):
     from app.services.fulfillment import apply_shipping_status_from_order_status
 
     order = await Order.get(ObjectId(order_id))
@@ -1392,7 +1399,7 @@ async def order_status(order_id: str, body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/archive")
-async def order_archive(order_id: str, body: dict, _: AdminUser):
+async def order_archive(order_id: str, body: dict, _: OrdersWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1403,7 +1410,7 @@ async def order_archive(order_id: str, body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/return")
-async def order_return(order_id: str, body: dict, _: AdminUser):
+async def order_return(order_id: str, body: dict, _: OrdersWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1424,7 +1431,7 @@ async def order_return(order_id: str, body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/delivery-date")
-async def order_delivery_date(order_id: str, body: dict, _: AdminUser):
+async def order_delivery_date(order_id: str, body: dict, _: OrdersWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1449,7 +1456,7 @@ async def order_delivery_date(order_id: str, body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/payment-status")
-async def order_payment_status(order_id: str, body: dict, _: AdminUser):
+async def order_payment_status(order_id: str, body: dict, _: PaymentsWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1760,11 +1767,15 @@ async def wallet(user_id: str, _: AdminUser):
 async def wallet_refund(body: dict, _: AdminUser):
     user_id = body.get("userId")
     amount = float(body.get("amount") or 0)
+    if not user_id or not ObjectId.is_valid(str(user_id)):
+        raise HTTPException(status_code=400, detail="Valid userId is required")
+    if amount <= 0 or amount > 100000:
+        raise HTTPException(status_code=400, detail="amount must be between 0.01 and 100000")
     w = await Wallet.find_one(Wallet.userId == ObjectId(user_id))
     if not w:
         w = Wallet(userId=ObjectId(user_id), balance=0, transactions=[])
         await w.insert()
-    w.balance += amount
+    w.balance = round(float(w.balance or 0) + amount, 2)
     w.transactions.append({"type": "refund", "amount": amount, "reason": body.get("reason"), "date": datetime.utcnow().isoformat()})
     await w.save()
     return doc_to_dict(w)
@@ -1933,6 +1944,7 @@ async def ai_media_generate(
     product_id: str = Form(...),
     front_image_url: str = Form(...),
     back_image_url: str = Form(...),
+    _: None = Depends(rate_limit_dependency("ai-media", limit=10)),
 ):
     from app.services.ai_studio_prompts import compose_studio_prompt
 
@@ -2048,7 +2060,7 @@ async def ai_media_approve_job(job_id: str, body: dict, admin: AdminUser):
             variant_color=str(body.get("variantColor") or "").strip(),
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Could not approve AI media job") from exc
 
     return {
         "ok": True,

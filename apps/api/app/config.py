@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     mongo_uri: str = "mongodb://127.0.0.1:27017/urbanaana"
     jwt_secret: str = "dev-secret-change-in-production"
-    jwt_expire_days: int = 30
+    jwt_expire_days: int = 7
     port: int = 8000
     environment: str = "development"
     node_env: str = "development"

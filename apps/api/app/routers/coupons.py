@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
+from app.deps import OptionalUser
 from app.documents import Product
 from app.services import discounts as discount_svc
+from app.services.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/api/coupons", tags=["coupons"])
 
@@ -18,6 +20,19 @@ def _public_coupon(coupon) -> dict:
     """Marketing-safe coupon payload — no usage limits / product ID lists."""
     return {
         "code": coupon.code,
+        "kind": coupon.kind or "order",
+        "summary": discount_svc.summary_text(coupon),
+        "discountType": coupon.discountType,
+        "discountValue": coupon.discountValue,
+        "minOrderAmount": coupon.minOrderAmount,
+        "expiryDate": coupon.expiryDate,
+        "status": coupon.status,
+    }
+
+
+def _anon_promo(coupon) -> dict:
+    """Public teaser without redeemable code (anti-scraping)."""
+    return {
         "kind": coupon.kind or "order",
         "summary": discount_svc.summary_text(coupon),
         "discountType": coupon.discountType,
@@ -51,20 +66,28 @@ async def _server_priced_items(raw_items: list[dict]) -> list[dict]:
 
 
 @router.get("")
-async def list_public():
+async def list_public(user: OptionalUser):
+    """Authenticated shoppers may see codes; anonymous callers get teasers only."""
     from app.documents import Coupon
 
     coupons = await Coupon.find(Coupon.status == "active").to_list()
+    if user is None:
+        return [_anon_promo(c) for c in coupons]
     return [_public_coupon(c) for c in coupons]
 
 
 @router.post("/validate")
-async def validate(body: ValidateBody):
+async def validate(
+    body: ValidateBody,
+    _: None = Depends(rate_limit_dependency("coupon-validate", limit=40)),
+):
     lines = await _server_priced_items(body.items)
-    subtotal = sum(i["price"] * i["quantity"] for i in lines) if lines else float(body.subtotal or 0)
+    if not lines:
+        raise HTTPException(status_code=400, detail="Add products to validate this discount")
+    subtotal = sum(i["price"] * i["quantity"] for i in lines)
     coupon, discount = await discount_svc.validate_coupon(
         body.code,
-        items=lines or None,
+        items=lines,
         subtotal=subtotal,
     )
     return {

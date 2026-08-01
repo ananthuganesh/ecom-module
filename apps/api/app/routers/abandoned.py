@@ -1,16 +1,22 @@
 from datetime import datetime
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
 
 from app.deps import OptionalUser
 from app.documents import AbandonedCheckout, User
 from app.security import create_access_token
 from app.serializers import user_public
 from app.services import cart_recovery
+from app.services.auth_cookie import set_auth_cookie
 from app.services.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/api/abandoned-checkout", tags=["abandoned"])
+
+
+class RecoverBody(BaseModel):
+    token: str = Field(min_length=16, max_length=128)
 
 
 @router.post("")
@@ -56,16 +62,7 @@ async def upsert(
     return cart_recovery.public_checkout_dict(doc)
 
 
-@router.get("/recover")
-async def recover_cart(
-    request: Request,
-    token: str = Query(..., min_length=16, max_length=128),
-    _: None = Depends(rate_limit_dependency("cart-recover", limit=20)),
-):
-    """
-    Rehydrate an abandoned cart by unguessable recovery_token.
-    Never accepts checkout/cart Mongo IDs — tokens only.
-    """
+async def _recover_payload(token: str, response: Response) -> dict:
     token = (token or "").strip()
     if not token:
         raise HTTPException(status_code=404, detail="Recovery link invalid or expired")
@@ -109,7 +106,9 @@ async def recover_cart(
         # Magic link proves email ownership — OK to mint a short guest session for
         # passwordless shoppers only. Never auto-login passworded or staff accounts.
         if not user.password and not is_staff:
-            session = user_public(user, create_access_token(user.id, hours=48))
+            token_jwt = create_access_token(user.id, hours=48)
+            set_auth_cookie(response, token_jwt, hours=48)
+            session = user_public(user, token_jwt)
 
     checkout.recoveredAt = datetime.utcnow()
     await checkout.save()
@@ -122,3 +121,23 @@ async def recover_cart(
         "knownUser": known_user,
         "session": session,
     }
+
+
+@router.post("/recover")
+async def recover_cart_post(
+    body: RecoverBody,
+    response: Response,
+    _: None = Depends(rate_limit_dependency("cart-recover", limit=20)),
+):
+    """Preferred recovery path — token in JSON body (avoids Referer leakage)."""
+    return await _recover_payload(body.token, response)
+
+
+@router.get("/recover")
+async def recover_cart_get(
+    response: Response,
+    token: str = Query(..., min_length=16, max_length=128),
+    _: None = Depends(rate_limit_dependency("cart-recover", limit=20)),
+):
+    """Legacy email-link support. Prefer POST /recover from the storefront."""
+    return await _recover_payload(token, response)

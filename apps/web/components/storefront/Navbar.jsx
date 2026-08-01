@@ -29,7 +29,7 @@ const Navbar = () => {
   const userInfo = useAuthStore((s) => s.userInfo);
   const logout = useAuthStore((s) => s.logout);
 
-  const isAuthenticated = Boolean(userInfo?.token || userInfo?._id || userInfo?.id || userInfo?.phone);
+  const isAuthenticated = Boolean(userInfo?.authenticated || userInfo?.token || userInfo?._id || userInfo?.id || userInfo?.phone);
   const userName = userInfo?.name || "";
 
   const cartCount = cartItems.reduce((n, i) => n + (i.qty || 0), 0);

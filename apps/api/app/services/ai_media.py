@@ -53,8 +53,34 @@ async def url_to_data_url(url: str) -> str:
 
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https"}:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        host = (parsed.hostname or "").lower()
+        if not host or host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+            raise ValueError("Blocked image host")
+        if host.endswith(".local") or host.endswith(".internal"):
+            raise ValueError("Blocked image host")
+        # Block private / link-local / metadata ranges (SSRF).
+        import ipaddress
+
+        try:
+            ip = ipaddress.ip_address(host)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_multicast
+            ):
+                raise ValueError("Blocked image host")
+        except ValueError as exc:
+            if "Blocked" in str(exc):
+                raise
+            # Hostname is not a literal IP — allow DNS names (R2/CDN) but disable redirects.
+            pass
+
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
             res = await client.get(value)
+            if res.is_redirect:
+                raise ValueError("Redirects are not allowed for image fetch")
             res.raise_for_status()
             mime = (res.headers.get("content-type") or "image/jpeg").split(";")[0].strip().lower()
             if not mime.startswith("image/"):

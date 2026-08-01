@@ -31,6 +31,7 @@ import { useRecentlyViewedStore } from "@/store/useRecentlyViewedStore";
 import { useWishlistStore } from "@/store/useWishlistStore";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { getProductSizeOptions } from "@/utils/productSizes";
+import { sanitizeProductHtml } from "@/utils/sanitizeProductHtml";
 
 const stockFor = (item, fallback = 0) => Number(item?.stock ?? item?.quantity ?? fallback ?? 0);
 
@@ -150,7 +151,7 @@ export default function ProductDetailPage() {
   };
 
   const toggleWishlist = () => {
-    if (!userInfo?.token && !userInfo?._id && !userInfo?.id) {
+    if (!userInfo?.token && !userInfo?.authenticated && !userInfo?._id && !userInfo?.id) {
       router.push(`/login?redirect=${encodeURIComponent(productLink)}`);
       return;
     }
@@ -250,7 +251,7 @@ export default function ProductDetailPage() {
                   key === "description" && /<\/?[a-z][\s\S]*>/i.test(String(content || "")) ? (
                     <div
                       className="prose prose-sm max-w-none pb-5 text-sm leading-relaxed text-gray-600 [&_a]:text-[#005bd3] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                      dangerouslySetInnerHTML={{ __html: content }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeProductHtml(content) }}
                     />
                   ) : (
                     <p className="whitespace-pre-line pb-5 text-sm leading-relaxed text-gray-600">{content}</p>

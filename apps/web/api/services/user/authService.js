@@ -23,6 +23,8 @@ export const authService = {
 
   setPassword: (password) =>
     client.post(e.setPassword, { password }).then((res) => res.data),
+
+  logout: () => client.post(e.logout).then((res) => res.data),
 };
 
 export default authService;

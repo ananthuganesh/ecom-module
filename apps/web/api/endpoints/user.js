@@ -7,6 +7,7 @@ const users = {
   profile: "users/profile",
   checkoutEmail: "users/checkout-email",
   setPassword: "users/set-password",
+  logout: "users/logout",
 };
 
 const products = {

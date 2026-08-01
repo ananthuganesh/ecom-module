@@ -1,16 +1,24 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from app.deps import AdminUser, CurrentUser, OptionalUser
+from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser
 from app.documents import User
 from app.security import create_access_token, hash_password, verify_password
 from app.serializers import user_public
+from app.services.auth_cookie import clear_auth_cookie, set_auth_cookie
 from app.services.customer_url_id import ensure_customer_url_id, next_customer_url_id
-from app.services.rate_limit import rate_limit_dependency
+from app.services.rate_limit import (
+    assert_login_not_locked,
+    clear_failed_login,
+    rate_limit_dependency,
+    record_failed_login,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+_MIN_PASSWORD = 8
 
 
 class LoginBody(BaseModel):
@@ -21,13 +29,14 @@ class LoginBody(BaseModel):
 class RegisterBody(BaseModel):
     name: str
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=_MIN_PASSWORD)
 
 
 class ProfileUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
-    password: str | None = None
+    password: str | None = Field(default=None, min_length=_MIN_PASSWORD)
+    currentPassword: str | None = None
 
 
 class CheckoutEmailBody(BaseModel):
@@ -36,42 +45,56 @@ class CheckoutEmailBody(BaseModel):
 
 
 class SetPasswordBody(BaseModel):
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=_MIN_PASSWORD)
+
+
+def _auth_payload(user: User, token: str) -> dict:
+    """Include token for API clients/tests; browsers should prefer the HttpOnly cookie."""
+    return user_public(user, token)
 
 
 @router.post("/login")
 async def login(
     body: LoginBody,
     request: Request,
-    _: None = Depends(rate_limit_dependency("login", limit=20)),
+    response: Response,
+    _: None = Depends(rate_limit_dependency("login", limit=10)),
 ):
     email = body.email.lower().strip()
+    await assert_login_not_locked(email)
     user = await User.find_one(User.email == email)
-    if not user or not user.password:
+    if not user or not user.password or not verify_password(body.password, user.password):
+        await record_failed_login(email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not verify_password(body.password, user.password):
-        # plaintext legacy migration
-        if not str(user.password).startswith("$2") and user.password == body.password:
-            user.password = hash_password(body.password)
-            user.updatedAt = datetime.utcnow()
-            await user.save()
-        else:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+    await clear_failed_login(email)
     token = create_access_token(user.id)
-    return user_public(user, token)
+    set_auth_cookie(response, token)
+    return _auth_payload(user, token)
 
 
 @router.post("", status_code=201)
-async def register(body: RegisterBody):
+async def register(
+    body: RegisterBody,
+    response: Response,
+    _: None = Depends(rate_limit_dependency("register", limit=10)),
+):
     email = body.email.lower().strip()
     exists = await User.find_one(User.email == email)
     if exists:
-        raise HTTPException(status_code=400, detail="User already exists")
+        # Uniform messaging to reduce account enumeration (CWE-204).
+        raise HTTPException(status_code=400, detail="Unable to create account")
     user = User(name=body.name, email=email, password=hash_password(body.password))
     user.customerUrlId = await next_customer_url_id()
     await user.insert()
     token = create_access_token(user.id)
-    return user_public(user, token)
+    set_auth_cookie(response, token)
+    return _auth_payload(user, token)
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    clear_auth_cookie(response)
+    return {"ok": True}
 
 
 @router.get("/profile")
@@ -80,21 +103,26 @@ async def get_profile(user: CurrentUser):
 
 
 @router.put("/profile")
-async def update_profile(body: ProfileUpdate, user: CurrentUser):
+async def update_profile(body: ProfileUpdate, user: CurrentUser, response: Response):
     if body.name:
         user.name = body.name
     if body.email:
         user.email = body.email.lower().strip()
     if body.password:
+        if user.password:
+            if not body.currentPassword or not verify_password(body.currentPassword, user.password):
+                raise HTTPException(status_code=400, detail="Current password is required")
         user.password = hash_password(body.password)
     user.updatedAt = datetime.utcnow()
     await user.save()
-    return user_public(user, create_access_token(user.id))
+    token = create_access_token(user.id)
+    set_auth_cookie(response, token)
+    return _auth_payload(user, token)
 
 
 @router.get("")
 async def list_users(
-    _: AdminUser,
+    _: CustomersReader,
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -107,7 +135,7 @@ async def list_users(
 
 
 @router.get("/{user_id}")
-async def get_user(user_id: str, _: AdminUser):
+async def get_user(user_id: str, _: CustomersReader):
     from bson import ObjectId
 
     user = await User.get(ObjectId(user_id))
@@ -158,12 +186,24 @@ def _is_staff_account(user: User) -> bool:
     return bool(role_id and str(role_id).strip())
 
 
+def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
+    """Uniform checkout-email shape to reduce enumeration side-channels."""
+    return {
+        "email": email,
+        "created": False,
+        "requiresLogin": requires_login,
+        "requiresExistingSession": not requires_login,
+        "continue": True,
+    }
+
+
 @router.post("/checkout-email")
 async def checkout_email(
     body: CheckoutEmailBody,
     request: Request,
+    response: Response,
     current: OptionalUser,
-    _: None = Depends(rate_limit_dependency("checkout-email", limit=30)),
+    _: None = Depends(rate_limit_dependency("checkout-email", limit=20)),
 ):
     """Find or create a customer by email for checkout.
 
@@ -183,10 +223,8 @@ async def checkout_email(
         created = True
     else:
         if _is_staff_account(user):
-            raise HTTPException(
-                status_code=403,
-                detail="This email cannot be used for guest checkout. Sign in to continue.",
-            )
+            # Same outer shape as passworded accounts — ask for sign-in.
+            return _checkout_continue_payload(email=email, requires_login=True)
         await ensure_customer_url_id(user)
         if body.name and str(body.name).strip():
             current_name = (user.name or "").strip().lower()
@@ -196,38 +234,36 @@ async def checkout_email(
                 await user.save()
 
         if user.password:
-            return {
-                "email": user.email,
-                "hasPassword": True,
-                "created": False,
-                "requiresLogin": True,
-            }
+            return _checkout_continue_payload(email=user.email, requires_login=True)
 
         # Existing passwordless — only continue session if already authenticated as them.
         same_session = bool(current and str(current.id) == str(user.id))
         if not same_session:
-            return {
-                "email": user.email,
-                "hasPassword": False,
-                "created": False,
-                "requiresLogin": False,
-                "requiresExistingSession": True,
-            }
+            return _checkout_continue_payload(email=user.email, requires_login=False)
 
     token = create_access_token(user.id, hours=48)
-    data = user_public(user, token)
+    set_auth_cookie(response, token, hours=48)
+    data = _auth_payload(user, token)
     data["created"] = created
     data["requiresLogin"] = False
     data["requiresExistingSession"] = False
+    data["continue"] = True
     return data
 
 
 @router.post("/set-password")
-async def set_password(body: SetPasswordBody, user: CurrentUser):
+async def set_password(
+    body: SetPasswordBody,
+    user: CurrentUser,
+    response: Response,
+    _: None = Depends(rate_limit_dependency("set-password", limit=10)),
+):
     """Set password on a passwordless customer record (post-purchase account setup)."""
     if user.password:
         raise HTTPException(status_code=400, detail="Password already set")
     user.password = hash_password(body.password)
     user.updatedAt = datetime.utcnow()
     await user.save()
-    return user_public(user, create_access_token(user.id))
+    token = create_access_token(user.id)
+    set_auth_cookie(response, token)
+    return _auth_payload(user, token)

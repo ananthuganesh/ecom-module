@@ -10,6 +10,7 @@ export default function SecurityPage() {
   const { userInfo, setUserInfo } = useAuthStore();
   const hasPassword = Boolean(userInfo?.hasPassword);
   const [showPassword, setShowPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
@@ -19,19 +20,26 @@ export default function SecurityPage() {
     e.preventDefault();
     setMessage({ type: "", text: "" });
 
-    if (newPassword.length < 6) {
-      setMessage({ type: "error", text: "Password must be at least 6 characters." });
+    if (newPassword.length < 8) {
+      setMessage({ type: "error", text: "Password must be at least 8 characters." });
       return;
     }
     if (newPassword !== confirmPassword) {
       setMessage({ type: "error", text: "Passwords do not match." });
       return;
     }
+    if (hasPassword && !currentPassword) {
+      setMessage({ type: "error", text: "Enter your current password." });
+      return;
+    }
 
     setSaving(true);
     try {
       if (hasPassword) {
-        const data = await authService.updateProfile({ password: newPassword });
+        const data = await authService.updateProfile({
+          password: newPassword,
+          currentPassword,
+        });
         setUserInfo(data);
         setMessage({ type: "success", text: "Password updated." });
       } else {
@@ -39,6 +47,7 @@ export default function SecurityPage() {
         setUserInfo(data);
         setMessage({ type: "success", text: "Password set. You can sign in with email and password." });
       }
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
@@ -63,6 +72,20 @@ export default function SecurityPage() {
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {hasPassword ? (
+              <div className="space-y-2">
+                <label className="text-[9px] uppercase tracking-widest font-black text-gray-400">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                  className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
+                />
+              </div>
+            ) : null}
             <div className="space-y-2 relative">
               <label className="text-[9px] uppercase tracking-widest font-black text-gray-400">
                 New Password
@@ -71,7 +94,7 @@ export default function SecurityPage() {
                 type={showPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                minLength={6}
+                minLength={8}
                 required
                 className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
               />
@@ -91,7 +114,7 @@ export default function SecurityPage() {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                minLength={6}
+                minLength={8}
                 required
                 className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
               />

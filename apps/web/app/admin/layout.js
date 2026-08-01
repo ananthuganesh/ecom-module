@@ -41,7 +41,7 @@ export default function AdminLayout({ children }) {
 
   useEffect(() => {
     if (!hydrated || isAdminLoginPage) return;
-    if (!userInfo?.token || !userInfo?.isAdmin) {
+    if (!userInfo?.isAdmin || !(userInfo?.token || userInfo?.authenticated || userInfo?._id)) {
       router.replace("/admin/login");
     }
   }, [hydrated, userInfo, isAdminLoginPage, router]);
@@ -59,7 +59,7 @@ export default function AdminLayout({ children }) {
     );
   }
 
-  if (!userInfo?.token || !userInfo?.isAdmin) {
+  if ((!userInfo?.token && !userInfo?.authenticated && !userInfo?._id) || !userInfo?.isAdmin) {
     return <AdminLoading />;
   }
 

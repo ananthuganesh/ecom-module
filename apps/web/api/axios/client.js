@@ -22,13 +22,14 @@ export const BASE_URL =
 
 const client = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
     "ngrok-skip-browser-warning": "69420", // Bypass ngrok browser warning page
   },
 });
 
-// Attach auth token from persisted store
+// Prefer HttpOnly cookie session. Bearer is only a migration fallback.
 client.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const auth = localStorage.getItem(ensureStorageKey(AUTH_STORAGE_KEY));
@@ -38,15 +39,13 @@ client.interceptors.request.use((config) => {
       try {
         const parsed = JSON.parse(auth);
         token = parsed.state?.userInfo?.token;
-      } catch (err) {
-        console.error("Axios Interceptor: Error parsing auth storage", err);
+      } catch {
+        /* ignore */
       }
     }
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.warn("Axios Interceptor: No auth token found for request to", config.url);
     }
   }
   return config;
@@ -57,7 +56,6 @@ client.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.error("Axios Response Interceptor: 401 Unauthorized detected.");
       if (typeof window !== "undefined") {
         const path = window.location.pathname;
         const onAuthPage = path === "/login" || path === "/admin/login";

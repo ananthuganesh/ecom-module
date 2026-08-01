@@ -376,7 +376,7 @@ export default function CheckoutPage() {
     try {
       const data = await authService.checkoutEmail(email, name);
       data.authMethod = "checkout";
-      if (data?.token) {
+      if (data?.token || data?._id || data?.authenticated) {
         setUserInfo(data);
         persistAuth(data);
         applyUserToForm(data);
@@ -406,7 +406,7 @@ export default function CheckoutPage() {
     const email = (formData.email || "").trim().toLowerCase();
     if (!email || email === resolvedEmail) return;
     const data = await resolveCheckoutEmail(email);
-    if (data?.hasPassword && data.authMethod === "checkout" && !loginPromptSkipped) {
+    if (data?.requiresLogin || data?.hasPassword) && data.authMethod === "checkout" && !loginPromptSkipped) {
       setShowLoginPrompt(true);
     }
   };
@@ -419,7 +419,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (userInfo?.token && userInfo?.email?.toLowerCase() === email) {
+    if ((userInfo?.token || userInfo?.authenticated || userInfo?._id) && userInfo?.email?.toLowerCase() === email) {
       onReady(userInfo);
       return;
     }
@@ -431,13 +431,13 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (data.hasPassword && !data.token) {
+    if ((data.requiresLogin || data.hasPassword) && !(data.token || data._id || data.authenticated)) {
       setShowLoginPrompt(true);
       setPaymentError("Please log in to continue with this email.");
       return;
     }
 
-    if (data.requiresExistingSession && !data.token) {
+    if (data.requiresExistingSession && !(data.token || data._id || data.authenticated)) {
       setPaymentError(
         "This email was used before on another device. Use the same browser, create a password from your last order email, or enter a different email."
       );
@@ -445,7 +445,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (data.hasPassword && data.authMethod === "checkout" && !loginPromptSkipped) {
+    if ((data.requiresLogin || data.hasPassword) && data.authMethod === "checkout" && !loginPromptSkipped) {
       setShowLoginPrompt(true);
       return;
     }
@@ -671,11 +671,11 @@ export default function CheckoutPage() {
       </div>
       {couponError && <p className="mb-3 text-[12px] text-red-600">{couponError}</p>}
 
-      {!appliedCoupon && availableCoupons.length > 0 && (
+      {!appliedCoupon && availableCoupons.filter((c) => c?.code).length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {availableCoupons.slice(0, 4).map((coupon) => (
+          {availableCoupons.filter((c) => c?.code).slice(0, 4).map((coupon) => (
             <button
-              key={coupon._id}
+              key={coupon._id || coupon.code}
               type="button"
               onClick={() => handleApplyCoupon(coupon.code)}
               className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:border-brand-red hover:text-brand-red"

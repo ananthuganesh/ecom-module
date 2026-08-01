@@ -58,7 +58,8 @@ const fileExtLabel = (name = "") => {
 const fileKey = (file) => `${file.folder}/${file.name}`;
 
 export default function MediaLibrary() {
-  const token = useAuthStore((s) => s.userInfo?.token);
+  const userInfo = useAuthStore((s) => s.userInfo);
+  const authed = Boolean(userInfo?.authenticated || userInfo?.token || userInfo?._id);
   const [folder, setFolder] = useState("products");
   const [search, setSearch] = useState("");
   const [files, setFiles] = useState([]);
@@ -85,10 +86,10 @@ export default function MediaLibrary() {
   };
 
   useEffect(() => {
-    if (!token) return;
+    if (!authed) return;
     loadFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, folder]);
+  }, [authed, folder]);
 
   const visibleFiles = useMemo(() => {
     const q = search.trim().toLowerCase();

@@ -44,17 +44,24 @@ async def lifespan(_: FastAPI):
 
 def create_app(*, with_lifespan: bool = True) -> FastAPI:
     settings = get_settings()
+    docs_url = None if settings.is_production() else "/docs"
+    redoc_url = None if settings.is_production() else "/redoc"
+    openapi_url = None if settings.is_production() else "/openapi.json"
     app = FastAPI(
         title="Urban Aana API",
         version="2.0.0",
         lifespan=lifespan if with_lifespan else None,
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
     )
 
     origins = settings.cors_origins
     if origins is None:
+        # Dev only: reflect common local origins (never wildcard + credentials).
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pymongo import ReturnDocument
 
 from app.deps import AdminUser, CurrentUser
@@ -11,6 +11,7 @@ from app.serializers import remap_order
 from app.services import erp_ops
 from app.services.attribution import sanitize_attribution
 from app.services.fulfillment import process_full_order_flow
+from app.services.rate_limit import rate_limit_dependency
 from app.services.shipping_settings import get_shipping_settings, rate_for_zip
 from app.services.stock import apply_order_commitments, reserve_order_stock
 from app.services.store_settings import ensure_payment_method_enabled
@@ -103,7 +104,11 @@ async def _storefront_shipping_price(address: dict) -> float:
 
 
 @router.post("", status_code=201)
-async def create_order(body: dict, user: CurrentUser):
+async def create_order(
+    body: dict,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("orders-create", limit=20)),
+):
     order_items = body.get("orderItems") or []
     if not order_items:
         raise HTTPException(status_code=400, detail="No order items")
@@ -115,6 +120,8 @@ async def create_order(body: dict, user: CurrentUser):
         if not product:
             raise HTTPException(status_code=404, detail=f"Product not found: {pid}")
         qty = int(oi.get("qty") or 1)
+        if qty <= 0 or qty > 50:
+            raise HTTPException(status_code=400, detail="Item quantity must be between 1 and 50")
         color = oi.get("color") or ""
         size = oi.get("size") or ""
         available = product.totalStock or 0
@@ -153,6 +160,7 @@ async def create_order(body: dict, user: CurrentUser):
     gift_fee = 39 if is_gift else 0
     discount = 0.0
     applied = None
+    coupon_reserved = False
     coupon_code = body.get("couponCode")
     if coupon_code:
         from app.services import discounts as discount_svc
@@ -170,6 +178,9 @@ async def create_order(body: dict, user: CurrentUser):
             items=cart_lines,
             subtotal=subtotal,
         )
+        if not await discount_svc.reserve_coupon_usage(coupon.code):
+            raise HTTPException(status_code=400, detail="Discount usage limit reached")
+        coupon_reserved = True
         applied = coupon.code
 
     final_price = max(0.0, subtotal + delivery + gift_fee - discount)
@@ -198,6 +209,7 @@ async def create_order(body: dict, user: CurrentUser):
         transactionDetails={
             "paymentMethod": payment,
             "paymentStatus": "pending",
+            **({"couponReserved": True} if coupon_reserved else {}),
         },
         shippingStatus="Payment Pending",
         attribution=attribution,
@@ -210,11 +222,19 @@ async def create_order(body: dict, user: CurrentUser):
     try:
         await reserve_order_stock(order)
     except HTTPException:
+        if coupon_reserved and applied:
+            from app.services import discounts as discount_svc
+
+            await discount_svc.release_coupon_usage(applied)
         await order.delete()
         raise
     except Exception as exc:
+        if coupon_reserved and applied:
+            from app.services import discounts as discount_svc
+
+            await discount_svc.release_coupon_usage(applied)
         await order.delete()
-        raise HTTPException(status_code=400, detail=f"Could not reserve stock: {exc}") from exc
+        raise HTTPException(status_code=400, detail="Could not reserve stock") from exc
 
     try:
         await erp_ops.ensure_order_invoice(order, actor=user)

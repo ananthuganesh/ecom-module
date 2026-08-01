@@ -2,23 +2,27 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { DEFAULT_GTM_ID } from "@/components/GtmSnippet";
 
 function isAdminPath(pathname) {
   return String(pathname || "").startsWith("/admin");
 }
 
+function isCheckoutPath(pathname) {
+  const p = String(pathname || "");
+  return p === "/checkout" || p.startsWith("/checkout/");
+}
+
 /**
- * Storefront-only GTM. Skips /admin so staff traffic is not tracked.
+ * Storefront-only GTM. Skips /admin and /checkout (e-skimming surface).
  * Injects via the DOM (not JSX <script>) to avoid React 19 warnings.
  */
 export default function GtmClient({ gtmId }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (isAdminPath(pathname)) return;
+    if (isAdminPath(pathname) || isCheckoutPath(pathname)) return;
 
-    const id = String(gtmId || DEFAULT_GTM_ID)
+    const id = String(gtmId || "")
       .trim()
       .toUpperCase()
       .replace(/[^A-Z0-9-]/g, "");

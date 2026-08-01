@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.deps import AdminUser, CurrentUser
 from app.documents import Product
 from app.serializers import product_dict
+from app.services.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -21,8 +22,8 @@ class ReviewBody(BaseModel):
 
 @router.get("")
 async def list_products(
-    pageSize: int = 40,
-    pageNum: int = 1,
+    pageSize: int = Query(default=40, ge=1, le=100),
+    pageNum: int = Query(default=1, ge=1),
     keyword: str | None = None,
     category: str | None = None,
     stone: str | None = None,
@@ -34,10 +35,12 @@ async def list_products(
     maxPrice: float | None = None,
     priceRange: str | None = None,
     sort: str | None = None,
+    _: None = Depends(rate_limit_dependency("products", limit=120)),
 ):
     query: dict[str, Any] = {}
     if keyword:
-        rx = {"$regex": keyword, "$options": "i"}
+        safe = re.escape(keyword.strip())[:120]
+        rx = {"$regex": safe, "$options": "i"}
         query["$or"] = [{"productName": rx}, {"product": rx}, {"description": rx}]
     if category:
         query["category"] = category
@@ -112,10 +115,14 @@ async def colors():
 
 
 @router.get("/search/suggestions")
-async def suggestions(q: str = ""):
+async def suggestions(
+    q: str = "",
+    _: None = Depends(rate_limit_dependency("product-search", limit=60)),
+):
     if not q:
         return []
-    rx = {"$regex": q, "$options": "i"}
+    safe = re.escape(q.strip())[:80]
+    rx = {"$regex": safe, "$options": "i"}
     products = await Product.find({"$or": [{"productName": rx}, {"product": rx}]}).limit(8).to_list()
     return [{"_id": str(p.id), "productName": p.productName or p.name, "slug": p.slug} for p in products]
 

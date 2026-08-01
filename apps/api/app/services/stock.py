@@ -511,10 +511,13 @@ async def release_order_stock(order) -> bool:
     """Release reserved stock if reserved and not yet applied."""
     details = dict(order.transactionDetails or {})
     if not details.get("stockReserved"):
+        # Still release coupon reservation when stock was never held.
+        await _release_coupon_reservation(order)
         return False
     if details.get("stockApplied"):
         return False
     if details.get("stockReleased"):
+        await _release_coupon_reservation(order)
         return False
 
     col = Order.get_pymongo_collection()
@@ -528,6 +531,7 @@ async def release_order_stock(order) -> bool:
         {"$set": {"transactionDetails.stockReleased": True, "updatedAt": datetime.utcnow()}},
     )
     if claim is None:
+        await _release_coupon_reservation(order)
         return False
 
     wh = await ensure_default_warehouse()
@@ -568,7 +572,36 @@ async def release_order_stock(order) -> bool:
             {"$set": {"transactionDetails.stockReleased": False, "updatedAt": datetime.utcnow()}},
         )
         raise
+    await _release_coupon_reservation(order)
     return True
+
+
+async def _release_coupon_reservation(order) -> None:
+    """Return coupon usage reserved at checkout create if payment never finalized."""
+    details = dict(order.transactionDetails or {})
+    if not details.get("couponReserved"):
+        return
+    if details.get("couponApplied"):
+        return
+    if details.get("couponReleased"):
+        return
+    col = Order.get_pymongo_collection()
+    claim = await col.find_one_and_update(
+        {
+            "_id": order.id,
+            "transactionDetails.couponReserved": True,
+            "transactionDetails.couponApplied": {"$nin": [True]},
+            "transactionDetails.couponReleased": {"$nin": [True]},
+        },
+        {"$set": {"transactionDetails.couponReleased": True, "updatedAt": datetime.utcnow()}},
+    )
+    if claim is None:
+        return
+    code = str(getattr(order, "couponCode", None) or "").strip()
+    if code:
+        from app.services import discounts as discount_svc
+
+        await discount_svc.release_coupon_usage(code)
 
 
 async def reverse_commit_reserved_stock(
@@ -838,7 +871,12 @@ async def apply_order_commitments(order) -> bool:
     )
     if coupon_claim is not None:
         coupon_code = str(order.couponCode or "").strip().upper()
-        if coupon_code:
+        details = dict((coupon_claim or {}).get("transactionDetails") or {})
+        # Preferred path: usage already reserved at order create — do not increment again.
+        if coupon_code and details.get("couponReserved"):
+            changed = True
+        elif coupon_code:
+            # Legacy orders without create-time reservation — claim now or fail closed.
             coupon_col = Coupon.get_pymongo_collection()
             claimed = await coupon_col.find_one_and_update(
                 {
@@ -858,7 +896,6 @@ async def apply_order_commitments(order) -> bool:
                 {"$inc": {"usedCount": 1}},
             )
             if claimed is None:
-                # Limit exhausted under concurrency — keep order paid/stocked but drop coupon flag for ops.
                 await col.update_one(
                     {"_id": order.id},
                     {
@@ -869,8 +906,11 @@ async def apply_order_commitments(order) -> bool:
                         }
                     },
                 )
-            else:
-                changed = True
+                raise HTTPException(
+                    status_code=409,
+                    detail="Discount usage limit reached",
+                )
+            changed = True
         else:
             changed = True
 

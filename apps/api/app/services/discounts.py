@@ -153,6 +153,45 @@ async def validate_coupon(
     return coupon, discount
 
 
+async def reserve_coupon_usage(code: str) -> bool:
+    """Atomically consume one usage slot at checkout create. Returns False if limit hit."""
+    coupon_col = Coupon.get_pymongo_collection()
+    normalized = str(code or "").upper().strip()
+    if not normalized:
+        return False
+    claimed = await coupon_col.find_one_and_update(
+        {
+            "code": normalized,
+            "status": "active",
+            "$expr": {
+                "$or": [
+                    {"$eq": [{"$ifNull": ["$usageLimit", None]}, None]},
+                    {
+                        "$lt": [
+                            {"$ifNull": ["$usedCount", 0]},
+                            "$usageLimit",
+                        ]
+                    },
+                ]
+            },
+        },
+        {"$inc": {"usedCount": 1}},
+    )
+    return claimed is not None
+
+
+async def release_coupon_usage(code: str) -> None:
+    """Return a reserved usage slot when checkout is abandoned / unpaid."""
+    normalized = str(code or "").upper().strip()
+    if not normalized:
+        return
+    coupon_col = Coupon.get_pymongo_collection()
+    await coupon_col.update_one(
+        {"code": normalized, "usedCount": {"$gt": 0}},
+        {"$inc": {"usedCount": -1}},
+    )
+
+
 def kind_label(kind: str | None) -> str:
     return {
         "order": "Amount off order",

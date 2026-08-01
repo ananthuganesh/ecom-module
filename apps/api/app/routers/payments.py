@@ -170,7 +170,6 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
             **(order.transactionDetails or {}),
             "paymentStatus": "refunded",
             "autoRefundReason": "stock_commit_failed",
-            "stockCommitError": str(commit_exc),
         }
         order.updatedAt = datetime.utcnow()
         await order.save()
@@ -214,7 +213,11 @@ async def payment_config():
 
 
 @router.post("/create-order")
-async def create_razorpay_order(body: dict, user: CurrentUser):
+async def create_razorpay_order(
+    body: dict,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("pay-create", limit=30)),
+):
     local_order_id = body.get("localOrderId") or body.get("orderId")
     if not local_order_id or not ObjectId.is_valid(str(local_order_id)):
         raise HTTPException(status_code=400, detail="localOrderId required")
@@ -261,7 +264,7 @@ async def create_razorpay_order(body: dict, user: CurrentUser):
         client = razorpay.Client(auth=(key_id, key_secret))
         rz_order = client.order.create(payload)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Razorpay error: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Payment provider error") from exc
 
     await PaymentTransaction(
         orderId=order.id,
@@ -284,7 +287,11 @@ async def create_razorpay_order(body: dict, user: CurrentUser):
 
 
 @router.post("/verify")
-async def verify_payment(body: dict, user: CurrentUser):
+async def verify_payment(
+    body: dict,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("pay-verify", limit=30)),
+):
     rz_order_id = body.get("razorpay_order_id") or body.get("razorpayOrderId")
     rz_payment_id = body.get("razorpay_payment_id") or body.get("razorpayPaymentId")
     rz_signature = body.get("razorpay_signature") or body.get("razorpaySignature")
@@ -332,7 +339,7 @@ async def verify_payment(body: dict, user: CurrentUser):
         txn.status = "failed"
         txn.failureReason = f"Razorpay fetch failed: {exc}"
         await txn.save()
-        raise HTTPException(status_code=502, detail=f"Could not fetch Razorpay payment: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Could not verify payment with provider") from exc
 
     if str(order.paymentStatus or "").lower() == "paid":
         # Already finalized — idempotent success (same or missing payment id).
@@ -408,7 +415,7 @@ async def refund_payment(body: dict, admin: AdminUser):
     try:
         payment = client.payment.fetch(payment_id)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not fetch Razorpay payment: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Could not verify payment with provider") from exc
 
     amount_paid = int(payment.get("amount") or 0)
     already_refunded = int(payment.get("amount_refunded") or 0)
@@ -452,7 +459,7 @@ async def refund_payment(body: dict, admin: AdminUser):
             },
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Razorpay refund failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Refund failed") from exc
 
     refund_record = {
         "id": refund.get("id"),

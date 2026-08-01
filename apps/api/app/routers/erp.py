@@ -29,12 +29,20 @@ from app.services import erp_ops, stock as stock_service
 
 router = APIRouter(prefix="/api/admin/erp", tags=["erp"])
 SuppliersWriter = Annotated[User, Depends(require_permission("suppliers.write"))]
+SuppliersReader = Annotated[User, Depends(require_permission("suppliers.read", "suppliers.write"))]
 PurchaseWriter = Annotated[User, Depends(require_permission("purchase.write"))]
+PurchaseReader = Annotated[User, Depends(require_permission("purchase.read", "purchase.write"))]
 StockWriter = Annotated[User, Depends(require_permission("stock.write"))]
+StockReader = Annotated[User, Depends(require_permission("stock.read", "stock.write"))]
 InvoicesWriter = Annotated[User, Depends(require_permission("invoices.write"))]
+InvoicesReader = Annotated[User, Depends(require_permission("invoices.read", "invoices.write"))]
 OrdersWriter = Annotated[User, Depends(require_permission("orders.write"))]
+OrdersReader = Annotated[User, Depends(require_permission("orders.read", "orders.write"))]
 PaymentsWriter = Annotated[User, Depends(require_permission("payments.write"))]
-RoleManager = Annotated[User, Depends(require_permission("admin.access"))]
+PaymentsReader = Annotated[User, Depends(require_permission("payments.read", "payments.write"))]
+ReportsReader = Annotated[User, Depends(require_permission("reports.read"))]
+# Role create/assign is owner-only (isAdmin / *), not loose admin.access.
+RoleManager = AdminUser
 
 
 async def _company() -> dict:
@@ -51,7 +59,7 @@ def _oid(value: str, label: str = "id") -> ObjectId:
 # ─── Suppliers ───────────────────────────────────────────────
 
 @router.get("/suppliers")
-async def list_suppliers(_: AdminUser):
+async def list_suppliers(_: SuppliersReader):
     rows = await Supplier.find_all().sort([("name", 1)]).limit(200).to_list()
     return [doc_to_dict(r) for r in rows]
 
@@ -102,7 +110,7 @@ async def delete_supplier(supplier_id: str, admin: SuppliersWriter):
 # ─── Purchase Orders ─────────────────────────────────────────
 
 @router.get("/purchase-orders")
-async def list_pos(_: AdminUser):
+async def list_pos(_: PurchaseReader):
     rows = await PurchaseOrder.find_all().sort([("createdAt", -1)]).limit(200).to_list()
     return [doc_to_dict(r) for r in rows]
 
@@ -169,7 +177,7 @@ async def update_po_status(po_id: str, body: dict, admin: PurchaseWriter):
 # ─── Goods Receipt ───────────────────────────────────────────
 
 @router.get("/goods-receipts")
-async def list_grn(_: AdminUser):
+async def list_grn(_: StockReader):
     rows = await GoodsReceipt.find_all().sort([("createdAt", -1)]).limit(200).to_list()
     return [doc_to_dict(r) for r in rows]
 
@@ -242,7 +250,7 @@ async def create_grn(body: dict, admin: StockWriter):
 # ─── Purchase Invoices ───────────────────────────────────────
 
 @router.get("/purchase-invoices")
-async def list_pi(_: AdminUser):
+async def list_pi(_: PurchaseReader):
     rows = await PurchaseInvoice.find_all().sort([("createdAt", -1)]).limit(200).to_list()
     return [doc_to_dict(r) for r in rows]
 
@@ -289,7 +297,7 @@ async def create_pi(body: dict, admin: PurchaseWriter):
 # ─── Sales Invoices ──────────────────────────────────────────
 
 @router.get("/sales-invoices")
-async def list_si(_: AdminUser):
+async def list_si(_: InvoicesReader):
     rows = await SalesInvoice.find_all().sort([("createdAt", -1)]).limit(200).to_list()
     return [doc_to_dict(r) for r in rows]
 
@@ -361,7 +369,7 @@ async def invoice_from_order(order_id: str, admin: InvoicesWriter):
 
 
 @router.get("/sales-invoices/by-order/{order_id}")
-async def invoice_by_order(order_id: str, _: AdminUser):
+async def invoice_by_order(order_id: str, _: InvoicesReader):
     from app.services.order_resolve import resolve_order
 
     order = await resolve_order(order_id)
@@ -382,7 +390,7 @@ async def invoice_by_order(order_id: str, _: AdminUser):
 # ─── Credit notes & returns ──────────────────────────────────
 
 @router.get("/credit-notes")
-async def list_cn(_: AdminUser):
+async def list_cn(_: InvoicesReader):
     return [doc_to_dict(r) for r in await CreditNote.find_all().sort([("createdAt", -1)]).limit(200).to_list()]
 
 
@@ -424,7 +432,7 @@ async def create_cn(body: dict, admin: InvoicesWriter):
 
 
 @router.get("/sales-returns")
-async def list_returns(_: AdminUser):
+async def list_returns(_: OrdersReader):
     return [doc_to_dict(r) for r in await SalesReturn.find_all().sort([("createdAt", -1)]).limit(200).to_list()]
 
 
@@ -481,7 +489,7 @@ async def create_return(body: dict, admin: OrdersWriter):
 # ─── Payments (Finance) ──────────────────────────────────────
 
 @router.get("/payments")
-async def list_payments(_: AdminUser):
+async def list_payments(_: PaymentsReader):
     return [doc_to_dict(r) for r in await PartyPayment.find_all().sort([("paymentDate", -1)]).limit(200).to_list()]
 
 
@@ -548,7 +556,7 @@ async def create_payment(body: dict, admin: PaymentsWriter):
 # ─── Reports ─────────────────────────────────────────────────
 
 @router.get("/reports/overview")
-async def reports_overview(_: AdminUser):
+async def reports_overview(_: ReportsReader):
     from app.documents import StockBalance
 
     orders_col = Order.get_pymongo_collection()
@@ -643,10 +651,12 @@ async def assign_role(user_id: str, body: dict, admin: RoleManager):
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
         user.roleId = str(role.id)
-        if role.name == "Admin":
-            user.isAdmin = True
+        perms = list(role.permissions or [])
+        # Always sync isAdmin with role — demotion must clear the flag.
+        user.isAdmin = role.name == "Admin" or "*" in perms
     else:
         user.roleId = None
+        user.isAdmin = False
     user.updatedAt = datetime.utcnow()
     await user.save()
     await erp_ops.write_audit(actor=admin, action="user.role", entity_type="user", entity_id=user_id, meta={"roleId": role_id})

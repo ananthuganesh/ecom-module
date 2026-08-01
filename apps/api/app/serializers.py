@@ -71,8 +71,19 @@ def doc_to_dict(doc: Any) -> dict:
     return data
 
 
-def product_dict(product: Product) -> dict:
-    return doc_to_dict(product)
+def product_dict(product: Product, *, admin: bool = False) -> dict:
+    """Storefront-safe product payload. Cost fields only when admin=True."""
+    data = doc_to_dict(product)
+    if admin:
+        return data
+    pricing = data.get("pricing")
+    if isinstance(pricing, dict):
+        pricing = dict(pricing)
+        pricing.pop("buyingPrice", None)
+        pricing.pop("costPrice", None)
+        pricing.pop("landedCost", None)
+        data["pricing"] = pricing
+    return data
 
 
 def remap_order(

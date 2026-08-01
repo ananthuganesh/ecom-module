@@ -1,6 +1,5 @@
 import "./globals.css";
 import { Inter, Geist, Lato, Archivo_Black, Noto_Sans_Malayalam } from "next/font/google";
-import { DEFAULT_GTM_ID } from "@/components/GtmSnippet";
 import GtmClient from "@/components/GtmClient";
 import AttributionCapture from "@/components/AttributionCapture";
 import StorefrontShell from "@/components/storefront/StorefrontShell";
@@ -50,10 +49,8 @@ function resolveGtmId() {
     process.env.NEXT_PUBLIC_GTM_ENABLED !== "false" &&
     process.env.GTM_ENABLED !== "false";
   if (!enabled) return "";
-  return (
-    (process.env.NEXT_PUBLIC_GTM_ID || process.env.GTM_ID || DEFAULT_GTM_ID).trim() ||
-    DEFAULT_GTM_ID
-  );
+  // Require explicit env — do not fall back to a hardcoded container id.
+  return (process.env.NEXT_PUBLIC_GTM_ID || process.env.GTM_ID || "").trim();
 }
 
 export default function RootLayout({ children }) {

@@ -85,8 +85,8 @@ async def test_checkout_email_creates_passwordless_customer(client):
     assert r2.status_code == 200
     data2 = r2.json()
     assert data2["created"] is False
-    assert data2["hasPassword"] is False
     assert data2.get("requiresExistingSession") is True
+    assert data2.get("requiresLogin") is False
     assert "token" not in data2 or data2.get("token") in (None, "")
 
     # Same browser / existing session can renew
@@ -108,13 +108,13 @@ async def test_checkout_email_existing_account_has_password(client, user):
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["hasPassword"] is True
     assert data["created"] is False
     assert data.get("requiresLogin") is True
     assert "token" not in data or data.get("token") in (None, "")
     # Must not leak profile/admin fields without authentication
     assert "addresses" not in data
     assert "isAdmin" not in data
+    assert "hasPassword" not in data
 
 
 @pytest.mark.asyncio
@@ -123,9 +123,12 @@ async def test_checkout_email_blocks_admin_account(client, admin):
         "/api/users/checkout-email",
         json={"email": admin.email},
     )
-    assert r.status_code == 403
-    assert "token" not in r.json()
-
+    # Staff emails get the same continue shape as passworded accounts (no 403 oracle).
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("requiresLogin") is True
+    assert "token" not in data or data.get("token") in (None, "")
+    assert "isAdmin" not in data
 
 @pytest.mark.asyncio
 async def test_update_user_rejects_is_admin_escalation(client, admin, user):

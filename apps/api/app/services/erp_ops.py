@@ -135,7 +135,6 @@ DEFAULT_ROLES = [
         "description": "Orders, invoices, customers",
         "isSystem": True,
         "permissions": [
-            "admin.access",
             "orders.read",
             "orders.write",
             "invoices.read",
@@ -150,7 +149,6 @@ DEFAULT_ROLES = [
         "description": "Suppliers and purchase docs",
         "isSystem": True,
         "permissions": [
-            "admin.access",
             "purchase.read",
             "purchase.write",
             "suppliers.read",
@@ -164,7 +162,6 @@ DEFAULT_ROLES = [
         "description": "Stock and GRN",
         "isSystem": True,
         "permissions": [
-            "admin.access",
             "stock.read",
             "stock.write",
             "purchase.read",
@@ -176,7 +173,6 @@ DEFAULT_ROLES = [
         "description": "Payments and reports",
         "isSystem": True,
         "permissions": [
-            "admin.access",
             "payments.read",
             "payments.write",
             "invoices.read",
@@ -198,12 +194,18 @@ async def ensure_default_roles() -> list[Role]:
         return created
 
     # Merge newly defined permissions onto system roles without removing custom grants.
+    # Always strip obsolete admin.access from non-Admin system roles (RBAC collapse fix).
     by_name = {r.name: r for r in existing}
     for row in DEFAULT_ROLES:
         role = by_name.get(row["name"])
         if not role or not role.isSystem:
             continue
-        merged = list(dict.fromkeys([*(role.permissions or []), *row["permissions"]]))
+        current = list(role.permissions or [])
+        if role.name != "Admin":
+            current = [p for p in current if p != "admin.access"]
+        merged = list(dict.fromkeys([*current, *row["permissions"]]))
+        if role.name != "Admin":
+            merged = [p for p in merged if p != "admin.access"]
         if merged != list(role.permissions or []):
             role.permissions = merged
             role.updatedAt = datetime.utcnow()
