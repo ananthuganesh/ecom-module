@@ -5,8 +5,7 @@ from app.documents import Setting
 
 PAYMENT_METHOD_DEFAULTS = {"razorpay": True}
 NOTIFICATION_PREF_DEFAULTS = {
-    "customerOrderWhatsapp": True,
-    "customerOrderEmail": True,
+    # Customer WhatsApp: AiSensy settings (master + per-event). Customer email: always on.
     "adminNewOrderAlert": True,
 }
 

@@ -28,12 +28,6 @@ const orders = {
   return: (id) => `/admin/orders/${id}/return`,
 };
 
-const wallet = {
-  refund: "/admin/wallet/refund",
-  byUserId: (userId) => `/admin/wallet/${userId}`,
-  transactions: (userId) => `/admin/wallet/${userId}/transactions`,
-};
-
 const brands = {
   base: "/admin/brands",
   byId: (id) => `/admin/brands/${id}`,
@@ -48,11 +42,6 @@ const productColors = {
   base: "/admin/product-colors",
 };
 
-const razorpay = {
-  settings: "/admin/razorpay/settings",
-  disconnect: "/admin/razorpay/disconnect",
-};
-
 const aisensy = {
   settings: "/admin/aisensy/settings",
   disconnect: "/admin/aisensy/disconnect",
@@ -61,12 +50,7 @@ const aisensy = {
   sendAbandonedRecovery: (id) => `/admin/abandoned-checkouts/${id}/send-recovery`,
 };
 
-const gtm = {
-  settings: "/admin/gtm/settings",
-};
-
 const ga4 = {
-  settings: "/admin/ga4/settings",
   report: "/admin/ga4/report",
 };
 
@@ -111,13 +95,10 @@ export const adminEndpoints = {
   users,
   products,
   orders,
-  wallet,
   brands,
   categories,
   productColors,
-  razorpay,
   aisensy,
-  gtm,
   ga4,
   aiMedia,
   collections,

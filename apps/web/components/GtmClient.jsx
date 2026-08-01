@@ -7,20 +7,16 @@ function isAdminPath(pathname) {
   return String(pathname || "").startsWith("/admin");
 }
 
-function isCheckoutPath(pathname) {
-  const p = String(pathname || "");
-  return p === "/checkout" || p.startsWith("/checkout/");
-}
-
 /**
- * Storefront-only GTM. Skips /admin and /checkout (e-skimming surface).
- * Injects via the DOM (not JSX <script>) to avoid React 19 warnings.
+ * Storefront GTM on all public pages including /checkout and /checkout/success.
+ * Skips /admin only. Needed so begin_checkout / add_payment_info / purchase tags fire
+ * even on direct land or hard refresh.
  */
 export default function GtmClient({ gtmId }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (isAdminPath(pathname) || isCheckoutPath(pathname)) return;
+    if (isAdminPath(pathname)) return;
 
     const id = String(gtmId || "")
       .trim()
@@ -29,7 +25,10 @@ export default function GtmClient({ gtmId }) {
     if (!id.startsWith("GTM-")) return;
     if (typeof window === "undefined") return;
     if (document.querySelector(`script[data-gtm="${id}"]`)) return;
-    if (document.getElementById("gtm-base") || document.querySelector(`script[src*="gtm.js?id=${id}"]`)) {
+    if (
+      document.getElementById("gtm-base") ||
+      document.querySelector(`script[src*="gtm.js?id=${id}"]`)
+    ) {
       return;
     }
 

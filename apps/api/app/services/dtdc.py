@@ -446,11 +446,13 @@ async def track_consignment(order: Order) -> dict:
         if mapped == "Delivered" and prev != "Delivered":
             try:
                 from app.services import aisensy as aisensy_svc
+                from app.services import email_resend as email_svc
 
                 user = await User.get(order.customerId) if order.customerId else None
                 await aisensy_svc.notify_order_event_once("orderDelivered", order, user)
+                await email_svc.notify_order_email_once("DELIVERED", order, user)
             except Exception as exc:
-                print(f"[AiSensy] orderDelivered: {exc}")
+                print(f"[Notify] orderDelivered: {exc}")
 
     return data
 

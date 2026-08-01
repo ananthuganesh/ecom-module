@@ -42,7 +42,6 @@ def user_public(user: User, token: str | None = None, stats: dict | None = None)
         "isAdmin": user.isAdmin,
         "roleId": getattr(user, "roleId", None),
         "phone": user.phone,
-        "walletBalance": user.walletBalance,
         "addresses": [a.model_dump() for a in (user.addresses or [])],
         "emailSubscribed": bool(getattr(user, "emailSubscribed", False)),
         "whatsappSubscribed": bool(getattr(user, "whatsappSubscribed", False)),

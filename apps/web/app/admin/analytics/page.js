@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import Link from "next/link";
 import { adminOrderService, adminGa4Service } from "@/api";
 import AdminKpiCard from "@/components/admin/AdminKpiCard";
 import { AdminDateRangeButton } from "@/components/admin/list";
@@ -213,9 +212,7 @@ export default function AnalyticsDashboard() {
             {!gaLoading && !ga?.available && (
                 <div className="rounded-2xl border border-border bg-muted px-5 py-4 text-sm text-muted-foreground mb-8">
                     {ga?.error || "Google Analytics is not configured."}{" "}
-                    <Link href="/admin/settings/integrations/ga4" className="font-medium text-primary underline-offset-2 hover:underline">
-                        Set up GA4
-                    </Link>
+                    Set <code className="text-xs">GA4_PROPERTY_ID</code> and credentials in the API environment.
                 </div>
             )}
 

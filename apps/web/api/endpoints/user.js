@@ -29,7 +29,6 @@ const razorpay = {
   verify: "payments/verify",
   webhook: "payments/webhook",
   config: "payments/config",
-  refund: "payments/refund",
 };
 
 export const userEndpoints = { users, products, orders, razorpay };

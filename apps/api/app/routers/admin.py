@@ -34,7 +34,6 @@ from app.documents import (
     TaxClass,
     User,
     Variant,
-    Wallet,
 )
 from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
 from app.services import erp_ops
@@ -1755,60 +1754,6 @@ async def abandoned_checkout_detail(checkout_id: str, _: AdminUser):
     return cart_recovery.admin_checkout_dict(checkout, site=site)
 
 
-@router.get("/wallet/{user_id}")
-async def wallet(user_id: str, _: AdminUser):
-    w = await Wallet.find_one(Wallet.userId == ObjectId(user_id))
-    if not w:
-        return {"userId": user_id, "balance": 0, "transactions": []}
-    return doc_to_dict(w)
-
-
-@router.post("/wallet/refund")
-async def wallet_refund(body: dict, _: AdminUser):
-    user_id = body.get("userId")
-    amount = float(body.get("amount") or 0)
-    if not user_id or not ObjectId.is_valid(str(user_id)):
-        raise HTTPException(status_code=400, detail="Valid userId is required")
-    if amount <= 0 or amount > 100000:
-        raise HTTPException(status_code=400, detail="amount must be between 0.01 and 100000")
-    w = await Wallet.find_one(Wallet.userId == ObjectId(user_id))
-    if not w:
-        w = Wallet(userId=ObjectId(user_id), balance=0, transactions=[])
-        await w.insert()
-    w.balance = round(float(w.balance or 0) + amount, 2)
-    w.transactions.append({"type": "refund", "amount": amount, "reason": body.get("reason"), "date": datetime.utcnow().isoformat()})
-    await w.save()
-    return doc_to_dict(w)
-
-
-@router.get("/razorpay/settings")
-async def razorpay_settings(_: AdminUser):
-    from app.services import razorpay_cfg
-
-    return await razorpay_cfg.get_prefs()
-
-
-@router.post("/razorpay/settings")
-async def save_razorpay_settings(body: dict, _: AdminUser):
-    from app.services import razorpay_cfg
-
-    # Credentials are env-only; UI may only update checkout prefs.
-    if any(str(body.get(k) or "").strip() for k in ("keyId", "keySecret", "webhookSecret")):
-        raise HTTPException(
-            status_code=400,
-            detail="Razorpay keys are configured via RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET / RAZORPAY_WEBHOOK_SECRET in the API environment.",
-        )
-    return await razorpay_cfg.save_prefs(body or {})
-
-
-@router.post("/razorpay/disconnect")
-async def disconnect_razorpay(_: AdminUser):
-    raise HTTPException(
-        status_code=400,
-        detail="Razorpay is configured via environment variables. Remove RAZORPAY_* from the API env and restart to disconnect.",
-    )
-
-
 @router.get("/aisensy/settings")
 async def aisensy_settings(_: AdminUser):
     from app.services import aisensy as aisensy_svc
@@ -1833,41 +1778,6 @@ async def disconnect_aisensy(_: AdminUser):
     raise HTTPException(
         status_code=400,
         detail="AiSensy is configured via environment variables. Remove AISENSY_* from the API env and restart to disconnect.",
-    )
-
-
-@router.get("/gtm/settings")
-async def gtm_settings(_: AdminUser):
-    from app.routers.gtm import resolve_gtm_config
-
-    cfg = resolve_gtm_config()
-    return {
-        **cfg,
-        "source": "env",
-        "hint": "Set GTM_ID and GTM_ENABLED in the API environment.",
-    }
-
-
-@router.put("/gtm/settings")
-async def save_gtm_settings(body: dict, _: AdminUser):
-    raise HTTPException(
-        status_code=410,
-        detail="GTM is configured via server environment (GTM_ID / GTM_ENABLED)",
-    )
-
-
-@router.get("/ga4/settings")
-async def ga4_settings(_: AdminUser):
-    from app.services import ga4 as ga4_svc
-
-    return ga4_svc.resolve_status()
-
-
-@router.put("/ga4/settings")
-async def save_ga4_settings(body: dict, _: AdminUser):
-    raise HTTPException(
-        status_code=410,
-        detail="GA4 is configured via server environment (GA4_PROPERTY_ID / GA4_CREDENTIALS_JSON)",
     )
 
 

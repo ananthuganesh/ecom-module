@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useCartStore } from "@/store/useCartStore";
 import SafeImage from "@/components/SafeImage";
 import { resolveImageUrl } from "@/utils/imageResolver";
+import { trackViewCart } from "@/lib/tracking";
 
 const formatPrice = (price) => `₹${Number(price || 0).toLocaleString("en-IN")}`;
 
@@ -40,6 +41,7 @@ export default function CartDrawer() {
   useEffect(() => {
     if (isDrawerOpen) {
       document.body.style.overflow = "hidden";
+      if (cartItems.length > 0) trackViewCart(cartItems);
     } else {
       document.body.style.overflow = "unset";
     }

@@ -8,6 +8,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { productService } from "@/api";
 import FilterSidebar from "@/components/FilterSidebar";
 import ProductSkeleton from "@/components/ProductSkeleton";
+import { trackViewItemList } from "@/lib/tracking";
 
 function AllProductsContent() {
   const router = useRouter();
@@ -65,7 +66,9 @@ function AllProductsContent() {
         if (sortBy === "Newest") params.sort = "newest";
 
         const data = await productService.getProducts(params);
-        setProducts(Array.isArray(data?.products) ? data.products : Array.isArray(data) ? data : []);
+        const list = Array.isArray(data?.products) ? data.products : Array.isArray(data) ? data : [];
+        setProducts(list);
+        trackViewItemList(list, keyword ? "Search results" : "All products", keyword ? "search" : "all-products");
       } catch (error) {
         console.error("Error fetching products:", error);
       } finally {

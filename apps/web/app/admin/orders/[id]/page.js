@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { adminOrderService, adminErpService, adminShippingService, paymentService, adminCompanyProfileService, adminTaxClassService } from "@/api";
-import { Package, ChevronUp, ChevronDown, RefreshCw, RotateCcw, Copy, Check, ShoppingBag as OrderIcon, X, Archive } from "lucide-react";
+import { adminOrderService, adminErpService, adminShippingService, adminCompanyProfileService, adminTaxClassService } from "@/api";
+import { Package, ChevronUp, ChevronDown, Copy, Check, ShoppingBag as OrderIcon, X, Archive } from "lucide-react";
 import SafeImage from "@/components/SafeImage";
 import {
   buildOrderTimeline,
@@ -36,16 +36,6 @@ import {
   CardContent,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 
 const ORDER_STATUSES = [
@@ -270,10 +260,6 @@ export default function AdminOrderDetailPage() {
   const [isPrintingInvoice, setIsPrintingInvoice] = useState(false);
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
   const [fulfillLoading, setFulfillLoading] = useState(false);
-  const [refundOpen, setRefundOpen] = useState(false);
-  const [refundAmount, setRefundAmount] = useState("");
-  const [refundReason, setRefundReason] = useState("");
-  const [refundLoading, setRefundLoading] = useState(false);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
 
   const loadInvoice = async (orderId) => {
@@ -564,44 +550,6 @@ export default function AdminOrderDetailPage() {
     }
   };
 
-  const openRefundModal = () => {
-    if (!order) return;
-    const total = Number(order.finalPrice ?? order.total ?? 0);
-    const already = Number(order.refundedAmount || order.transactionDetails?.refundedAmount || 0);
-    const remaining = Math.max(0, total - already);
-    setRefundAmount(remaining ? remaining.toFixed(2) : "");
-    setRefundReason("");
-    setRefundOpen(true);
-  };
-
-  const handleRefund = async () => {
-    if (!order) return;
-    const amount = Number(refundAmount);
-    if (!amount || amount <= 0) {
-      toast.error("Enter a valid refund amount");
-      return;
-    }
-    setRefundLoading(true);
-    try {
-      const res = await paymentService.refund({
-        localOrderId: order._id,
-        amount,
-        reason: refundReason || "Admin refund",
-      });
-      setOrder(res.order);
-      setRefundOpen(false);
-      toast.success(
-        res.order?.paymentStatus === "refunded"
-          ? "Full refund processed"
-          : `Refunded ₹${amount.toFixed(2)}`
-      );
-    } catch (e) {
-      const msg = e.response?.data?.detail || e.response?.data?.message || e.message || "Refund failed";
-      toast.error(typeof msg === "string" ? msg : "Refund failed");
-    } finally {
-      setRefundLoading(false);
-    }
-  };
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center bg-background">
@@ -771,13 +719,13 @@ export default function AdminOrderDetailPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  disabled={updating || refundLoading}
+                  disabled={updating}
                   render={
                     <Button
                       type="button"
                       variant="secondary"
                       size="lg"
-                      disabled={updating || refundLoading}
+                      disabled={updating}
                       className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4]"
                     />
                   }
@@ -786,27 +734,6 @@ export default function AdminOrderDetailPage() {
                   <ChevronDown className="size-3.5 opacity-70" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[13.5rem]">
-                  {(() => {
-                    const payStatus = (
-                      order.paymentStatus ||
-                      order.transactionDetails?.paymentStatus ||
-                      ""
-                    ).toLowerCase();
-                    const canRefund =
-                      !!order.razorpayPaymentId &&
-                      (payStatus === "paid" || payStatus === "partially_refunded");
-                    if (!canRefund) return null;
-                    return (
-                      <DropdownMenuItem
-                        className="gap-2 text-[0.8125rem]"
-                        disabled={updating || refundLoading}
-                        onClick={openRefundModal}
-                      >
-                        <RotateCcw className="size-3.5 text-[#616161]" />
-                        Refund
-                      </DropdownMenuItem>
-                    );
-                  })()}
                   <DropdownMenuItem
                     className="gap-2 text-[0.8125rem]"
                     disabled={isCancelled}
@@ -1303,61 +1230,6 @@ export default function AdminOrderDetailPage() {
         </aside>
       </div>
 
-      <Dialog open={refundOpen} onOpenChange={setRefundOpen}>
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Refund via Razorpay</DialogTitle>
-            <DialogDescription>
-              Money returns to the customer&apos;s original payment method. Leave amount as remaining for a full refund.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="refund-amount">Amount (₹)</Label>
-              <Input
-                id="refund-amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                className="h-8"
-                value={refundAmount}
-                onChange={(e) => setRefundAmount(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="refund-reason">Reason (optional)</Label>
-              <Input
-                id="refund-reason"
-                type="text"
-                className="h-8"
-                value={refundReason}
-                onChange={(e) => setRefundReason(e.target.value)}
-                placeholder="Return / cancel / goodwill"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={() => setRefundOpen(false)}
-              disabled={refundLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              onClick={handleRefund}
-              disabled={refundLoading}
-            >
-              {refundLoading && <RefreshCw className="animate-spin" />}
-              Process refund
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }

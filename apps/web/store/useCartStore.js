@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { trackAddToCart } from '@/lib/tracking';
+import { trackAddToCart, trackRemoveFromCart } from '@/lib/tracking';
 import { CART_STORAGE_KEY, ensureStorageKey } from '@/lib/storageKeys';
 
 ensureStorageKey(CART_STORAGE_KEY);
@@ -120,6 +120,12 @@ export const useCartStore = create(
             },
 
             removeItem: (id, size, color) => {
+                const existing = get().cartItems.find(
+                    (x) => x._id === id && x.size === size && x.color === color
+                );
+                if (existing) {
+                    trackRemoveFromCart(existing, existing.qty || 1);
+                }
                 set({
                     cartItems: get().cartItems.filter((x) => !(x._id === id && x.size === size && x.color === color)),
                 });
@@ -127,6 +133,12 @@ export const useCartStore = create(
 
             removeItems: (itemsToRemove) => {
                 const { cartItems } = get();
+                for (const r of itemsToRemove || []) {
+                    const existing = cartItems.find(
+                        (item) => item._id === r._id && item.size === r.size && item.color === r.color
+                    );
+                    if (existing) trackRemoveFromCart(existing, existing.qty || 1);
+                }
                 const remaining = cartItems.filter(item => 
                     !itemsToRemove.some(r => r._id === item._id && r.size === item.size && r.color === item.color)
                 );

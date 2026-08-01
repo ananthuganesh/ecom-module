@@ -15,8 +15,9 @@ import { useCartStore } from "@/store/useCartStore";
 import { adaptProductForCard } from "@/utils/urbanProductAdapter";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { getProductSizeOptions } from "@/utils/productSizes";
+import { trackSelectItem } from "@/lib/tracking";
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, listName = "Catalog", listId = "catalog" }) {
   const router = useRouter();
   const addItem = useCartStore((s) => s.addItem);
 
@@ -90,6 +91,7 @@ export default function ProductCard({ product }) {
           href={href}
           className="relative block w-full overflow-hidden bg-gray-50"
           style={{ aspectRatio: "2/3" }}
+          onClick={() => trackSelectItem(product, listName, listId)}
         >
           <SafeImage
             src={resolveImageUrl(image)}

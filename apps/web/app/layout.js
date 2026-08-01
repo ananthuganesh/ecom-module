@@ -40,8 +40,30 @@ const notoMalayalam = Noto_Sans_Malayalam({
 });
 
 export const metadata = {
-  title: "URBAN AANA | Premium Streetwear",
-  description: "Official online store for the URBAN AANA tribe.",
+  metadataBase: new URL(
+    (process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.PUBLIC_WEB_URL ||
+      "https://urbanaana.com").replace(/\/$/, "")
+  ),
+  title: {
+    default: "URBAN AANA | Premium Streetwear",
+    template: "%s | Urban Aana",
+  },
+  description: "Official online store for the URBAN AANA tribe. Premium streetwear shipped across India.",
+  openGraph: {
+    type: "website",
+    locale: "en_IN",
+    siteName: "Urban Aana",
+    title: "URBAN AANA | Premium Streetwear",
+    description: "Official online store for the URBAN AANA tribe.",
+    images: [{ url: "/banner.webp" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "URBAN AANA | Premium Streetwear",
+    description: "Official online store for the URBAN AANA tribe.",
+    images: ["/banner.webp"],
+  },
 };
 
 function resolveGtmId() {

@@ -23,7 +23,7 @@ import {
 } from "@/api";
 import CheckoutAccountPrompt from "@/components/CheckoutAccountPrompt";
 import { normalizeIndianState } from "@/components/storefront/StateSearchSelect";
-import { trackBeginCheckout, stashPurchaseEvent } from "@/lib/tracking";
+import { trackBeginCheckout, stashPurchaseEvent, trackSelectPromotion, trackAddPaymentInfo, trackAddShippingInfo } from "@/lib/tracking";
 import { getAttributionSnapshot } from "@/lib/attribution";
 import { persistAuth } from "@/lib/persistAuth";
 
@@ -296,6 +296,11 @@ export default function CheckoutPage() {
       });
       setCouponInput("");
       setCouponError("");
+      trackSelectPromotion({
+        promotionId: result.code || result.coupon?.code || couponCodeToApply,
+        promotionName: result.coupon?.name || result.code || couponCodeToApply,
+        discount: result.discountAmount ?? result.discount ?? 0,
+      });
     } catch (err) {
       const msg =
         err.response?.data?.detail ||
@@ -480,6 +485,7 @@ export default function CheckoutPage() {
             transactionId: localOrderId,
             value: totalPrice,
             items: availableItems,
+            coupon: appliedCoupon?.code || "",
           });
           router.push(`/checkout/success?orderId=${localOrderId}`);
         } catch (verifyError) {
@@ -560,6 +566,8 @@ export default function CheckoutPage() {
       }
 
       const paymentData = await paymentService.createRazorpayOrder(localOrderId);
+      trackAddShippingInfo(availableItems, shippingPrice > 0 ? "standard" : "free");
+      trackAddPaymentInfo(availableItems, "razorpay");
       openRazorpayCheckout({ paymentData, localOrderId });
     } catch (error) {
       console.error("Error placing order:", error);

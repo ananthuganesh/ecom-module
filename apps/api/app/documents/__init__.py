@@ -43,7 +43,6 @@ class User(Document):
     addresses: list[Address] = Field(default_factory=list)
     cartId: Optional[Any] = None
     wishlistId: Optional[Any] = None
-    walletBalance: float = 0
     isAdmin: bool = False
     roleId: Optional[str] = None
     gstin: Optional[str] = None
@@ -461,15 +460,6 @@ class PaymentTransaction(Document):
         ]
 
 
-class Wallet(Document):
-    userId: Any
-    balance: float = 0
-    transactions: list[dict] = Field(default_factory=list)
-
-    class Settings:
-        name = "wallets"
-
-
 class LineItem(MongoModel):
     productId: Optional[str] = None
     productName: str = ""
@@ -725,7 +715,6 @@ ALL_DOCUMENTS = [
     AbandonedCheckout,
     Setting,
     PaymentTransaction,
-    Wallet,
     TaxClass,
     Supplier,
     PurchaseOrder,

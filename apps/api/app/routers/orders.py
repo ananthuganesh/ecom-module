@@ -257,6 +257,16 @@ async def create_order(
     except Exception:
         pass
 
+    try:
+        from app.services import aisensy as aisensy_svc
+        from app.services import email_resend as email_svc
+
+        await aisensy_svc.notify_order_event_once("orderPlaced", order, user)
+        await email_svc.notify_order_email_once("PLACED", order, user)
+        await email_svc.notify_staff_new_order(order, user)
+    except Exception as exc:
+        print(f"[Checkout] orderPlaced notify failed: {exc}")
+
     return remap_order(order)
 
 

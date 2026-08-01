@@ -13,14 +13,10 @@ export const SETTINGS_NAV = [
   { name: "Users", href: "/admin/settings/users" },
   { name: "Shipping and delivery", href: "/admin/settings/shipping" },
   { name: "Taxes and duties", href: "/admin/settings/taxes" },
-  { name: "Payments", href: "/admin/settings/payments" },
   { name: "Notifications", href: "/admin/settings/notifications" },
   { name: "Roles", href: "/admin/settings/roles" },
   { name: "Audit logs", href: "/admin/settings/audit-logs" },
-  { name: "Razorpay", href: "/admin/settings/integrations/razorpay" },
   { name: "AiSensy", href: "/admin/settings/integrations/aisensy" },
-  { name: "Google Tag Manager", href: "/admin/settings/integrations/gtm" },
-  { name: "Google Analytics", href: "/admin/settings/integrations/ga4" },
 ];
 
 export default function SettingsLayout({ children }) {

@@ -33,12 +33,6 @@ export const paymentService = {
       .post(o.releaseReservation(localOrderId))
       .then((res) => res.data)
       .catch(() => null),
-
-  /**
-   * Admin: full or partial refund for a paid Razorpay order
-   * @param {{ localOrderId: string, amount?: number, reason?: string }} data
-   */
-  refund: (data) => client.post(e.refund, data).then((res) => res.data),
 };
 
 export default paymentService;

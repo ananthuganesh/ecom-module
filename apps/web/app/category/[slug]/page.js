@@ -9,6 +9,7 @@ import { useParams } from "next/navigation";
 import ProductCard from "@/components/storefront/ProductCard";
 import { collectionService } from "@/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { trackViewItemList } from "@/lib/tracking";
 
 import Link from "next/link";
 
@@ -24,6 +25,13 @@ export default function CategoryPage() {
             try {
                 const response = await collectionService.getByCategory(slug);
                 setData(response);
+                const products = [];
+                for (const col of response?.collections || []) {
+                    for (const p of col.products || []) products.push(p);
+                }
+                if (products.length) {
+                    trackViewItemList(products, `Category: ${slug}`, `category-${slug}`);
+                }
             } catch (err) {
                 console.error("Error fetching category collections:", err);
                 setError(err.message || "Failed to load category data");

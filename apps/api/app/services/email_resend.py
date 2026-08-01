@@ -12,9 +12,10 @@ from app.services import email_templates as tpl
 from app.services.store_settings import get_notification_prefs
 
 RESEND_API = "https://api.resend.com/emails"
-EmailType = Literal["CONFIRMED", "SHIPPED", "DELIVERED"]
+EmailType = Literal["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED"]
 
 EVENT_BY_TYPE: dict[EmailType, str] = {
+    "PLACED": "orderPlaced",
     "CONFIRMED": "orderConfirmed",
     "SHIPPED": "orderShipped",
     "DELIVERED": "orderDelivered",
@@ -219,7 +220,15 @@ def build_order_email_html(order, *, email_type: EmailType, user=None) -> tuple[
     order_link = _order_url(order)
     when = _format_when(order)
 
-    if email_type == "CONFIRMED":
+    if email_type == "PLACED":
+        subject = f"[Urban Aana] Order {order_id} placed"
+        lead = (
+            f"Hi {tpl.esc(name)}, we received your order "
+            f"<strong>{tpl.esc(order_id)}</strong> on {tpl.esc(when)}."
+        )
+        button_label = "View order"
+        preheader = f"Order {order_id} placed"
+    elif email_type == "CONFIRMED":
         subject = f"[Urban Aana] Order {order_id} confirmed"
         lead = f"Hi {tpl.esc(name)}, your order <strong>{tpl.esc(order_id)}</strong> was confirmed on {tpl.esc(when)}."
         button_label = "View order"
@@ -331,10 +340,7 @@ async def send_email(*, to: str, subject: str, html_body: str) -> dict[str, Any]
 
 
 async def notify_order_email(email_type: EmailType, order, user=None) -> dict[str, Any]:
-    prefs = await get_notification_prefs()
-    if not prefs.get("customerOrderEmail", True):
-        return {"skipped": True, "reason": "customer_order_email_disabled"}
-
+    """Customer order emails always send when Resend is configured (no admin off-switch)."""
     to = _customer_email(order, user)
     if not to:
         return {"skipped": True, "reason": "no_email"}
@@ -396,4 +402,69 @@ async def notify_staff_new_order(order, user=None) -> dict[str, Any]:
         result["type"] = "STAFF_NEW_ORDER"
     elif not result.get("skipped"):
         print(f"[Resend] staff new order failed: {result}")
+    return result
+
+
+def build_abandoned_cart_email_html(checkout, *, cart_link: str, user=None) -> tuple[str, str]:
+    details = dict(checkout.customerDetails or {})
+    name = (
+        details.get("name")
+        or (user.name if user else None)
+        or "there"
+    )
+    name = str(name).strip() or "there"
+    amount = float(checkout.totalAmount or 0)
+    subject = "You left something in your Urban Aana cart"
+    lead = (
+        f"Hi {tpl.esc(name)}, you still have items waiting in your cart "
+        f"(about {tpl.esc(tpl.format_inr(amount))}). Complete your order before they sell out."
+    )
+    # Reuse order item renderer with a lightweight shim
+    class _Shim:
+        items = checkout.items or []
+        shippingAddress = details
+        deliveryAmount = 0
+        discountAmount = 0
+        giftFee = 0
+        finalPrice = amount
+        total = amount
+        transactionDetails = {}
+
+    summary = (
+        f"{tpl.section_heading('Your cart')}"
+        f"{tpl.order_items_table(_item_rows_html(_Shim()))}"
+        f"{_money_sections(_Shim())}"
+    )
+    sections = "".join(
+        [
+            tpl.content_block(
+                f"{lead}<br/><br/>{tpl.mail_button(cart_link, 'Return to cart')}"
+            ),
+            tpl.content_block(summary, top_border=True),
+        ]
+    )
+    html_body = tpl.render_shopify_email(
+        preheader="Finish your Urban Aana order",
+        sections_html=sections,
+        footer_note="Urban Aana · Cart reminder",
+    )
+    return subject, html_body
+
+
+async def notify_abandoned_cart_email(checkout, *, cart_link: str, user=None) -> dict[str, Any]:
+    """Send abandoned-cart recovery email once per checkout (via Resend). Always on when configured."""
+    details = dict(checkout.customerDetails or {})
+    to = str(details.get("email") or (user.email if user else "") or "").strip().lower()
+    if not to:
+        return {"skipped": True, "reason": "no_email"}
+
+    sent_meta = dict(getattr(checkout, "recoveryLastResult", None) or {})
+    if sent_meta.get("emailSentAt"):
+        return {"skipped": True, "reason": "already_sent"}
+
+    subject, html_body = build_abandoned_cart_email_html(checkout, cart_link=cart_link, user=user)
+    result = await send_email(to=to, subject=subject, html_body=html_body)
+    if result.get("ok"):
+        result["to"] = to
+        result["type"] = "ABANDONED_CART"
     return result

@@ -17,8 +17,6 @@ from app.services.aisensy_project import (
     price_to_minor_units,
     retailer_id_for_variant,
 )
-from app.services.store_settings import get_notification_prefs
-
 SETTING_KEY = "aisensy"
 CAMPAIGN_URL = "https://backend.aisensy.com/campaign/t1/api/v2"
 # Legacy Direct Contact API fallback when Project ID is missing.
@@ -140,6 +138,7 @@ def public_settings(raw: dict | None) -> dict:
         "hasProjectId": bool(raw.get("projectId")),
         "hasProjectApiKey": bool(raw.get("projectApiKey")),
         "projectConfigured": has_project,
+        "messagingEnabled": bool(raw.get("messagingEnabled", True)),
         "catalogId": raw.get("catalogId") or "",
         "siteUrl": raw.get("siteUrl") or "",
         "abandonedMinutes": abandoned_minutes,
@@ -189,11 +188,17 @@ async def save_prefs(body: dict) -> dict:
         abandoned_minutes = DEFAULT_ABANDONED_MINUTES
     abandoned_minutes = max(1, min(abandoned_minutes, 24 * 60))
 
+    if "messagingEnabled" in body:
+        messaging_enabled = bool(body.get("messagingEnabled"))
+    else:
+        messaging_enabled = bool(db_current.get("messagingEnabled", True))
+
     value = {
         "siteUrl": str(
             body.get("siteUrl") if body.get("siteUrl") is not None else db_current.get("siteUrl") or ""
         ).strip(),
         "abandonedMinutes": abandoned_minutes,
+        "messagingEnabled": messaging_enabled,
         "campaigns": campaigns,
         "enabled": enabled,
         "contactApiUrl": str(
@@ -243,6 +248,8 @@ async def send_campaign(
     cfg = await get_settings()
     if not is_messaging_configured(cfg):
         return {"skipped": True, "reason": "not_configured"}
+    if not bool(cfg.get("messagingEnabled", True)):
+        return {"skipped": True, "reason": "messaging_disabled"}
 
     enabled = dict(cfg.get("enabled") or {})
     if not bool(enabled.get(event, True)):
@@ -605,11 +612,7 @@ def _order_name(order, user=None) -> str:
 
 
 async def notify_order_event(event: str, order, user=None) -> dict:
-    if event in {"orderPlaced", "orderPaid", "orderShipped", "orderDelivered"}:
-        prefs = await get_notification_prefs()
-        if not prefs["customerOrderWhatsapp"]:
-            return {"skipped": True, "reason": "customer_order_whatsapp_disabled"}
-
+    """WhatsApp toggles live in AiSensy settings (master + per-event)."""
     phone = _order_phone(order, user)
     name = _order_name(order, user)
     order_no = order.orderNumber or str(order.id)[-8:]
@@ -717,16 +720,22 @@ async def notify_abandoned(checkout) -> dict:
 
 async def process_due_abandoned_recoveries() -> dict[str, Any]:
     """
-    Auto-send WhatsApp for abandoned checkouts idle longer than abandonedMinutes (default 15).
-    Sends once per checkout (recoverySentAt).
+    Auto-send WhatsApp + email for abandoned checkouts idle longer than abandonedMinutes.
+    Sends once per checkout (recoverySentAt). Email works even when WhatsApp is not mapped.
     """
     cfg = await get_settings()
-    if not is_messaging_configured(cfg):
+    wa_ready = (
+        is_messaging_configured(cfg)
+        and bool(cfg.get("messagingEnabled", True))
+        and bool((cfg.get("enabled") or {}).get("abandoned", True))
+        and bool(str((cfg.get("campaigns") or {}).get("abandoned") or "").strip())
+    )
+    # Always attempt email path when Resend is configured; WA optional.
+    from app.services import email_resend as email_svc
+
+    email_ready = bool(email_svc._resend_api_key())
+    if not wa_ready and not email_ready:
         return {"skipped": True, "reason": "not_configured"}
-    if not bool((cfg.get("enabled") or {}).get("abandoned", True)):
-        return {"skipped": True, "reason": "event_disabled"}
-    if not str((cfg.get("campaigns") or {}).get("abandoned") or "").strip():
-        return {"skipped": True, "reason": "campaign_not_mapped"}
 
     try:
         minutes = int(cfg.get("abandonedMinutes") or DEFAULT_ABANDONED_MINUTES)
@@ -747,28 +756,73 @@ async def process_due_abandoned_recoveries() -> dict[str, Any]:
     for checkout in rows:
         details = checkout.customerDetails or {}
         has_phone = bool(normalize_phone(details.get("phone")))
-        if not has_phone and not checkout.userId:
+        has_email = bool(str(details.get("email") or "").strip())
+        user = None
+        if checkout.userId:
+            try:
+                from bson import ObjectId
+
+                uid = checkout.userId
+                if not isinstance(uid, ObjectId) and ObjectId.is_valid(str(uid)):
+                    uid = ObjectId(str(uid))
+                user = await User.get(uid)
+            except Exception:
+                user = None
+            if user:
+                has_phone = has_phone or bool(normalize_phone(getattr(user, "phone", None)))
+                has_email = has_email or bool(str(getattr(user, "email", None) or "").strip())
+
+        if not has_phone and not has_email:
             skipped += 1
             continue
 
-        # Claim before send to avoid double-send if two workers overlap
         checkout.recoverySentAt = datetime.utcnow()
         await checkout.save()
 
-        try:
-            result = await notify_abandoned(checkout)
-        except Exception as exc:
-            result = {"ok": False, "error": str(exc)[:300]}
+        wa_result: dict[str, Any] = {"skipped": True, "reason": "whatsapp_unavailable"}
+        email_result: dict[str, Any] = {"skipped": True, "reason": "no_email"}
 
-        checkout.recoveryLastResult = {k: v for k, v in (result or {}).items() if k != "response"}
-        if result.get("ok"):
+        try:
+            if has_phone and wa_ready:
+                wa_result = await notify_abandoned(checkout)
+        except Exception as exc:
+            wa_result = {"ok": False, "error": str(exc)[:300]}
+
+        try:
+            from app.services import cart_recovery
+
+            await cart_recovery.ensure_recovery_token(checkout)
+            await checkout.save()
+            site = str(
+                cfg.get("siteUrl")
+                or os.environ.get("PUBLIC_WEB_URL")
+                or os.environ.get("NEXT_PUBLIC_SITE_URL")
+                or ""
+            ).rstrip("/")
+            token = checkout.recoveryToken
+            cart_link = (
+                f"{site}/cart/recover?token={token}" if site else f"/cart/recover?token={token}"
+            )
+            if has_email and email_ready:
+                email_result = await email_svc.notify_abandoned_cart_email(
+                    checkout, cart_link=cart_link, user=user
+                )
+        except Exception as exc:
+            email_result = {"ok": False, "error": str(exc)[:300]}
+
+        ok = bool(wa_result.get("ok") or email_result.get("ok"))
+        checkout.recoveryLastResult = {
+            "whatsapp": {k: v for k, v in (wa_result or {}).items() if k != "response"},
+            "email": {k: v for k, v in (email_result or {}).items() if k != "response"},
+            **({"emailSentAt": datetime.utcnow().isoformat()} if email_result.get("ok") else {}),
+        }
+        if ok:
             sent += 1
             await checkout.save()
         else:
-            # Allow retry later (e.g. after mapping campaign / phone filled)
             checkout.recoverySentAt = None
             await checkout.save()
-            if result.get("skipped"):
+            if wa_result.get("skipped") and email_result.get("skipped"):
                 skipped += 1
             else:
                 failed += 1
@@ -779,6 +833,8 @@ async def process_due_abandoned_recoveries() -> dict[str, Any]:
         "failed": failed,
         "skipped": skipped,
         "cutoffMinutes": minutes,
+        "whatsappReady": wa_ready,
+        "emailReady": email_ready,
     }
     try:
         s = await Setting.find_one(Setting.key == SETTING_KEY)

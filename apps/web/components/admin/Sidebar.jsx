@@ -19,7 +19,6 @@ import {
   Package,
   ShoppingBag,
   Users,
-  Wallet,
   Settings,
   Grid2X2,
   TicketPercent,
@@ -186,7 +185,6 @@ const menuItems = [
     subItems: [{ name: "Transfers", href: "/admin/purchase/transfers" }],
   },
   { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-  { name: "Wallet / Refunds", href: "/admin/wallet", icon: Wallet },
 ];
 
 const settingsItem = {

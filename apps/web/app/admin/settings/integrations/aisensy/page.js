@@ -14,6 +14,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { adminAisensyService } from "@/api";
+import { Switch } from "@/components/ui/switch";
 
 const EVENT_ROWS = [
   {
@@ -52,6 +53,7 @@ export default function AisensySettingsPage() {
   const [settings, setSettings] = useState({
     siteUrl: "",
     abandonedMinutes: 15,
+    messagingEnabled: true,
     campaigns: emptyCampaigns(),
     enabled: emptyEnabled(),
     isConnected: false,
@@ -83,6 +85,7 @@ export default function AisensySettingsPage() {
       setSettings((prev) => ({
         ...prev,
         ...data,
+        messagingEnabled: data.messagingEnabled !== false,
         campaigns: { ...emptyCampaigns(), ...(data.campaigns || {}) },
         enabled: { ...emptyEnabled(), ...(data.enabled || {}) },
       }));
@@ -109,16 +112,18 @@ export default function AisensySettingsPage() {
       const data = await adminAisensyService.saveSettings({
         siteUrl: settings.siteUrl,
         abandonedMinutes: settings.abandonedMinutes,
+        messagingEnabled: settings.messagingEnabled,
         campaigns: settings.campaigns,
         enabled: settings.enabled,
       });
       setSettings((prev) => ({
         ...prev,
         ...data,
+        messagingEnabled: data.messagingEnabled !== false,
         campaigns: { ...emptyCampaigns(), ...(data.campaigns || {}) },
         enabled: { ...emptyEnabled(), ...(data.enabled || {}) },
       }));
-      setStatus({ type: "success", message: "Campaign preferences saved" });
+      setStatus({ type: "success", message: "AiSensy preferences saved" });
     } catch (error) {
       const msg =
         error.response?.data?.detail ||
@@ -191,12 +196,17 @@ export default function AisensySettingsPage() {
     );
   }
 
+  const messagingOn = !!settings.messagingEnabled;
+
   return (
     <div className="w-full">
       <div className="mb-8">
-        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">AiSensy</h1>
+        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+          AiSensy
+        </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          API keys come from the environment. Map each store event to a Live campaign name here.
+          Toggle WhatsApp messaging on/off. Map each store event to a Live campaign name.
+          Customer emails always send separately via Resend.
         </p>
       </div>
 
@@ -236,8 +246,26 @@ export default function AisensySettingsPage() {
 
           <div className="rounded-2xl border border-border bg-card p-6">
             <form onSubmit={handleSave} className="space-y-6">
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-secondary/30 p-4">
+                <div>
+                  <p className="text-[13px] font-medium text-foreground">WhatsApp messaging</p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    Master switch — disables all campaign sends when off
+                  </p>
+                </div>
+                <Switch
+                  checked={messagingOn}
+                  onCheckedChange={(checked) =>
+                    setSettings({ ...settings, messagingEnabled: !!checked })
+                  }
+                  aria-label="Enable AiSensy WhatsApp messaging"
+                />
+              </div>
+
               <div className="space-y-2">
-                <label className="text-[13px] font-medium text-muted-foreground">Store URL (abandoned recovery links)</label>
+                <label className="text-[13px] font-medium text-muted-foreground">
+                  Store URL (abandoned recovery links)
+                </label>
                 <input
                   type="url"
                   value={settings.siteUrl || ""}
@@ -266,16 +294,16 @@ export default function AisensySettingsPage() {
                 />
                 <p className="text-[12px] text-muted-foreground">
                   Customers idle on checkout with a phone number get one WhatsApp after this delay
-                  (default 15).
+                  (default 15). Email still sends when Resend is configured.
                 </p>
               </div>
 
-              <div className="space-y-3">
+              <div className={`space-y-3 ${messagingOn ? "" : "opacity-50 pointer-events-none"}`}>
                 <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
                   <MessageCircle size={14} />
-                  Event → Live campaign name
+                  Event toggles → Live campaign name
                 </div>
-                <div className="border border-border divide-y divide-gray-50 rounded-lg overflow-hidden">
+                <div className="border border-border divide-y divide-border/60 rounded-lg overflow-hidden">
                   {EVENT_ROWS.map((row) => (
                     <div key={row.key} className="p-4 space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -283,20 +311,21 @@ export default function AisensySettingsPage() {
                           <p className="text-[13px] font-medium text-foreground">{row.label}</p>
                           <p className="text-[11px] text-muted-foreground mt-0.5">{row.hint}</p>
                         </div>
-                        <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer">
-                          <input
-                            type="checkbox"
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-muted-foreground">
+                            {settings.enabled?.[row.key] ? "On" : "Off"}
+                          </span>
+                          <Switch
                             checked={!!settings.enabled?.[row.key]}
-                            onChange={(e) =>
+                            onCheckedChange={(checked) =>
                               setSettings({
                                 ...settings,
-                                enabled: { ...settings.enabled, [row.key]: e.target.checked },
+                                enabled: { ...settings.enabled, [row.key]: !!checked },
                               })
                             }
-                            className="rounded border-input"
+                            aria-label={`Enable ${row.label} WhatsApp`}
                           />
-                          Enabled
-                        </label>
+                        </div>
                       </div>
                       <input
                         type="text"
@@ -308,7 +337,8 @@ export default function AisensySettingsPage() {
                           })
                         }
                         placeholder="Exact AiSensy campaign name"
-                        className="w-full p-2.5 bg-secondary/50 border border-border text-sm focus:outline-none focus:border-accent transition-colors rounded-lg"
+                        disabled={!settings.enabled?.[row.key]}
+                        className="w-full p-2.5 bg-secondary/50 border border-border text-sm focus:outline-none focus:border-accent transition-colors rounded-lg disabled:opacity-50"
                       />
                     </div>
                   ))}
@@ -396,6 +426,9 @@ export default function AisensySettingsPage() {
               )}
               {settings.isConnected ? "Connected (env)" : "Not connected"}
             </div>
+            <p className="text-[12px] text-muted-foreground">
+              Messaging: {messagingOn ? "Enabled" : "Disabled"}
+            </p>
             {settings.lastSyncedAt && (
               <p className="text-[12px] text-muted-foreground">
                 Last contact sync: {new Date(settings.lastSyncedAt).toLocaleString()}
@@ -437,10 +470,10 @@ export default function AisensySettingsPage() {
                 <code className="text-muted-foreground">AISENSY_PROJECT_API_KEY</code> in the API{" "}
                 <code className="text-muted-foreground">.env</code> and restart
               </li>
-              <li>Approve templates and create Live API campaigns in AiSensy</li>
-              <li>Paste each campaign name exactly under the matching event</li>
+              <li>Use the master toggle to pause all WhatsApp sends</li>
+              <li>Toggle each event and paste the exact Live campaign name</li>
+              <li>Emails (placed / paid / shipped / delivered) always send via Resend</li>
               <li>Use Sync catalog to push one WhatsApp catalog item per product variant</li>
-              <li>Order messages fire automatically on place / pay / ship / deliver</li>
             </ul>
           </div>
         </div>
