@@ -51,7 +51,7 @@ export default function AnalyticsDashboard() {
                 if (!cancelled) setStats(data);
             } catch (err) {
                 console.error("Failed to load analytics:", err);
-                if (!cancelled) setError("Analytics could not be loaded. Please try again.");
+                if (!cancelled) setError("Couldn't load analytics. Try again.");
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -92,9 +92,9 @@ export default function AnalyticsDashboard() {
 
     const cards = [
         { name: "Total Sales", value: `₹${Number(stats?.totalRevenue ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, change: stats?.trends?.revenue ?? "+0%" },
-        { name: "Orders Created", value: Number(stats?.totalOrders ?? 0).toLocaleString("en-IN"), change: stats?.trends?.orders ?? "+0%" },
+        { name: "Orders", value: Number(stats?.totalOrders ?? 0).toLocaleString("en-IN"), change: stats?.trends?.orders ?? "+0%" },
         { name: "Total Customers", value: Number(stats?.totalCustomers ?? 0).toLocaleString("en-IN"), change: stats?.trends?.customers ?? "+0%" },
-        { name: "Average Order Value", value: `₹${Number(stats?.avgOrderValue ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, change: stats?.trends?.avgValue ?? "+0%" },
+        { name: "Avg. order value", value: `₹${Number(stats?.avgOrderValue ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, change: stats?.trends?.avgValue ?? "+0%" },
     ];
     const maxRevenue = Math.max(...(stats?.series ?? []).map((point) => Number(point.revenue) || 0), 1);
     const channelRevenue = Math.max(Number(stats?.totalRevenue) || 0, 1);
@@ -112,7 +112,7 @@ export default function AnalyticsDashboard() {
         <div className="w-full">
             <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">Analytics & Reports</h1>
+                    <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">Analytics</h1>
                     <p className="mt-0.5 text-sm text-muted-foreground">Store sales from orders · website traffic from Google Analytics</p>
                 </div>
                 <AdminDateRangeButton
@@ -142,10 +142,10 @@ export default function AnalyticsDashboard() {
                 <div className="lg:col-span-2 bg-muted border border-border p-6 rounded-2xl">
                     <div className="flex justify-between items-center mb-6">
                         <div>
-                            <h3 className="text-xs font-medium text-primary">Sales Over Time</h3>
-                            <p className="text-[13px] text-muted-foreground font-medium">Revenue metrics history</p>
+                            <h3 className="text-xs font-medium text-primary">Sales over time</h3>
+                            <p className="text-[13px] text-muted-foreground font-medium">Revenue over time</p>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground"><div className="w-2.5 h-2.5 bg-primary rounded-sm" /><span>Current Period</span></div>
+                        <div className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground"><div className="w-2.5 h-2.5 bg-primary rounded-sm" /><span>This period</span></div>
                     </div>
                     <div className="h-64 flex items-end justify-between gap-2 md:gap-4 pt-6 border-b border-border pb-1">
                         {(stats?.series ?? []).map((point) => (
@@ -160,8 +160,8 @@ export default function AnalyticsDashboard() {
                 </div>
 
                 <div className="bg-muted border border-border p-6 rounded-2xl">
-                    <h3 className="text-xs font-medium text-primary mb-1">Sales by Channel</h3>
-                    <p className="text-[13px] text-muted-foreground font-medium mb-6">Attribution of store checkouts</p>
+                    <h3 className="text-xs font-medium text-primary mb-1">Sales by channel</h3>
+                    <p className="text-[13px] text-muted-foreground font-medium mb-6">Where checkouts came from</p>
                     <div className="space-y-4">
                         {(stats?.channels ?? []).map((channel) => {
                             const percentage = Math.round((Number(channel.revenue || 0) / channelRevenue) * 100);
@@ -178,10 +178,10 @@ export default function AnalyticsDashboard() {
             </div>
 
             <div className="bg-muted border border-border rounded-2xl overflow-hidden mb-10">
-                <div className="p-5 border-b border-border bg-muted/50"><h3 className="text-xs font-medium text-primary">Top Performing Products</h3><p className="mt-0.5 text-sm text-muted-foreground">Most ordered inventory catalog listings</p></div>
+                <div className="p-5 border-b border-border bg-muted/50"><h3 className="text-xs font-medium text-primary">Top products</h3><p className="mt-0.5 text-sm text-muted-foreground">Best-selling products</p></div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
-                        <thead><tr className="border-b border-border text-[13px] font-medium text-muted-foreground bg-muted/30"><th className="p-4">Product Catalog Title</th><th className="p-4 text-center">Items Sold</th><th className="p-4 text-center">Revenue Generated</th></tr></thead>
+                        <thead><tr className="border-b border-border text-[13px] font-medium text-muted-foreground bg-muted/30"><th className="p-4">Product</th><th className="p-4 text-center">Items sold</th><th className="p-4 text-center">Revenue</th></tr></thead>
                         <tbody className="divide-y divide-gray-50 text-xs">
                             {(stats?.topProducts ?? []).map((product) => <tr key={product.productId} className="hover:bg-muted/50 transition-colors"><td className="p-4 font-medium text-primary">{product.name}</td><td className="p-4 text-center text-foreground font-medium">{product.quantity}</td><td className="p-4 text-center text-foreground font-medium">₹{Number(product.revenue || 0).toLocaleString("en-IN")}</td></tr>)}
                             {!loading && !stats?.topProducts?.length && <tr><td colSpan="3" className="p-8 text-center text-sm text-muted-foreground">No product sales in this period.</td></tr>}

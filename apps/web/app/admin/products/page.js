@@ -292,7 +292,7 @@ export default function AdminProductsPage() {
               {
                 value: metrics.products.toLocaleString("en-IN"),
                 label: "Total products",
-                detail: "Products in catalog",
+                detail: "Products in catalogue",
                 hint: "Includes draft and archived",
               },
             ]}

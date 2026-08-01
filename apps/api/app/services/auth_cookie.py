@@ -33,11 +33,21 @@ def set_auth_cookie(response: Response, token: str, *, hours: int | None = None)
 
 
 def clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(key=COOKIE_NAME, path="/")
+    # Match set_auth_cookie flags so browsers actually clear the session.
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/",
+        secure=cookie_secure(),
+        samesite="lax",
+        httponly=True,
+    )
 
 
 def token_from_request(request: Request, bearer: str | None = None) -> str | None:
+    # Prefer HttpOnly cookie over Bearer so XSS/localStorage cannot override session.
+    raw = request.cookies.get(COOKIE_NAME)
+    if raw and str(raw).strip():
+        return str(raw).strip()
     if bearer:
         return bearer
-    raw = request.cookies.get(COOKIE_NAME)
-    return str(raw).strip() if raw else None
+    return None

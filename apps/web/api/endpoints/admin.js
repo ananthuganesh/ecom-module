@@ -60,16 +60,10 @@ const companyProfile = {
   base: "/admin/company-profile",
 };
 
-const warehouses = {
-  base: "/admin/warehouses",
-  byId: (id) => `/admin/warehouses/${id}`,
-};
-
 const stock = {
   base: "/admin/stock",
   movements: "/admin/stock/movements",
   adjust: "/admin/stock/adjust",
-  transfer: "/admin/stock/transfer",
   product: (id) => `/admin/stock/product/${id}`,
   backfill: "/admin/stock/backfill",
 };
@@ -85,6 +79,5 @@ export const adminEndpoints = {
   collections,
   taxClasses,
   companyProfile,
-  warehouses,
   stock,
 };

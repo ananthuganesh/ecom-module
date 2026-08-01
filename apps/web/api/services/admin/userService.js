@@ -4,8 +4,8 @@ import { adminEndpoints } from "../../endpoints/admin.js";
 const { users: e } = adminEndpoints;
 
 export const adminUserService = {
-  getUsers: () =>
-    client.get(e.base).then((res) => res.data),
+  getUsers: (params = {}) =>
+    client.get(e.base, { params }).then((res) => res.data),
 
   getUserById: (id) =>
     client.get(e.byId(id)).then((res) => res.data),

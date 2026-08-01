@@ -1,27 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { adminWarehouseService } from "@/api";
+import { useMemo } from "react";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-function trim(value) {
-  return String(value || "").trim();
-}
-
-function warehouseLabel(w) {
-  if (!w) return "Store default";
-  const name = trim(w.name || w.title);
-  const address = trim(
-    [w.addressLine1, w.city, w.pincode].filter(Boolean).join(", ")
-  );
-  if (address) return address;
-  return name || "Store default";
-}
-
 export default function ProductInventoryCard({ form, setForm }) {
-  const [locationLabel, setLocationLabel] = useState("Store default");
-
   const variants = form?.variants || [];
   const primaryIndex = 0;
   const primary = variants[primaryIndex] || {};
@@ -32,23 +15,6 @@ export default function ProductInventoryCard({ form, setForm }) {
   );
 
   const multiVariant = variants.length > 1;
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const rows = await adminWarehouseService.getAll();
-        const list = Array.isArray(rows) ? rows : rows?.items || [];
-        const first = list.find((w) => w?.isDefault) || list[0];
-        if (!cancelled) setLocationLabel(warehouseLabel(first));
-      } catch {
-        if (!cancelled) setLocationLabel("Store default");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const setAvailable = (raw) => {
     if (multiVariant) return;
@@ -81,7 +47,7 @@ export default function ProductInventoryCard({ form, setForm }) {
             <tbody>
               <tr>
                 <td className="px-3 py-2.5 text-[13px] text-[#303030]">
-                  {locationLabel}
+                  Store default
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   {multiVariant ? (

@@ -639,12 +639,12 @@ async def mark_paid(order_id: str, admin: PaymentsWriter, body: dict | None = No
     await ensure_stock_for_payment(order)
     reason = str((body or {}).get("reason") or "admin_manual_mark_paid").strip()[:200]
     order.paymentStatus = "paid"
+    # Whitelist only — never merge raw body (stock flags / inventory bypass).
     order.transactionDetails = {
         **(order.transactionDetails or {}),
         "paymentStatus": "paid",
         "markedPaidBy": str(admin.id),
         "markedPaidReason": reason,
-        **{k: v for k, v in (body or {}).items() if k not in {"reason"}},
     }
     order.updatedAt = datetime.utcnow()
     await order.save()

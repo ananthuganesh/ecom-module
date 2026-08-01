@@ -1,10 +1,10 @@
-"""Shared ERP helpers — line totals, numbering, audit."""
+"""Shared ERP helpers — line totals, numbering."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from app.documents import AuditLog, LineItem, Role, Setting, TaxClass
+from app.documents import LineItem, Role, Setting, TaxClass
 from app.services.gst import resolve_state_code, split_cgst_sgst_igst, taxable_and_tax, gst_rate_for_unit_price
 from app.services.variants import variant_sku
 
@@ -112,17 +112,6 @@ async def resolve_product_tax_rate(product) -> float:
     return gst_rate_for_unit_price(mrp)
 
 
-async def write_audit(*, actor, action: str, entity_type: str | None = None, entity_id: str | None = None, meta: dict | None = None):
-    await AuditLog(
-        actorId=str(actor.id) if actor else None,
-        actorEmail=getattr(actor, "email", None),
-        action=action,
-        entityType=entity_type,
-        entityId=entity_id,
-        meta=meta or {},
-    ).insert()
-
-
 DEFAULT_ROLES = [
     {
         "name": "Admin",
@@ -131,86 +120,106 @@ DEFAULT_ROLES = [
         "permissions": ["*"],
     },
     {
-        "name": "Sales",
-        "description": "Orders, invoices, customers",
+        "name": "Staff",
+        "description": "Store operations without user management",
         "isSystem": True,
         "permissions": [
+            "admin.access",
             "orders.read",
             "orders.write",
             "invoices.read",
             "invoices.write",
             "customers.read",
-            "reports.read",
-            "analytics.read",
-        ],
-    },
-    {
-        "name": "Purchase",
-        "description": "Suppliers and purchase docs",
-        "isSystem": True,
-        "permissions": [
-            "purchase.read",
-            "purchase.write",
-            "suppliers.read",
-            "suppliers.write",
+            "customers.write",
             "stock.read",
             "stock.write",
-        ],
-    },
-    {
-        "name": "Warehouse",
-        "description": "Stock and GRN",
-        "isSystem": True,
-        "permissions": [
-            "stock.read",
-            "stock.write",
-            "purchase.read",
-            "warehouses.read",
-        ],
-    },
-    {
-        "name": "Finance",
-        "description": "Payments and reports",
-        "isSystem": True,
-        "permissions": [
             "payments.read",
             "payments.write",
-            "invoices.read",
-            "purchase.read",
             "reports.read",
+            "analytics.read",
         ],
     },
 ]
 
 
-async def ensure_default_roles() -> list[Role]:
-    existing = await Role.find_all().to_list()
-    if not existing:
-        created = []
-        for row in DEFAULT_ROLES:
-            r = Role(**row)
-            await r.insert()
-            created.append(r)
-        return created
+ACTIVE_ROLE_NAMES = {row["name"] for row in DEFAULT_ROLES}
 
-    # Merge newly defined permissions onto system roles without removing custom grants.
-    # Always strip obsolete admin.access from non-Admin system roles (RBAC collapse fix).
+
+async def ensure_default_roles() -> list[Role]:
+    """Keep only Admin + Staff. Deletes every other role document."""
+    from app.documents import User
+
+    existing = await Role.find_all().to_list()
     by_name = {r.name: r for r in existing}
+
+    # Purge anything that is not Admin or Staff.
+    for role in existing:
+        if role.name in ACTIVE_ROLE_NAMES:
+            continue
+        role_id = str(role.id)
+        users = await User.find(User.roleId == role_id).to_list()
+        for user in users:
+            user.roleId = None
+            user.updatedAt = datetime.utcnow()
+            await user.save()
+        await role.delete()
+        by_name.pop(role.name, None)
+
+    # Ensure Admin + Staff exist and stay in sync.
     for row in DEFAULT_ROLES:
         role = by_name.get(row["name"])
-        if not role or not role.isSystem:
+        if not role:
+            role = Role(**row)
+            await role.insert()
+            by_name[role.name] = role
             continue
         current = list(role.permissions or [])
         if role.name != "Admin":
-            current = [p for p in current if p != "admin.access"]
+            current = [p for p in current if p != "*"]
         merged = list(dict.fromkeys([*current, *row["permissions"]]))
-        if role.name != "Admin":
-            merged = [p for p in merged if p != "admin.access"]
-        if merged != list(role.permissions or []):
+        if role.name == "Admin":
+            merged = ["*"]
+        changed = (
+            merged != list(role.permissions or [])
+            or role.description != row["description"]
+            or not role.isSystem
+        )
+        if changed:
             role.permissions = merged
+            role.description = row["description"]
+            role.isSystem = True
             role.updatedAt = datetime.utcnow()
             await role.save()
-    return await Role.find_all().to_list()
+
+    admin_role = by_name.get("Admin")
+    staff_role = by_name.get("Staff")
+    active_ids = {str(r.id) for r in (admin_role, staff_role) if r}
+
+    # Drop stale roleIds (deleted roles) and never treat storefront
+    # customers as staff just because they have a password.
+    tagged = await User.find(
+        {
+            "$or": [
+                {"roleId": {"$nin": [None, ""]}},
+                {"isAdmin": True},
+            ]
+        }
+    ).to_list()
+    for user in tagged:
+        rid = str(user.roleId or "").strip()
+        if user.isAdmin:
+            # Owners always map to Admin — never leave them on Staff / stale IDs.
+            if admin_role and rid != str(admin_role.id):
+                user.roleId = str(admin_role.id)
+                user.updatedAt = datetime.utcnow()
+                await user.save()
+            continue
+        if rid and rid not in active_ids:
+            user.roleId = None
+            user.updatedAt = datetime.utcnow()
+            await user.save()
+
+    return [by_name[name] for name in ("Admin", "Staff") if name in by_name]
 
 
 async def company_profile() -> dict:
@@ -345,13 +354,6 @@ async def ensure_order_invoice(order, *, actor=None):
     order.invoiceNumber = doc.number
     await order.save()
 
-    await write_audit(
-        actor=actor,
-        action="si.create",
-        entity_type="sales_invoice",
-        entity_id=str(doc.id),
-        meta={"orderId": str(order.id), "isGstInvoice": use_gst},
-    )
     return doc
 
 

@@ -40,6 +40,31 @@ def retailer_id_for_variant(*, product_id: str, variant: dict | None, index: int
     return "-".join(parts)[:100]
 
 
+def is_duplicate_retailer_error(result: dict[str, Any] | None) -> bool:
+    """Meta/AiSensy (#10800) when create-product hits an existing retailer_id."""
+    if not result or result.get("ok"):
+        return False
+    chunks: list[str] = [str(result.get("error") or "")]
+    resp = result.get("response")
+    if isinstance(resp, dict):
+        for key in ("message", "error", "name", "raw"):
+            if resp.get(key) is not None:
+                chunks.append(str(resp.get(key)))
+        # Nested Meta-style payloads
+        err_obj = resp.get("error")
+        if isinstance(err_obj, dict):
+            chunks.append(str(err_obj.get("message") or ""))
+            chunks.append(str(err_obj.get("code") or ""))
+    blob = " ".join(chunks).lower()
+    if "duplicate retailer_id" in blob:
+        return True
+    if "10800" in blob and "duplicate" in blob:
+        return True
+    if "retailer_id" in blob and "already" in blob:
+        return True
+    return False
+
+
 class AiSensyProjectClient:
     def __init__(self, project_id: str, api_password: str, *, timeout: float = 45.0):
         self.project_id = str(project_id or "").strip()
@@ -170,7 +195,23 @@ class AiSensyProjectClient:
         return await self._request("POST", "create-catalog", json=body)
 
     async def create_product(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("POST", "create-product", json=payload)
+        result = await self._request("POST", "create-product", json=payload)
+        if result.get("ok") or not is_duplicate_retailer_error(result):
+            return result
+
+        # Prefer updating an existing catalog item when retailer_id already exists.
+        for path in ("update-product", "edit-product"):
+            updated = await self._request("POST", path, json=payload)
+            if updated.get("ok"):
+                return {**updated, "updated": True, "alreadyExists": True}
+
+        return {
+            "ok": True,
+            "alreadyExists": True,
+            "status": result.get("status"),
+            "response": result.get("response"),
+            "error": result.get("error"),
+        }
 
     async def sync_catalog(self) -> dict[str, Any]:
         return await self._request("GET", "sync-catalog")

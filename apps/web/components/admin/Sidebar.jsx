@@ -23,7 +23,6 @@ import {
   TicketPercent,
   BarChart3,
   Folder,
-  Sparkles,
   Truck,
 } from "./LocalIcons";
 
@@ -166,21 +165,9 @@ const menuItems = [
   { name: "Customers", href: "/admin/customers", icon: Users },
   { name: "Discounts", href: "/admin/discounts", icon: TicketPercent },
   {
-    name: "Marketing",
-    href: "/admin/marketing",
-    icon: Sparkles,
-    subItems: [{ name: "WhatsApp", href: "/admin/marketing/whatsapp" }],
-  },
-  {
     name: "Content",
     href: "/admin/content",
     icon: Folder,
-  },
-  {
-    name: "Purchase",
-    href: "/admin/purchase",
-    icon: Package,
-    subItems: [{ name: "Transfers", href: "/admin/purchase/transfers" }],
   },
   { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
 ];

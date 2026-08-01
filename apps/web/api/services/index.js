@@ -24,7 +24,6 @@ export {
   adminCouponService,
   adminTaxClassService,
   adminCompanyProfileService,
-  adminWarehouseService,
   adminStockService,
   adminErpService,
   adminSettingsService,

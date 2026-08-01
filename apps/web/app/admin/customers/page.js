@@ -28,9 +28,19 @@ export default function AdminCustomersPage() {
 
   const fetchCustomers = useCallback(async () => {
     try {
-      const data = await adminUserService.getUsers();
-      const list = (Array.isArray(data) ? data : []).filter(isCustomer);
-      setCustomers(list);
+      // Paginate through admin users API (max 200/page) instead of a single unbounded dump.
+      const pageSize = 200;
+      let page = 1;
+      const all = [];
+      for (;;) {
+        const data = await adminUserService.getUsers({ page, limit: pageSize });
+        const batch = Array.isArray(data) ? data : [];
+        all.push(...batch.filter(isCustomer));
+        if (batch.length < pageSize) break;
+        page += 1;
+        if (page > 50) break; // hard safety cap
+      }
+      setCustomers(all);
     } catch (error) {
       console.error("Error fetching customers:", error);
       setCustomers([]);

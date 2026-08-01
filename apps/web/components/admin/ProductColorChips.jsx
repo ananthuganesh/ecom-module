@@ -18,7 +18,7 @@ export default function ProductColorChips({
   suggestions = [],
   onChange,
   onSaveColor,
-  placeholder = "Type a color and press Enter",
+  placeholder = "Type a colour and press Enter",
   className = "",
 }) {
   const [draft, setDraft] = useState("");

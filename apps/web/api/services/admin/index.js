@@ -11,7 +11,6 @@ export { adminCollectionService } from "./collectionService.js";
 export { adminCouponService } from "./couponService.js";
 export { adminTaxClassService } from "./taxClassService.js";
 export { adminCompanyProfileService } from "./companyProfileService.js";
-export { adminWarehouseService } from "./warehouseService.js";
 export { adminStockService } from "./stockService.js";
 export { adminErpService } from "./erpService.js";
 export { adminSettingsService } from "./settingsService.js";

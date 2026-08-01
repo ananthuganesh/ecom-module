@@ -32,12 +32,12 @@ export function inventoryBuckets(row) {
 
 const COLUMN_HELP = {
   onHand:
-    "The total amount of inventory at a location. This is the sum of unavailable, committed, and available items.",
-  available: "Inventory at your store that can be sold.",
-  committed: "Inventory that's part of an unfulfilled order.",
+    "Total stock at this location (unavailable + committed + available).",
+  available: "Stock that can be sold.",
+  committed: "Stock reserved for open orders.",
   unavailable:
-    "Inventory that's not available for sale or committed to an order.",
-  incoming: "Inventory that's on its way to your location.",
+    "Stock not for sale and not reserved.",
+  incoming: "Stock incoming to this location.",
 };
 
 function QtyHeader({ label, help }) {

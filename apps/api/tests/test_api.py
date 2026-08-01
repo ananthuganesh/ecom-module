@@ -234,16 +234,24 @@ async def test_notification_preferences_default_and_save(client, admin):
     defaults = await client.get("/api/admin/notification-prefs", headers=headers)
     assert defaults.status_code == 200
     assert defaults.json() == {
+        "emailOrderConfirmation": True,
+        "emailOrderShipped": True,
+        "emailOrderDelivered": True,
+        "emailAbandonedCart": True,
         "adminNewOrderAlert": True,
     }
 
     saved = await client.put(
         "/api/admin/notification-prefs",
         headers=headers,
-        json={"adminNewOrderAlert": False},
+        json={"adminNewOrderAlert": False, "emailOrderConfirmation": False},
     )
     assert saved.status_code == 200
     assert saved.json() == {
+        "emailOrderConfirmation": False,
+        "emailOrderShipped": True,
+        "emailOrderDelivered": True,
+        "emailAbandonedCart": True,
         "adminNewOrderAlert": False,
     }
 

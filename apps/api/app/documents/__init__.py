@@ -631,20 +631,6 @@ class Role(Document):
         name = "roles"
 
 
-class AuditLog(Document):
-    actorId: Optional[str] = None
-    actorEmail: Optional[str] = None
-    action: str
-    entityType: Optional[str] = None
-    entityId: Optional[str] = None
-    meta: dict = Field(default_factory=dict)
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-
-    class Settings:
-        name = "auditlogs"
-        indexes = [IndexModel([("createdAt", -1)])]
-
-
 class AiMediaJob(Document):
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
 
@@ -711,7 +697,6 @@ ALL_DOCUMENTS = [
     SalesReturn,
     PartyPayment,
     Role,
-    AuditLog,
     AiMediaJob,
     MediaAsset,
 ]

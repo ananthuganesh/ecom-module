@@ -382,7 +382,7 @@ function fulfillmentColumn() {
   return {
     id: "fulfillment",
     accessorFn: (row) => resolveFulfillmentDisplay(row).key,
-    header: "Fulfillment",
+    header: "Fulfilment",
     cell: ({ row }) => {
       const display = resolveFulfillmentDisplay(row.original);
       return (

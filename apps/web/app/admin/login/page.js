@@ -22,21 +22,23 @@ function AdminLoginInner() {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (userInfo?.isAdmin && (userInfo?.token || userInfo?.authenticated || userInfo?._id)) {
+    const canAccessAdmin = Boolean(userInfo?.isAdmin || userInfo?.roleId);
+    if (canAccessAdmin && (userInfo?.token || userInfo?.authenticated || userInfo?._id)) {
       router.replace("/admin/dashboard");
     }
   }, [hydrated, userInfo, router]);
 
-  if (!hydrated || (userInfo?.isAdmin && (userInfo?.token || userInfo?.authenticated || userInfo?._id))) {
+  const canAccessAdmin = Boolean(userInfo?.isAdmin || userInfo?.roleId);
+  if (!hydrated || (canAccessAdmin && (userInfo?.token || userInfo?.authenticated || userInfo?._id))) {
     return (
-      <div className="flex min-h-svh w-full items-center justify-center">
+      <div className="flex min-h-svh w-full items-center justify-center !bg-white">
         <Spinner className="size-8 text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+    <div className="flex min-h-svh w-full items-center justify-center !bg-white p-6 md:p-10">
       <div className="w-full max-w-sm">
         <LoginForm mode="admin" />
       </div>
@@ -48,7 +50,7 @@ export default function AdminLoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-svh w-full items-center justify-center">
+        <div className="flex min-h-svh w-full items-center justify-center !bg-white">
           <Spinner className="size-8 text-muted-foreground" />
         </div>
       }

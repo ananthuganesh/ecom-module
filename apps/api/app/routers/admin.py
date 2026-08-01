@@ -13,9 +13,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from app.deps import (
     AdminUser,
     CustomersReader,
+    CustomersWriter,
     OrdersReader,
     OrdersWriter,
     PaymentsWriter,
+    RoleManager,
 )
 from app.config import get_settings
 from app.documents import (
@@ -84,55 +86,6 @@ DEFAULT_COMPANY_PROFILE = {
     "lowStockThreshold": 10,
     "orderPrefix": "#",
     "orderSuffix": "",
-}
-
-INDIA_TAX_REGIONS = [
-    ("35", "Andaman and Nicobar Islands"),
-    ("37", "Andhra Pradesh"),
-    ("12", "Arunachal Pradesh"),
-    ("18", "Assam"),
-    ("10", "Bihar"),
-    ("04", "Chandigarh"),
-    ("22", "Chhattisgarh"),
-    ("26", "Dadra and Nagar Haveli and Daman and Diu"),
-    ("07", "Delhi"),
-    ("30", "Goa"),
-    ("24", "Gujarat"),
-    ("06", "Haryana"),
-    ("02", "Himachal Pradesh"),
-    ("01", "Jammu and Kashmir"),
-    ("20", "Jharkhand"),
-    ("29", "Karnataka"),
-    ("32", "Kerala"),
-    ("38", "Ladakh"),
-    ("31", "Lakshadweep"),
-    ("23", "Madhya Pradesh"),
-    ("27", "Maharashtra"),
-    ("14", "Manipur"),
-    ("17", "Meghalaya"),
-    ("15", "Mizoram"),
-    ("13", "Nagaland"),
-    ("21", "Odisha"),
-    ("34", "Puducherry"),
-    ("03", "Punjab"),
-    ("08", "Rajasthan"),
-    ("11", "Sikkim"),
-    ("33", "Tamil Nadu"),
-    ("36", "Telangana"),
-    ("16", "Tripura"),
-    ("09", "Uttar Pradesh"),
-    ("05", "Uttarakhand"),
-    ("19", "West Bengal"),
-]
-
-DEFAULT_TAX_SETTINGS = {
-    "country": "India",
-    "countryTaxRate": 9,
-    "regions": [
-        {"code": code, "name": name, "rate": 18, "taxName": "IGST", "taxType": "igst"}
-        for code, name in INDIA_TAX_REGIONS
-    ],
-    "overrides": [],
 }
 
 
@@ -341,7 +294,7 @@ async def admin_users(
 
 
 @router.post("/users", status_code=201)
-async def admin_create_customer(body: dict, _: CustomersReader):
+async def admin_create_customer(body: dict, _: CustomersWriter):
     """Create a storefront customer (not an admin). Used from Customers page only."""
     first_name = str(body.get("firstName") or "").strip()
     last_name = str(body.get("lastName") or "").strip()
@@ -429,12 +382,17 @@ async def admin_user_orders(user_id: str, _: OrdersReader):
 
 
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: str, _: AdminUser):
+async def delete_user(user_id: str, actor: RoleManager):
     user = await User.get(ObjectId(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.isAdmin:
-        raise HTTPException(status_code=400, detail="Cannot delete admin")
+    if user.isAdmin or (getattr(user, "roleId", None) and str(user.roleId).strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete Admin or Staff accounts from Customers",
+        )
+    if str(user.id) == str(actor.id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
     await user.delete()
     return {"message": "User removed"}
 
@@ -1436,6 +1394,8 @@ async def order_delivery_date(order_id: str, body: dict, _: OrdersWriter):
 
 @router.patch("/orders/{order_id}/payment-status")
 async def order_payment_status(order_id: str, body: dict, _: PaymentsWriter):
+    from app.services.stock import ensure_stock_for_payment
+
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1451,6 +1411,8 @@ async def order_payment_status(order_id: str, body: dict, _: PaymentsWriter):
                 "Refunded statuses require a Razorpay refund."
             ),
         )
+    if next_status == "paid":
+        await ensure_stock_for_payment(order)
     order.paymentStatus = next_status
     order.transactionDetails = {
         **(order.transactionDetails or {}),
@@ -1604,6 +1566,27 @@ async def delete_collection(item_id: str, _: AdminUser):
     return {"message": "removed"}
 
 
+_COUPON_UPDATE_FIELDS = frozenset({
+    "name",
+    "code",
+    "kind",
+    "discountType",
+    "discountValue",
+    "minOrderAmount",
+    "maxDiscount",
+    "usageLimit",
+    "expiryDate",
+    "status",
+    "productIds",
+    "collectionIds",
+    "buyQuantity",
+    "getQuantity",
+    "getDiscountPercent",
+    "buyProductIds",
+    "getProductIds",
+})
+
+
 @router.get("/coupons")
 async def list_coupons(_: AdminUser):
     return await _crud_list(Coupon, _)
@@ -1611,9 +1594,10 @@ async def list_coupons(_: AdminUser):
 
 @router.post("/coupons", status_code=201)
 async def create_coupon(body: dict, _: AdminUser):
-    if "code" in body:
-        body["code"] = str(body["code"]).upper()
-    doc = Coupon(**body)
+    payload = {k: v for k, v in (body or {}).items() if k in _COUPON_UPDATE_FIELDS}
+    if "code" in payload:
+        payload["code"] = str(payload["code"]).upper().strip()
+    doc = Coupon(**payload)
     await doc.insert()
     return doc_to_dict(doc)
 
@@ -1623,7 +1607,11 @@ async def update_coupon(item_id: str, body: dict, _: AdminUser):
     doc = await Coupon.get(ObjectId(item_id))
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    for k, v in body.items():
+    # Never accept usedCount or unknown keys (discount abuse / mass assignment).
+    payload = {k: v for k, v in (body or {}).items() if k in _COUPON_UPDATE_FIELDS}
+    if "code" in payload:
+        payload["code"] = str(payload["code"]).upper().strip()
+    for k, v in payload.items():
         setattr(doc, k, v)
     await doc.save()
     return doc_to_dict(doc)
@@ -2047,13 +2035,19 @@ async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
     await checkout.save()
 
     if result.get("ok"):
-        return {"ok": True, "result": result, "checkout": doc_to_dict(checkout)}
+        from app.services import cart_recovery
+
+        return {
+            "ok": True,
+            "result": {k: v for k, v in result.items() if k != "response"},
+            "checkout": cart_recovery.admin_checkout_dict(checkout),
+        }
     if result.get("skipped"):
         raise HTTPException(
             status_code=400,
             detail=f"Recovery not sent: {result.get('reason')}. Map and enable the Abandoned campaign in AiSensy settings.",
         )
-    raise HTTPException(status_code=502, detail=result.get("error") or "AiSensy send failed")
+    raise HTTPException(status_code=502, detail="AiSensy send failed")
 
 
 @router.get("/tax-classes")
@@ -2250,27 +2244,3 @@ async def save_dtdc_settings(body: dict, _: AdminUser):
         "hasApiKey": True,
         "isConnected": True,
     }
-
-
-@router.get("/tax-settings")
-async def get_tax_settings(_: AdminUser):
-    s = await Setting.find_one(Setting.key == "tax_settings")
-    if not s or not isinstance(s.value, dict):
-        return {**DEFAULT_TAX_SETTINGS}
-    merged = {**DEFAULT_TAX_SETTINGS, **s.value}
-    if not merged.get("regions"):
-        merged["regions"] = DEFAULT_TAX_SETTINGS["regions"]
-    return merged
-
-
-@router.put("/tax-settings")
-async def save_tax_settings(body: dict, _: AdminUser):
-    current = await get_tax_settings(_)
-    value = {**current, **(body or {})}
-    s = await Setting.find_one(Setting.key == "tax_settings")
-    if s:
-        s.value = value
-        await s.save()
-    else:
-        await Setting(key="tax_settings", value=value).insert()
-    return value

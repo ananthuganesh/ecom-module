@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Save } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { adminCompanyProfileService } from "@/api";
+import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 
 const INDIA_STATES = [
   { code: "01", name: "Jammu and Kashmir" },
@@ -63,6 +63,20 @@ const empty = {
   orderSuffix: "",
 };
 
+const FORM_KEYS = Object.keys(empty);
+
+function normalizeForm(data) {
+  const next = { ...empty, ...data };
+  for (const key of FORM_KEYS) {
+    next[key] = next[key] == null ? empty[key] : next[key];
+  }
+  return next;
+}
+
+function formSignature(form) {
+  return JSON.stringify(FORM_KEYS.map((key) => form?.[key] ?? ""));
+}
+
 const inputClass =
   "w-full h-10 px-3 bg-card border border-border text-[13px] font-medium focus:outline-none focus:border-ring transition-colors rounded-[6px]";
 const labelClass = "text-[13px] font-medium text-muted-foreground";
@@ -72,7 +86,9 @@ function Section({ title, description, children }) {
     <section className="rounded-xl border border-border bg-card p-5 text-card-foreground space-y-4">
       <div>
         <h2 className="text-[14px] font-medium text-foreground">{title}</h2>
-        {description ? <p className="text-[13px] text-muted-foreground mt-1 leading-relaxed">{description}</p> : null}
+        {description ? (
+          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{description}</p>
+        ) : null}
       </div>
       {children}
     </section>
@@ -81,15 +97,30 @@ function Section({ title, description, children }) {
 
 export default function GeneralSettingsPage() {
   const [form, setForm] = useState(empty);
+  const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const showSaveBar = useProductSaveBarStore((s) => s.show);
+  const hideSaveBar = useProductSaveBarStore((s) => s.hide);
+  const setSaveBarSaving = useProductSaveBarStore((s) => s.setSaving);
+  const saveHandlerRef = useRef(null);
+  const discardHandlerRef = useRef(null);
+
+  const dirty = useMemo(() => {
+    if (!snapshot) return false;
+    return formSignature(form) !== formSignature(snapshot);
+  }, [form, snapshot]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const data = await adminCompanyProfileService.get();
-        if (mounted) setForm({ ...empty, ...data });
+        if (!mounted) return;
+        const next = normalizeForm(data);
+        setForm(next);
+        setSnapshot(next);
       } catch (err) {
         console.error(err);
         toast.error("Failed to load store settings");
@@ -113,12 +144,12 @@ export default function GeneralSettingsPage() {
     }));
   };
 
-  const onSave = async (e) => {
-    e.preventDefault();
+  const save = async () => {
     setSaving(true);
     try {
-      const saved = await adminCompanyProfileService.save(form);
-      setForm({ ...empty, ...saved });
+      const saved = normalizeForm(await adminCompanyProfileService.save(form));
+      setForm(saved);
+      setSnapshot(saved);
       toast.success("Settings saved");
     } catch (err) {
       const msg = err?.response?.data?.detail || err.message || "Save failed";
@@ -127,6 +158,70 @@ export default function GeneralSettingsPage() {
       setSaving(false);
     }
   };
+
+  const discard = () => {
+    if (!snapshot) return;
+    setForm({ ...snapshot });
+  };
+
+  saveHandlerRef.current = () => {
+    void save();
+  };
+  discardHandlerRef.current = () => {
+    discard();
+  };
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const onBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const onDocumentClick = (event) => {
+      const anchor = event.target?.closest?.("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+        return;
+      }
+      if (/^https?:\/\//i.test(href) && !href.startsWith(window.location.origin)) {
+        return;
+      }
+      const url = new URL(href, window.location.origin);
+      if (url.pathname === window.location.pathname && url.search === window.location.search) {
+        return;
+      }
+      if (!window.confirm("You have unsaved changes. Leave without saving?")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    document.addEventListener("click", onDocumentClick, true);
+    return () => document.removeEventListener("click", onDocumentClick, true);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!dirty) {
+      hideSaveBar();
+      return undefined;
+    }
+    showSaveBar({
+      saving,
+      onSave: () => saveHandlerRef.current?.(),
+      onDiscard: () => discardHandlerRef.current?.(),
+    });
+    return () => hideSaveBar();
+  }, [dirty, saving, hideSaveBar, showSaveBar]);
+
+  useEffect(() => {
+    setSaveBarSaving(saving);
+  }, [saving, setSaveBarSaving]);
 
   const storeName = form.tradeName || form.legalName || "My Store";
   const contactLine = [form.email, form.phone].filter(Boolean).join(" · ") || "Add email and phone";
@@ -141,8 +236,8 @@ export default function GeneralSettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -150,16 +245,20 @@ export default function GeneralSettingsPage() {
   return (
     <div className="w-full">
       <div className="mb-6">
-        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">General</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">Store identity, contact details, and order numbering</p>
+        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+          General
+        </h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Store identity, contact details, and order numbering
+        </p>
       </div>
 
-      <form onSubmit={onSave} className="space-y-4">
+      <div className="space-y-4">
         <Section
           title="Order ID format"
-          description="Shown on the order page, customer pages, and customer order notifications to identify orders."
+          description="Used on orders, customer pages, and order emails."
         >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className={labelClass}>Prefix</label>
               <input
@@ -167,6 +266,7 @@ export default function GeneralSettingsPage() {
                 value={form.orderPrefix}
                 onChange={(e) => setField("orderPrefix", e.target.value)}
                 placeholder="#"
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
@@ -176,23 +276,26 @@ export default function GeneralSettingsPage() {
                 value={form.orderSuffix}
                 onChange={(e) => setField("orderSuffix", e.target.value)}
                 placeholder="Optional"
+                disabled={saving}
               />
             </div>
           </div>
           <p className="text-[13px] text-muted-foreground">
             Preview:{" "}
             <span className="font-medium text-foreground">
-              {form.orderPrefix || ""}1001{form.orderSuffix || ""}
+              {form.orderPrefix || ""}
+              1001
+              {form.orderSuffix || ""}
             </span>
           </p>
         </Section>
 
         <Section title="Store contact details">
-          <div className="rounded-[6px] border border-border bg-muted/80 px-4 py-3 mb-1">
+          <div className="mb-1 rounded-[6px] border border-border bg-muted/80 px-4 py-3">
             <p className="text-[13px] font-medium text-foreground">{storeName}</p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">{contactLine}</p>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">{contactLine}</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <label className={labelClass}>Store name</label>
               <input
@@ -200,6 +303,7 @@ export default function GeneralSettingsPage() {
                 value={form.tradeName}
                 onChange={(e) => setField("tradeName", e.target.value)}
                 placeholder="My Store"
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
@@ -209,6 +313,7 @@ export default function GeneralSettingsPage() {
                 className={inputClass}
                 value={form.email}
                 onChange={(e) => setField("email", e.target.value)}
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
@@ -217,6 +322,7 @@ export default function GeneralSettingsPage() {
                 className={inputClass}
                 value={form.phone}
                 onChange={(e) => setField("phone", e.target.value)}
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
@@ -225,6 +331,7 @@ export default function GeneralSettingsPage() {
                 className={inputClass}
                 value={form.legalName}
                 onChange={(e) => setField("legalName", e.target.value)}
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
@@ -235,25 +342,30 @@ export default function GeneralSettingsPage() {
                 onChange={(e) => setField("gstin", e.target.value.toUpperCase())}
                 placeholder="22AAAAA0000A1Z5"
                 maxLength={15}
+                disabled={saving}
               />
-              <p className="text-[12px] text-muted-foreground leading-relaxed">
-                Leave blank for simple order invoices. Enter GSTIN to enable GST tax invoices (CGST/SGST/IGST) on every order.
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                Leave blank for simple order invoices. Enter GSTIN to enable GST tax invoices
+                (CGST/SGST/IGST) on every order.
               </p>
             </div>
           </div>
         </Section>
 
         <Section title="Store address">
-          <div className="rounded-[6px] border border-border bg-muted/80 px-4 py-3 mb-1">
-            <p className="text-[13px] text-muted-foreground leading-relaxed">{addressLine || "Add your store address"}</p>
+          <div className="mb-1 rounded-[6px] border border-border bg-muted/80 px-4 py-3">
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              {addressLine || "Add your store address"}
+            </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <label className={labelClass}>Address line 1</label>
               <input
                 className={inputClass}
                 value={form.addressLine1}
                 onChange={(e) => setField("addressLine1", e.target.value)}
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
@@ -262,11 +374,17 @@ export default function GeneralSettingsPage() {
                 className={inputClass}
                 value={form.addressLine2}
                 onChange={(e) => setField("addressLine2", e.target.value)}
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
               <label className={labelClass}>City</label>
-              <input className={inputClass} value={form.city} onChange={(e) => setField("city", e.target.value)} />
+              <input
+                className={inputClass}
+                value={form.city}
+                onChange={(e) => setField("city", e.target.value)}
+                disabled={saving}
+              />
             </div>
             <div className="space-y-1.5">
               <label className={labelClass}>Pincode</label>
@@ -274,11 +392,17 @@ export default function GeneralSettingsPage() {
                 className={inputClass}
                 value={form.pincode}
                 onChange={(e) => setField("pincode", e.target.value)}
+                disabled={saving}
               />
             </div>
             <div className="space-y-1.5">
               <label className={labelClass}>State</label>
-              <select className={inputClass} value={form.stateCode} onChange={(e) => onStateChange(e.target.value)}>
+              <select
+                className={inputClass}
+                value={form.stateCode}
+                onChange={(e) => onStateChange(e.target.value)}
+                disabled={saving}
+              >
                 <option value="">Select state</option>
                 {INDIA_STATES.map((s) => (
                   <option key={s.code} value={s.code}>
@@ -289,22 +413,16 @@ export default function GeneralSettingsPage() {
             </div>
             <div className="space-y-1.5">
               <label className={labelClass}>Country</label>
-              <input className={inputClass} value={form.country} onChange={(e) => setField("country", e.target.value)} />
+              <input
+                className={inputClass}
+                value={form.country}
+                onChange={(e) => setField("country", e.target.value)}
+                disabled={saving}
+              />
             </div>
           </div>
         </Section>
-
-        <div className="pt-1">
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium inline-flex items-center gap-2 px-5 py-2.5 rounded-[6px] text-[13px] cursor-pointer disabled:opacity-50"
-          >
-            <Save size={14} />
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

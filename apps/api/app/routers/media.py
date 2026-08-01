@@ -1,14 +1,18 @@
 import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.deps import AdminUser
 from app.documents import MediaAsset
+from app.services import image_optimize as img_opt
 from app.services import r2 as r2_svc
 
 router = APIRouter(prefix="/api/admin/media", tags=["media"])
+
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_FOLDERS = {
@@ -82,6 +86,57 @@ async def _attach_alt(files: list[dict]) -> list[dict]:
         f["altText"] = alts.get(key, f.get("altText") or "")
         f["key"] = key
     return files
+
+
+@router.post("/upload")
+async def upload_media(
+    _: AdminUser,
+    folder: str = Query(default="products"),
+    file: UploadFile | None = File(default=None),
+    image: UploadFile | None = File(default=None),
+):
+    """Upload into products or ai folder (respects Content library selection)."""
+    if folder not in UPLOAD_FOLDERS:
+        raise HTTPException(status_code=400, detail="folder must be products or ai")
+    upload = file or image
+    if not upload:
+        raise HTTPException(status_code=422, detail="file or image is required")
+    content = await upload.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File must be 10 MB or smaller")
+    webp_bytes, webp_name, content_type = img_opt.optimize_image_to_webp(
+        content,
+        filename=upload.filename,
+    )
+    if r2_svc.is_configured():
+        result = r2_svc.upload_bytes(
+            folder=folder,
+            data=webp_bytes,
+            filename=webp_name,
+            content_type=content_type,
+        )
+        return {
+            "url": result["url"],
+            "name": result.get("name"),
+            "folder": folder,
+            "size": result.get("size") or len(webp_bytes),
+            "contentType": content_type,
+            "optimized": True,
+            "format": "webp",
+        }
+    name = f"{uuid4().hex}.webp"
+    dest_dir = UPLOAD_FOLDERS[folder]
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    (dest_dir / name).write_bytes(webp_bytes)
+    return {
+        "url": f"/uploads/{folder}/{name}",
+        "name": name,
+        "folder": folder,
+        "size": len(webp_bytes),
+        "contentType": content_type,
+        "optimized": True,
+        "format": "webp",
+    }
 
 
 @router.get("")

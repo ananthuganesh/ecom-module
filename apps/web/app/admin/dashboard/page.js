@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, Label, LabelList, PolarGrid, PolarRadiusAxis, RadialBar, RadialBarChart, XAxis, YAxis } from "recharts";
 import { adminOrderService } from "@/api";
 import {
@@ -129,6 +130,7 @@ export default function AdminDashboardPage() {
         }
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
+        if (!cancelled) toast.error("Failed to load dashboard data");
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -217,7 +217,7 @@ export default function ProductRichTextEditor({
           <AlignLeft className="h-3.5 w-3.5" />
         </ToolbarButton>
         <ToolbarButton
-          label="Align center"
+          label="Align centre"
           active={editor.isActive({ textAlign: "center" })}
           onClick={() => editor.chain().focus().setTextAlign("center").run()}
         >

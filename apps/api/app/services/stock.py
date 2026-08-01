@@ -390,47 +390,6 @@ async def adjust_stock(
     )
 
 
-async def transfer_stock(
-    *,
-    product_id: str,
-    from_warehouse_id: str,
-    to_warehouse_id: str,
-    quantity: int,
-    variant_sku: str = "",
-    reason: str | None = None,
-    created_by: str | None = None,
-) -> dict:
-    qty = int(quantity)
-    if qty <= 0:
-        raise HTTPException(status_code=400, detail="transfer quantity must be positive")
-    if from_warehouse_id == to_warehouse_id:
-        raise HTTPException(status_code=400, detail="source and destination warehouses must differ")
-
-    out = await apply_stock_change(
-        product_id=product_id,
-        warehouse_id=from_warehouse_id,
-        quantity_delta=-qty,
-        movement_type="transfer_out",
-        variant_sku=variant_sku,
-        reason=reason or "Transfer out",
-        reference_type="warehouse",
-        reference_id=to_warehouse_id,
-        created_by=created_by,
-    )
-    inn = await apply_stock_change(
-        product_id=product_id,
-        warehouse_id=to_warehouse_id,
-        quantity_delta=qty,
-        movement_type="transfer_in",
-        variant_sku=variant_sku,
-        reason=reason or "Transfer in",
-        reference_type="warehouse",
-        reference_id=from_warehouse_id,
-        created_by=created_by,
-    )
-    return {"out": out, "in": inn}
-
-
 async def apply_sale(
     *,
     product_id: str,

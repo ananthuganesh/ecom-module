@@ -29,27 +29,7 @@ const client = axios.create({
   },
 });
 
-// Prefer HttpOnly cookie session. Bearer is only a migration fallback.
-client.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const auth = localStorage.getItem(ensureStorageKey(AUTH_STORAGE_KEY));
-    let token = null;
-
-    if (auth) {
-      try {
-        const parsed = JSON.parse(auth);
-        token = parsed.state?.userInfo?.token;
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
-});
+// Session is HttpOnly cookie (`withCredentials`). Do not attach Bearer from localStorage.
 
 // Handle 401 Unauthorized globally
 client.interceptors.response.use(
@@ -61,6 +41,11 @@ client.interceptors.response.use(
         const onAuthPage = path === "/login" || path === "/admin/login";
         if (!onAuthPage) {
           localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
+          // Best-effort cookie clear (avoid axios recursion on 401).
+          fetch(`${API_URL}/users/logout`, {
+            method: "POST",
+            credentials: "include",
+          }).catch(() => {});
           if (path.startsWith("/admin")) {
             window.location.href = "/admin/login";
           }

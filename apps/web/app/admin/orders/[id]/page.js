@@ -285,33 +285,41 @@ export default function AdminOrderDetailPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchOrder = async () => {
       setLoading(true);
       try {
         const data = await adminOrderService.getById(params.id);
+        if (cancelled) return;
         setOrder(data);
         const key = orderUrlKey(data);
         if (key && String(params.id) !== key) {
           router.replace(adminOrderHref(data));
         }
         await loadInvoice(key || params.id);
+        if (cancelled) return;
         try {
           const nav = await adminOrderService.getNeighbors(key || params.id);
+          if (cancelled) return;
           setNeighbors({
             previous: nav?.previous || null,
             next: nav?.next || null,
           });
         } catch {
-          setNeighbors({ previous: null, next: null });
+          if (!cancelled) setNeighbors({ previous: null, next: null });
         }
       } catch (e) {
+        if (cancelled) return;
         console.error(e);
         toast.error("Failed to load order");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     if (params.id) fetchOrder();
+    return () => {
+      cancelled = true;
+    };
   }, [params.id]);
 
   const ensureInvoice = async ({ silent = false } = {}) => {
@@ -487,10 +495,18 @@ export default function AdminOrderDetailPage() {
     setUpdating(true);
     try {
       await adminOrderService.updatePaymentStatus(order._id, paymentStatus);
-      setOrder((prev) => (prev ? { 
-        ...prev, 
-        transactionDetails: { ...(prev.transactionDetails || {}), paymentStatus }
-      } : null));
+      setOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              paymentStatus,
+              transactionDetails: {
+                ...(prev.transactionDetails || {}),
+                paymentStatus,
+              },
+            }
+          : null
+      );
       toast.success(`Payment set to ${paymentStatus}`);
     } catch (e) {
       console.error(e);
@@ -524,7 +540,7 @@ export default function AdminOrderDetailPage() {
     }
     if (
       !confirm(
-        "Cancel this order? Status becomes Cancelled and stock is restored if it was committed."
+        "Cancel this order? It will be marked Cancelled and reserved stock will be released."
       )
     ) {
       return;
@@ -561,7 +577,7 @@ export default function AdminOrderDetailPage() {
     <main className="h-screen p-10 flex flex-col items-center justify-center bg-background">
       <Package className="w-12 h-12 text-muted-foreground/40 mb-4" />
       <p className="text-sm font-medium text-muted-foreground">Order Not Found</p>
-      <Link href="/admin/orders" className="mt-6 text-xs font-medium text-primary border-b border-primary pb-1">Return to Archive</Link>
+      <Link href="/admin/orders" className="mt-6 text-xs font-medium text-primary border-b border-primary pb-1">Back to orders</Link>
     </main>
   );
 

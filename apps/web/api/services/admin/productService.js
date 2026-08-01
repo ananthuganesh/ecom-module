@@ -5,11 +5,12 @@ const { products: e } = adminEndpoints;
 
 export const adminProductService = {
   getProducts: (params = {}) => {
-    let url = `${e.base}?_t=${Date.now()}`;
-    if (params.category) {
-      url += `&category=${params.category}`;
-    }
-    return client.get(url).then((res) => res.data);
+    const query = new URLSearchParams({ _t: String(Date.now()) });
+    if (params.category) query.set("category", params.category);
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.skip != null) query.set("skip", String(params.skip));
+    return client.get(`${e.base}?${query.toString()}`).then((res) => res.data);
   },
 
   getById: (id) =>

@@ -21,6 +21,13 @@ EVENT_BY_TYPE: dict[EmailType, str] = {
     "DELIVERED": "orderDelivered",
 }
 
+EMAIL_PREF_BY_TYPE: dict[EmailType, str] = {
+    "PLACED": "emailOrderConfirmation",
+    "CONFIRMED": "emailOrderConfirmation",
+    "SHIPPED": "emailOrderShipped",
+    "DELIVERED": "emailOrderDelivered",
+}
+
 
 def _resend_api_key() -> str:
     from app.config import get_settings
@@ -340,7 +347,12 @@ async def send_email(*, to: str, subject: str, html_body: str) -> dict[str, Any]
 
 
 async def notify_order_email(email_type: EmailType, order, user=None) -> dict[str, Any]:
-    """Customer order emails always send when Resend is configured (no admin off-switch)."""
+    """Customer order email — gated by Notifications preferences."""
+    prefs = await get_notification_prefs()
+    pref_key = EMAIL_PREF_BY_TYPE.get(email_type)
+    if pref_key and not prefs.get(pref_key, True):
+        return {"skipped": True, "reason": f"{pref_key}_disabled"}
+
     to = _customer_email(order, user)
     if not to:
         return {"skipped": True, "reason": "no_email"}
@@ -354,11 +366,32 @@ async def notify_order_email(email_type: EmailType, order, user=None) -> dict[st
 
 
 async def notify_order_email_once(email_type: EmailType, order, user=None) -> dict[str, Any]:
-    """Send once per order+type (idempotent across verify + webhook)."""
-    event = EVENT_BY_TYPE[email_type]
+    """Send once per order+type (idempotent across verify + webhook).
+
+    PLACED + CONFIRMED share one customer confirmation email:
+    - Razorpay/prepaid awaiting payment → skip PLACED, send CONFIRMED on pay
+    - COD / already paid → send PLACED (or CONFIRMED) once via shared marker
+    """
+    method = str(getattr(order, "paymentMethod", None) or "razorpay").lower()
+    pay_status = str(getattr(order, "paymentStatus", None) or "").lower()
+    prepaid = method in {"razorpay", "prepaid"}
+    unpaid = pay_status not in {"paid", "captured", "authorized"}
+
+    if email_type == "PLACED" and prepaid and unpaid:
+        return {"skipped": True, "reason": "awaiting_payment_confirmation_email"}
+
+    # One customer confirmation email per order (placed or paid template).
+    if email_type in {"PLACED", "CONFIRMED"}:
+        event = "orderConfirmation"
+    else:
+        event = EVENT_BY_TYPE[email_type]
+
     details = dict(order.transactionDetails or {})
     sent = dict(details.get("resend") or {})
-    if sent.get(event):
+    if sent.get(event) or (
+        email_type in {"PLACED", "CONFIRMED"}
+        and (sent.get("orderPlaced") or sent.get("orderConfirmed"))
+    ):
         return {"skipped": True, "reason": "already_sent"}
 
     result = await notify_order_email(email_type, order, user)
@@ -452,7 +485,11 @@ def build_abandoned_cart_email_html(checkout, *, cart_link: str, user=None) -> t
 
 
 async def notify_abandoned_cart_email(checkout, *, cart_link: str, user=None) -> dict[str, Any]:
-    """Send abandoned-cart recovery email once per checkout (via Resend). Always on when configured."""
+    """Send abandoned-cart recovery email once per checkout (via Resend)."""
+    prefs = await get_notification_prefs()
+    if not prefs.get("emailAbandonedCart", True):
+        return {"skipped": True, "reason": "emailAbandonedCart_disabled"}
+
     details = dict(checkout.customerDetails or {})
     to = str(details.get("email") or (user.email if user else "") or "").strip().lower()
     if not to:

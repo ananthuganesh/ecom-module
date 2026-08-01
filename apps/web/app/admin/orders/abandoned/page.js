@@ -123,6 +123,8 @@ export default function AbandonedCheckoutsPage() {
     return () => clearTimeout(t);
   }, [searchQ]);
 
+  const orderCacheRef = useRef([]);
+
   const fetchPage = useCallback(
     async (pageNum, { append } = {}) => {
       const gen = ++fetchGen.current;
@@ -137,49 +139,57 @@ export default function AbandonedCheckoutsPage() {
         if (datePreset && datePreset !== "all") checkoutParams.datePreset = datePreset;
         if (debouncedQ) checkoutParams.q = debouncedQ;
 
-        const includeOrders =
-          viewFilter === "converted"
-            ? Promise.resolve({ items: [], hasMore: false })
-            : adminOrderService
+        // Checkouts drive pagination. Abandoned orders are loaded once per filter
+        // change (page 1) so dual independent pages cannot skip/duplicate rows.
+        const loadOrders =
+          !append && viewFilter !== "converted"
+            ? adminOrderService
                 .getAll({
                   status: "abandoned",
-                  page: pageNum,
-                  limit: PAGE_SIZE,
+                  page: 1,
+                  limit: 100,
                   ...(datePreset && datePreset !== "all" ? { datePreset } : {}),
                   ...(debouncedQ ? { q: debouncedQ } : {}),
                 })
-                .catch(() => ({ items: [], hasMore: false }));
+                .then((res) => {
+                  const page = unwrapPage(res, { fallbackLimit: 100 });
+                  let orderRows = page.items.map(mapOrderToRow);
+                  if (viewFilter === "abandoned") {
+                    orderRows = orderRows.filter((r) => r.status === "abandoned");
+                  }
+                  orderCacheRef.current = orderRows;
+                })
+                .catch((err) => {
+                  console.error(err);
+                  orderCacheRef.current = [];
+                  toast.error("Could not load abandoned orders");
+                })
+            : Promise.resolve();
 
-        const [ordersRes, checkoutsRes] = await Promise.all([
-          includeOrders,
-          abandonedCheckoutService.getAll(checkoutParams).catch(() => ({
-            items: [],
-            hasMore: false,
-          })),
+        const [checkoutsRes] = await Promise.all([
+          abandonedCheckoutService.getAll(checkoutParams),
+          loadOrders,
         ]);
         if (gen !== fetchGen.current) return;
 
-        const ordersPage = unwrapPage(ordersRes, { fallbackLimit: PAGE_SIZE });
         const checkoutsPage = unwrapPage(checkoutsRes, { fallbackLimit: PAGE_SIZE });
-
-        let orderRows = ordersPage.items.map(mapOrderToRow);
-        if (viewFilter === "converted") orderRows = [];
-        else if (viewFilter === "abandoned") {
-          orderRows = orderRows.filter((r) => r.status === "abandoned");
-        }
-
         const checkoutRows = checkoutsPage.items.map(mapCheckoutToRow);
-        const batch = [...orderRows, ...checkoutRows].sort(
-          (a, b) => new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0)
-        );
 
         setRows((prev) => {
-          if (!append) return batch;
+          if (!append) {
+            return [...orderCacheRef.current, ...checkoutRows].sort(
+              (a, b) =>
+                new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0)
+            );
+          }
           const seen = new Set(prev.map(rowKey));
-          return [...prev, ...batch.filter((r) => !seen.has(rowKey(r)))];
+          return [
+            ...prev,
+            ...checkoutRows.filter((r) => !seen.has(rowKey(r))),
+          ];
         });
         setPage(pageNum);
-        setHasMore(Boolean(ordersPage.hasMore || checkoutsPage.hasMore));
+        setHasMore(Boolean(checkoutsPage.hasMore));
       } catch (error) {
         if (gen !== fetchGen.current) return;
         console.error("Error fetching abandoned list:", error);

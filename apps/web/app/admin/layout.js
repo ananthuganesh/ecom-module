@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
+import { authService } from "@/api";
 import AdminSidebar from "@/components/admin/Sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -22,11 +23,18 @@ function AdminLoading() {
   );
 }
 
+function canAccessAdmin(user) {
+  return Boolean(user?.isAdmin || user?.roleId);
+}
+
 export default function AdminLayout({ children }) {
   const userInfo = useAuthStore((s) => s.userInfo);
+  const setUserInfo = useAuthStore((s) => s.setUserInfo);
+  const logout = useAuthStore((s) => s.logout);
   const router = useRouter();
   const pathname = usePathname();
   const [hydrated, setHydrated] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   const isAdminLoginPage = pathname === "/admin/login";
 
@@ -39,19 +47,62 @@ export default function AdminLayout({ children }) {
     return useAuthStore.persist.onFinishHydration(mark);
   }, []);
 
+  // Revalidate admin session against the API (localStorage is not authoritative).
   useEffect(() => {
-    if (!hydrated || isAdminLoginPage) return;
-    if (!userInfo?.isAdmin || !(userInfo?.token || userInfo?.authenticated || userInfo?._id)) {
+    if (!hydrated || isAdminLoginPage) {
+      setVerified(true);
+      return;
+    }
+
+    let cancelled = false;
+    setVerified(false);
+
+    (async () => {
+      try {
+        const profile = await authService.getProfile();
+        if (cancelled) return;
+        if (!canAccessAdmin(profile)) {
+          logout();
+          router.replace("/admin/login");
+          return;
+        }
+        setUserInfo({
+          _id: profile._id,
+          name: profile.name,
+          email: profile.email,
+          isAdmin: profile.isAdmin,
+          roleId: profile.roleId || null,
+        });
+        setVerified(true);
+      } catch {
+        if (cancelled) return;
+        logout();
+        router.replace("/admin/login");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, isAdminLoginPage, logout, router, setUserInfo]);
+
+  useEffect(() => {
+    if (!hydrated || isAdminLoginPage || !verified) return;
+    if (!canAccessAdmin(userInfo)) {
       router.replace("/admin/login");
     }
-  }, [hydrated, userInfo, isAdminLoginPage, router]);
+  }, [hydrated, userInfo, isAdminLoginPage, router, verified]);
 
   if (!hydrated) return <AdminLoading />;
 
   if (isAdminLoginPage) {
     return (
       <TooltipProvider>
-        <div className="min-h-svh bg-background text-foreground" data-admin-shell>
+        <div
+          className="min-h-svh !bg-white text-foreground"
+          data-admin-shell
+          style={{ "--background": "#ffffff" }}
+        >
           {children}
         </div>
         <Toaster position="bottom-right" theme="light" />
@@ -59,7 +110,7 @@ export default function AdminLayout({ children }) {
     );
   }
 
-  if ((!userInfo?.token && !userInfo?.authenticated && !userInfo?._id) || !userInfo?.isAdmin) {
+  if (!verified || !canAccessAdmin(userInfo)) {
     return <AdminLoading />;
   }
 

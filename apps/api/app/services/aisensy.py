@@ -496,6 +496,7 @@ async def sync_catalog() -> dict[str, Any]:
     products = await Product.find(Product.status == "active").to_list()
 
     created = 0
+    updated = 0
     failed = 0
     skipped = 0
     errors: list[str] = []
@@ -557,7 +558,10 @@ async def sync_catalog() -> dict[str, Any]:
 
             result = await client.create_product(payload)
             if result.get("ok"):
-                created += 1
+                if result.get("updated") or result.get("alreadyExists"):
+                    updated += 1
+                else:
+                    created += 1
             else:
                 failed += 1
                 msg = str(result.get("error") or "create_product_failed")[:200]
@@ -576,7 +580,7 @@ async def sync_catalog() -> dict[str, Any]:
         catalogId=catalog_id,
         siteUrl=site,
         lastCatalogSyncedAt=datetime.utcnow().isoformat(),
-        lastCatalogSyncCount=created,
+        lastCatalogSyncCount=created + updated,
         lastCatalogError="; ".join(errors) if errors else None,
     )
 
@@ -585,6 +589,7 @@ async def sync_catalog() -> dict[str, Any]:
         "ok": failed == 0,
         "catalogId": catalog_id,
         "created": created,
+        "updated": updated,
         "failed": failed,
         "skipped": skipped,
         "productCount": len(products),

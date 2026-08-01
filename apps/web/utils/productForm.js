@@ -47,7 +47,7 @@ export const PRODUCT_ATTR_FIELDS = [
   },
   {
     key: "colors",
-    label: "Color",
+    label: "Colour",
     options: [],
     creatable: true,
   },

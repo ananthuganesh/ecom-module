@@ -214,7 +214,7 @@ export default function AdminOrdersPage() {
       "State",
       "Total",
       "Payment",
-      "Fulfillment",
+      "Fulfilment",
       "AWB",
       "Items",
     ];
@@ -244,7 +244,7 @@ export default function AdminOrdersPage() {
         State: ship.state || "",
         Total: Number(order.finalPrice ?? order.total ?? 0).toFixed(2),
         Payment: paymentLabel(pay),
-        Fulfillment: fulfillment.label,
+        Fulfilment: fulfillment.label,
         AWB: order.awbCode || order.awb || "",
         Items: itemCount || items.length || 0,
       };
@@ -370,7 +370,7 @@ export default function AdminOrdersPage() {
           { value: "customer", label: "Customer" },
           { value: "total", label: "Total" },
           { value: "payment", label: "Payment status" },
-          { value: "fulfillment", label: "Fulfillment status" },
+          { value: "fulfillment", label: "Fulfilment status" },
         ]}
         columnsMenuSortValue={sortBy}
         onColumnsMenuSortChange={setSortBy}

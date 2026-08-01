@@ -167,14 +167,22 @@ async def update_user(user_id: str, body: dict, actor: AdminUser):
 
 
 @router.delete("/{user_id}")
-async def delete_user(user_id: str, _: AdminUser):
+async def delete_user(user_id: str, actor: AdminUser):
     from bson import ObjectId
+
+    from app.deps import require_role_manager
 
     user = await User.get(ObjectId(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.isAdmin:
-        raise HTTPException(status_code=400, detail="Cannot delete admin user")
+    is_staff = bool(user.isAdmin or (getattr(user, "roleId", None) and str(user.roleId).strip()))
+    if is_staff:
+        # Only role managers may remove staff; never delete Admin via this path.
+        if user.isAdmin:
+            raise HTTPException(status_code=400, detail="Cannot delete admin user")
+        await require_role_manager(actor)
+    if str(user.id) == str(actor.id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
     await user.delete()
     return {"message": "User removed"}
 

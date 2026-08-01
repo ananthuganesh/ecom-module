@@ -437,7 +437,7 @@ export default function ProductVariantsCard({
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#8a8a8a] text-[#303030]">
               <Plus className="h-3 w-3" />
             </span>
-            Add options like size or color
+            Add options like size or colour
           </button>
         ) : (
           <>

@@ -69,16 +69,25 @@ def _perm_match(granted: list[str], needed: str) -> bool:
 
 
 async def require_admin(user: CurrentUser) -> User:
-    """Full admin surface: isAdmin flag or wildcard (*) role only.
-
-    Staff roles must not gain AdminUser access via a loose admin.access grant.
-    """
+    """Admin panel access: owner Admin, wildcard (*), or staff admin.access."""
     if user.isAdmin:
         return user
     role = await _role_for(user)
-    if role and "*" in (role.permissions or []):
+    perms = list(role.permissions or []) if role else []
+    if "*" in perms or "admin.access" in perms:
         return user
     raise HTTPException(status_code=403, detail="Admin access required")
+
+
+async def require_role_manager(user: CurrentUser) -> User:
+    """Only Admin / wildcard owners may manage users and roles."""
+    if user.isAdmin:
+        return user
+    role = await _role_for(user)
+    perms = list(role.permissions or []) if role else []
+    if "*" in perms or (role and role.name == "Admin"):
+        return user
+    raise HTTPException(status_code=403, detail="Admin role required")
 
 
 def require_permission(*perms: str):
@@ -86,7 +95,13 @@ def require_permission(*perms: str):
         if user.isAdmin:
             return user
         role = await _role_for(user)
-        if role and any(_perm_match(role.permissions, permission) for permission in perms):
+        granted = list(role.permissions or []) if role else []
+        # Panel entry gate — fine-grained perms alone must not open admin APIs.
+        if "*" not in granted and "admin.access" not in granted:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        if "*" in granted:
+            return user
+        if any(_perm_match(granted, permission) for permission in perms):
             return user
         raise HTTPException(status_code=403, detail="Permission denied")
 
@@ -94,8 +109,9 @@ def require_permission(*perms: str):
 
 
 AdminUser = Annotated[User, Depends(require_admin)]
+RoleManager = Annotated[User, Depends(require_role_manager)]
 OrdersReader = Annotated[User, Depends(require_permission("orders.read", "orders.write"))]
 OrdersWriter = Annotated[User, Depends(require_permission("orders.write"))]
 CustomersReader = Annotated[User, Depends(require_permission("customers.read"))]
-CustomersWriter = Annotated[User, Depends(require_permission("customers.read", "customers.write"))]
+CustomersWriter = Annotated[User, Depends(require_permission("customers.write"))]
 PaymentsWriter = Annotated[User, Depends(require_permission("payments.write"))]

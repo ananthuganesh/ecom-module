@@ -13,6 +13,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -46,8 +47,16 @@ export function LoginForm({ className, mode = "customer", ...props }) {
       const data = await authService.login(email.trim().toLowerCase(), password);
 
       if (isAdmin) {
-        if (!data?.isAdmin) {
-          setError("Access denied. Admin credentials required.");
+        const canAccessAdmin = Boolean(data?.isAdmin || data?.roleId);
+        if (!canAccessAdmin) {
+          // Login always sets a session cookie — clear it for non-staff.
+          try {
+            await authService.logout();
+          } catch {
+            /* ignore */
+          }
+          useAuthStore.getState().logout();
+          setError("Access denied. Admin login required.");
           return;
         }
         setUserInfo({
@@ -55,12 +64,14 @@ export function LoginForm({ className, mode = "customer", ...props }) {
           name: data.name,
           email: data.email,
           isAdmin: data.isAdmin,
+          roleId: data.roleId || null,
         });
         persistAuth({
           _id: data._id,
           name: data.name,
           email: data.email,
           isAdmin: data.isAdmin,
+          roleId: data.roleId || null,
         });
         toast.success("Signed in");
         router.push("/admin/dashboard");
@@ -89,9 +100,19 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     }
   };
 
+  const inputClassName = isAdmin
+    ? "h-9 border-0 !bg-zinc-100 text-foreground shadow-none focus-visible:border-0 focus-visible:ring-0"
+    : "h-8";
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card className="min-h-[28rem] justify-center py-8">
+      <Card
+        className={cn(
+          "min-h-[28rem] justify-center py-8",
+          isAdmin &&
+            "bg-white ring-1 ring-zinc-200 shadow-md shadow-zinc-200/60"
+        )}
+      >
         <CardHeader className="justify-items-center text-center">
           <BrandLogo
             href={null}
@@ -99,9 +120,13 @@ export function LoginForm({ className, mode = "customer", ...props }) {
             priority
             className="mb-2"
           />
-          <CardTitle>Login to your account</CardTitle>
+          <CardTitle className={isAdmin ? "text-2xl font-semibold tracking-tight" : undefined}>
+            {isAdmin ? "Welcome to UA Admin" : "Login to your account"}
+          </CardTitle>
           <CardDescription>
-            Enter your email below to login to your account
+            {isAdmin
+              ? "Sign in to admin."
+              : "Enter your email below to login to your account"}
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-2">
@@ -121,9 +146,8 @@ export function LoginForm({ className, mode = "customer", ...props }) {
                   id="email"
                   type="email"
                   autoComplete="email"
-                  placeholder="m@example.com"
                   required
-                  className="h-8"
+                  className={inputClassName}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
@@ -145,14 +169,14 @@ export function LoginForm({ className, mode = "customer", ...props }) {
                   type="password"
                   autoComplete="current-password"
                   required
-                  className="h-8"
+                  className={inputClassName}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
                 />
               </Field>
               <Field>
-                <Button type="submit" className="h-8" disabled={loading}>
+                <Button type="submit" className={isAdmin ? "h-9" : "h-8"} disabled={loading}>
                   {loading ? (
                     <>
                       <Loader2 className="animate-spin" />
@@ -166,6 +190,19 @@ export function LoginForm({ className, mode = "customer", ...props }) {
             </FieldGroup>
           </form>
         </CardContent>
+        <CardFooter className="justify-center pt-4">
+          <p className="text-center text-xs text-muted-foreground">
+            Custom Shopify Solution by{" "}
+            <a
+              href="https://bridnetwork.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-4 hover:underline"
+            >
+              Brid Network
+            </a>
+          </p>
+        </CardFooter>
       </Card>
     </div>
   );

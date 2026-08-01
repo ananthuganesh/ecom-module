@@ -8,15 +8,12 @@ from typing import Annotated, Any
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.deps import AdminUser, require_permission
+from app.deps import AdminUser, RoleManager, require_permission
 from app.documents import (
     CreditNote,
-    GoodsReceipt,
     Order,
     PartyPayment,
-    Product,
     PurchaseInvoice,
-    PurchaseOrder,
     Role,
     SalesInvoice,
     SalesReturn,
@@ -28,12 +25,6 @@ from app.serializers import doc_to_dict, user_public
 from app.services import erp_ops, stock as stock_service
 
 router = APIRouter(prefix="/api/admin/erp", tags=["erp"])
-SuppliersWriter = Annotated[User, Depends(require_permission("suppliers.write"))]
-SuppliersReader = Annotated[User, Depends(require_permission("suppliers.read", "suppliers.write"))]
-PurchaseWriter = Annotated[User, Depends(require_permission("purchase.write"))]
-PurchaseReader = Annotated[User, Depends(require_permission("purchase.read", "purchase.write"))]
-StockWriter = Annotated[User, Depends(require_permission("stock.write"))]
-StockReader = Annotated[User, Depends(require_permission("stock.read", "stock.write"))]
 InvoicesWriter = Annotated[User, Depends(require_permission("invoices.write"))]
 InvoicesReader = Annotated[User, Depends(require_permission("invoices.read", "invoices.write"))]
 OrdersWriter = Annotated[User, Depends(require_permission("orders.write"))]
@@ -41,8 +32,6 @@ OrdersReader = Annotated[User, Depends(require_permission("orders.read", "orders
 PaymentsWriter = Annotated[User, Depends(require_permission("payments.write"))]
 PaymentsReader = Annotated[User, Depends(require_permission("payments.read", "payments.write"))]
 ReportsReader = Annotated[User, Depends(require_permission("reports.read"))]
-# Role create/assign is owner-only (isAdmin / *), not loose admin.access.
-RoleManager = AdminUser
 
 
 async def _company() -> dict:
@@ -54,244 +43,6 @@ def _oid(value: str, label: str = "id") -> ObjectId:
     if not value or not ObjectId.is_valid(str(value)):
         raise HTTPException(status_code=400, detail=f"Invalid {label}")
     return ObjectId(str(value))
-
-
-# ─── Suppliers ───────────────────────────────────────────────
-
-@router.get("/suppliers")
-async def list_suppliers(_: SuppliersReader):
-    rows = await Supplier.find_all().sort([("name", 1)]).limit(200).to_list()
-    return [doc_to_dict(r) for r in rows]
-
-
-@router.post("/suppliers", status_code=201)
-async def create_supplier(body: dict, admin: SuppliersWriter):
-    name = (body.get("name") or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="name is required")
-    allowed = {
-        "name", "gstin", "email", "phone", "addressLine1", "city",
-        "stateName", "stateCode", "pincode", "notes", "isActive",
-    }
-    data = {k: v for k, v in (body or {}).items() if k in allowed}
-    data["name"] = name
-    doc = Supplier(**data)
-    await doc.insert()
-    await erp_ops.write_audit(actor=admin, action="supplier.create", entity_type="supplier", entity_id=str(doc.id))
-    return doc_to_dict(doc)
-
-
-@router.put("/suppliers/{supplier_id}")
-async def update_supplier(supplier_id: str, body: dict, admin: SuppliersWriter):
-    doc = await Supplier.get(_oid(supplier_id, "supplier_id"))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    for k, v in body.items():
-        if k in ("_id", "id"):
-            continue
-        if hasattr(doc, k):
-            setattr(doc, k, v)
-    doc.updatedAt = datetime.utcnow()
-    await doc.save()
-    await erp_ops.write_audit(actor=admin, action="supplier.update", entity_type="supplier", entity_id=supplier_id)
-    return doc_to_dict(doc)
-
-
-@router.delete("/suppliers/{supplier_id}")
-async def delete_supplier(supplier_id: str, admin: SuppliersWriter):
-    doc = await Supplier.get(_oid(supplier_id, "supplier_id"))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-    await doc.delete()
-    await erp_ops.write_audit(actor=admin, action="supplier.delete", entity_type="supplier", entity_id=supplier_id)
-    return {"message": "Supplier removed"}
-
-
-# ─── Purchase Orders ─────────────────────────────────────────
-
-@router.get("/purchase-orders")
-async def list_pos(_: PurchaseReader):
-    rows = await PurchaseOrder.find_all().sort([("createdAt", -1)]).limit(200).to_list()
-    return [doc_to_dict(r) for r in rows]
-
-
-@router.post("/purchase-orders", status_code=201)
-async def create_po(body: dict, admin: PurchaseWriter):
-    supplier_id = body.get("supplierId")
-    if not supplier_id:
-        raise HTTPException(status_code=400, detail="supplierId is required")
-    supplier = await Supplier.get(_oid(supplier_id, "supplierId"))
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-
-    items = []
-    for raw in body.get("items") or []:
-        pid = raw.get("productId")
-        product = await Product.get(ObjectId(pid)) if pid and ObjectId.is_valid(str(pid)) else None
-        rate = float(raw.get("taxRate") or 0)
-        if product and not rate:
-            rate = await erp_ops.resolve_product_tax_rate(product)
-        items.append(
-            erp_ops.build_line(
-                product_id=str(product.id) if product else None,
-                product_name=raw.get("productName") or (product.productName if product else "Item"),
-                quantity=raw.get("quantity") or 0,
-                unit_price=raw.get("unitPrice") or 0,
-                tax_rate=rate,
-                inclusive=False,
-                variant_sku=raw.get("variantSku") or "",
-                hsn_code=raw.get("hsnCode") or (product.hsnCode if product else None),
-            )
-        )
-    company = await _company()
-    totals = erp_ops.summarize_lines(items, company.get("stateCode") or "", supplier.stateCode or "")
-    doc = PurchaseOrder(
-        number=await erp_ops.next_number("PO", "seq_purchase_order"),
-        supplierId=str(supplier.id),
-        warehouseId=body.get("warehouseId"),
-        status=body.get("status") or "ordered",
-        items=items,
-        notes=body.get("notes"),
-        **totals,
-    )
-    await doc.insert()
-    await erp_ops.write_audit(actor=admin, action="po.create", entity_type="purchase_order", entity_id=str(doc.id))
-    return doc_to_dict(doc)
-
-
-@router.put("/purchase-orders/{po_id}/status")
-async def update_po_status(po_id: str, body: dict, admin: PurchaseWriter):
-    doc = await PurchaseOrder.get(_oid(po_id, "po_id"))
-    if not doc:
-        raise HTTPException(status_code=404, detail="PO not found")
-    status = body.get("status")
-    if status not in ("draft", "ordered", "partial", "received", "cancelled"):
-        raise HTTPException(status_code=400, detail="Invalid status")
-    doc.status = status
-    doc.updatedAt = datetime.utcnow()
-    await doc.save()
-    await erp_ops.write_audit(actor=admin, action="po.status", entity_type="purchase_order", entity_id=po_id, meta={"status": status})
-    return doc_to_dict(doc)
-
-
-# ─── Goods Receipt ───────────────────────────────────────────
-
-@router.get("/goods-receipts")
-async def list_grn(_: StockReader):
-    rows = await GoodsReceipt.find_all().sort([("createdAt", -1)]).limit(200).to_list()
-    return [doc_to_dict(r) for r in rows]
-
-
-@router.post("/goods-receipts", status_code=201)
-async def create_grn(body: dict, admin: StockWriter):
-    warehouse_id = body.get("warehouseId")
-    if not warehouse_id:
-        wh = await stock_service.ensure_default_warehouse()
-        warehouse_id = str(wh.id)
-
-    po = None
-    if body.get("purchaseOrderId"):
-        po = await PurchaseOrder.get(_oid(body["purchaseOrderId"], "purchaseOrderId"))
-
-    raw_items = body.get("items") or ( [i.model_dump() for i in po.items] if po else [] )
-    if not raw_items:
-        raise HTTPException(status_code=400, detail="items required")
-
-    items = []
-    for raw in raw_items:
-        items.append(
-            erp_ops.build_line(
-                product_id=raw.get("productId"),
-                product_name=raw.get("productName") or "Item",
-                quantity=raw.get("quantity") or 0,
-                unit_price=raw.get("unitPrice") or 0,
-                tax_rate=raw.get("taxRate") or 0,
-                inclusive=False,
-                variant_sku=raw.get("variantSku") or "",
-                hsn_code=raw.get("hsnCode"),
-            )
-        )
-
-    grn = GoodsReceipt(
-        number=await erp_ops.next_number("GRN", "seq_goods_receipt"),
-        purchaseOrderId=str(po.id) if po else None,
-        supplierId=body.get("supplierId") or (po.supplierId if po else None),
-        warehouseId=warehouse_id,
-        items=items,
-        notes=body.get("notes"),
-        status="posted",
-    )
-    await grn.insert()
-
-    for item in items:
-        if not item.productId or item.quantity <= 0:
-            continue
-        await stock_service.apply_stock_change(
-            product_id=item.productId,
-            warehouse_id=warehouse_id,
-            quantity_delta=int(item.quantity),
-            movement_type="purchase_receipt",
-            variant_sku=item.variantSku or "",
-            reason=f"GRN {grn.number}",
-            reference_type="goods_receipt",
-            reference_id=str(grn.id),
-            created_by=str(admin.id),
-        )
-
-    if po:
-        po.status = "received"
-        po.updatedAt = datetime.utcnow()
-        await po.save()
-
-    await erp_ops.write_audit(actor=admin, action="grn.create", entity_type="goods_receipt", entity_id=str(grn.id))
-    return doc_to_dict(grn)
-
-
-# ─── Purchase Invoices ───────────────────────────────────────
-
-@router.get("/purchase-invoices")
-async def list_pi(_: PurchaseReader):
-    rows = await PurchaseInvoice.find_all().sort([("createdAt", -1)]).limit(200).to_list()
-    return [doc_to_dict(r) for r in rows]
-
-
-@router.post("/purchase-invoices", status_code=201)
-async def create_pi(body: dict, admin: PurchaseWriter):
-    supplier_id = body.get("supplierId")
-    supplier = await Supplier.get(_oid(supplier_id, "supplierId")) if supplier_id else None
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Supplier not found")
-
-    items = []
-    for raw in body.get("items") or []:
-        items.append(
-            erp_ops.build_line(
-                product_id=raw.get("productId"),
-                product_name=raw.get("productName") or "Item",
-                quantity=raw.get("quantity") or 0,
-                unit_price=raw.get("unitPrice") or 0,
-                tax_rate=raw.get("taxRate") or 0,
-                inclusive=False,
-                variant_sku=raw.get("variantSku") or "",
-                hsn_code=raw.get("hsnCode"),
-            )
-        )
-    company = await _company()
-    totals = erp_ops.summarize_lines(items, company.get("stateCode") or "", supplier.stateCode or "")
-    doc = PurchaseInvoice(
-        number=await erp_ops.next_number("PI", "seq_purchase_invoice"),
-        supplierId=str(supplier.id),
-        purchaseOrderId=body.get("purchaseOrderId"),
-        goodsReceiptId=body.get("goodsReceiptId"),
-        items=items,
-        amountPaid=0,
-        balanceDue=totals["grandTotal"],
-        notes=body.get("notes"),
-        **totals,
-    )
-    await doc.insert()
-    await erp_ops.write_audit(actor=admin, action="pi.create", entity_type="purchase_invoice", entity_id=str(doc.id))
-    return doc_to_dict(doc)
 
 
 # ─── Sales Invoices ──────────────────────────────────────────
@@ -359,7 +110,6 @@ async def create_si(body: dict, admin: InvoicesWriter):
         **totals,
     )
     await doc.insert()
-    await erp_ops.write_audit(actor=admin, action="si.create", entity_type="sales_invoice", entity_id=str(doc.id))
     return doc_to_dict(doc)
 
 
@@ -427,7 +177,6 @@ async def create_cn(body: dict, admin: InvoicesWriter):
         **totals,
     )
     await doc.insert()
-    await erp_ops.write_audit(actor=admin, action="cn.create", entity_type="credit_note", entity_id=str(doc.id))
     return doc_to_dict(doc)
 
 
@@ -438,19 +187,53 @@ async def list_returns(_: OrdersReader):
 
 @router.post("/sales-returns", status_code=201)
 async def create_return(body: dict, admin: OrdersWriter):
+    order_id = body.get("orderId")
+    if not order_id:
+        raise HTTPException(status_code=400, detail="orderId is required")
+    order = await Order.get(_oid(order_id, "orderId"))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Cap restock qty to what the order actually sold.
+    ordered_qty: dict[str, int] = {}
+    for line in order.items or []:
+        pid = str(getattr(line, "productId", None) or "")
+        if not pid:
+            continue
+        ordered_qty[pid] = ordered_qty.get(pid, 0) + int(getattr(line, "quantity", 0) or 0)
+
     wh = await stock_service.ensure_default_warehouse()
     warehouse_id = body.get("warehouseId") or str(wh.id)
     items = []
+    returned_so_far: dict[str, int] = {}
     for raw in body.get("items") or []:
+        pid = str(raw.get("productId") or "")
+        sku = str(raw.get("variantSku") or "")
+        qty = int(raw.get("quantity") or 0)
+        if qty <= 0:
+            continue
+        max_qty = ordered_qty.get(pid, 0)
+        if max_qty <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Product {pid or 'unknown'} is not on this order",
+            )
+        used = returned_so_far.get(pid, 0)
+        if used + qty > max_qty:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Return qty for {pid} exceeds ordered qty ({max_qty})",
+            )
+        returned_so_far[pid] = used + qty
         items.append(
             erp_ops.build_line(
-                product_id=raw.get("productId"),
+                product_id=pid,
                 product_name=raw.get("productName") or "Item",
-                quantity=raw.get("quantity") or 0,
+                quantity=qty,
                 unit_price=raw.get("unitPrice") or 0,
                 tax_rate=raw.get("taxRate") or 0,
                 inclusive=True,
-                variant_sku=raw.get("variantSku") or "",
+                variant_sku=sku,
                 hsn_code=raw.get("hsnCode"),
             )
         )
@@ -458,10 +241,10 @@ async def create_return(body: dict, admin: OrdersWriter):
         raise HTTPException(status_code=400, detail="items required")
     doc = SalesReturn(
         number=await erp_ops.next_number("SR", "seq_sales_return"),
-        orderId=body.get("orderId"),
+        orderId=str(order.id),
         salesInvoiceId=body.get("salesInvoiceId"),
         warehouseId=warehouse_id,
-        customerId=body.get("customerId"),
+        customerId=body.get("customerId") or str(order.customerId or ""),
         items=items,
         reason=body.get("reason"),
         restock=bool(body.get("restock", True)),
@@ -482,7 +265,6 @@ async def create_return(body: dict, admin: OrdersWriter):
                 reference_id=str(doc.id),
                 created_by=str(admin.id),
             )
-    await erp_ops.write_audit(actor=admin, action="sr.create", entity_type="sales_return", entity_id=str(doc.id))
     return doc_to_dict(doc)
 
 
@@ -548,8 +330,6 @@ async def create_payment(body: dict, admin: PaymentsWriter):
             inv.balanceDue = round(max(0, (inv.grandTotal or 0) - inv.amountPaid), 2)
             inv.status = "paid" if inv.balanceDue <= 0 else "partial"
             await inv.save()
-
-    await erp_ops.write_audit(actor=admin, action="payment.create", entity_type="party_payment", entity_id=str(doc.id))
     return doc_to_dict(doc)
 
 
@@ -608,36 +388,75 @@ async def reports_overview(_: ReportsReader):
 @router.get("/roles")
 async def list_roles(_: AdminUser):
     roles = await erp_ops.ensure_default_roles()
-    return [doc_to_dict(r) for r in roles]
+    return [doc_to_dict(r) for r in roles if r.name in erp_ops.ACTIVE_ROLE_NAMES]
 
 
-@router.post("/roles", status_code=201)
-async def create_role(body: dict, admin: RoleManager):
-    name = (body.get("name") or "").strip()
+@router.get("/users")
+async def list_staff_users(_: RoleManager):
+    """Admin + Staff accounts only (not storefront customers)."""
+    await erp_ops.ensure_default_roles()
+    roles = await Role.find_all().to_list()
+    active = {
+        str(r.id): r
+        for r in roles
+        if r.name in erp_ops.ACTIVE_ROLE_NAMES
+    }
+    active_ids = list(active.keys())
+    users = await User.find(
+        {
+            "$or": [
+                {"isAdmin": True},
+                {"roleId": {"$in": active_ids}},
+            ]
+        }
+    ).to_list()
+    # Extra guard: roleId must still resolve to Admin/Staff.
+    staff = [
+        u
+        for u in users
+        if u.isAdmin or (str(u.roleId or "") in active)
+    ]
+    staff.sort(key=lambda u: (not u.isAdmin, (u.name or u.email or "").lower()))
+    return [user_public(u) for u in staff]
+
+
+@router.post("/users", status_code=201)
+async def create_staff_user(body: dict, admin: RoleManager):
+    """Create a staff user with email/password and an assigned role."""
+    from app.security import hash_password
+    from app.services.customer_url_id import next_customer_url_id
+
+    name = str(body.get("name") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    password = str(body.get("password") or "")
+    role_id = body.get("roleId")
+
     if not name:
-        raise HTTPException(status_code=400, detail="name required")
-    if await Role.find_one(Role.name == name):
-        raise HTTPException(status_code=400, detail="Role already exists")
-    doc = Role(name=name, description=body.get("description"), permissions=list(body.get("permissions") or []))
-    await doc.insert()
-    await erp_ops.write_audit(actor=admin, action="role.create", entity_type="role", entity_id=str(doc.id))
-    return doc_to_dict(doc)
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if not role_id:
+        raise HTTPException(status_code=400, detail="Role is required")
 
+    role = await Role.get(_oid(role_id, "roleId"))
+    if not role or role.name not in erp_ops.ACTIVE_ROLE_NAMES:
+        raise HTTPException(status_code=400, detail="Role must be Admin or Staff")
+    if await User.find_one(User.email == email):
+        raise HTTPException(status_code=400, detail="A user with this email already exists")
 
-@router.put("/roles/{role_id}")
-async def update_role(role_id: str, body: dict, admin: RoleManager):
-    doc = await Role.get(_oid(role_id, "role_id"))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Role not found")
-    if "description" in body:
-        doc.description = body.get("description")
-    if "permissions" in body:
-        doc.permissions = list(body.get("permissions") or [])
-    if "name" in body and not doc.isSystem:
-        doc.name = (body.get("name") or doc.name).strip()
-    doc.updatedAt = datetime.utcnow()
-    await doc.save()
-    return doc_to_dict(doc)
+    perms = list(role.permissions or [])
+    user = User(
+        name=name,
+        email=email,
+        password=hash_password(password),
+        roleId=str(role.id),
+        isAdmin=role.name == "Admin" or "*" in perms,
+        customerUrlId=await next_customer_url_id(),
+    )
+    await user.insert()
+    return user_public(user)
 
 
 @router.put("/users/{user_id}/role")
@@ -648,24 +467,39 @@ async def assign_role(user_id: str, body: dict, admin: RoleManager):
     role_id = body.get("roleId")
     if role_id:
         role = await Role.get(_oid(role_id, "roleId"))
-        if not role:
-            raise HTTPException(status_code=404, detail="Role not found")
+        if not role or role.name not in erp_ops.ACTIVE_ROLE_NAMES:
+            raise HTTPException(status_code=400, detail="Role must be Admin or Staff")
+        becoming_admin = role.name == "Admin" or "*" in list(role.permissions or [])
+        # Never demote the last Admin — locks the store owner out of user management.
+        if user.isAdmin and not becoming_admin:
+            other_admins = await User.find(
+                {
+                    "isAdmin": True,
+                    "_id": {"$ne": user.id},
+                }
+            ).to_list()
+            if not other_admins:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot demote the only Admin. Assign Admin to another user first.",
+                )
         user.roleId = str(role.id)
-        perms = list(role.permissions or [])
-        # Always sync isAdmin with role — demotion must clear the flag.
-        user.isAdmin = role.name == "Admin" or "*" in perms
+        user.isAdmin = becoming_admin
     else:
+        if user.isAdmin:
+            other_admins = await User.find(
+                {
+                    "isAdmin": True,
+                    "_id": {"$ne": user.id},
+                }
+            ).to_list()
+            if not other_admins:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot remove the only Admin role.",
+                )
         user.roleId = None
         user.isAdmin = False
     user.updatedAt = datetime.utcnow()
     await user.save()
-    await erp_ops.write_audit(actor=admin, action="user.role", entity_type="user", entity_id=user_id, meta={"roleId": role_id})
     return user_public(user)
-
-
-@router.get("/audit-logs")
-async def list_audit(_: AdminUser):
-    from app.documents import AuditLog
-
-    rows = await AuditLog.find_all().sort([("createdAt", -1)]).limit(200).to_list()
-    return [doc_to_dict(r) for r in rows]

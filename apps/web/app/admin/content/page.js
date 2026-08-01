@@ -172,13 +172,13 @@ export default function MediaLibrary() {
     try {
       for (const file of list) {
         if (!file.type.startsWith("image/")) {
-          toast.error(`"${file.name}" skipped — images only (optimized to WebP)`);
+          toast.error(`"${file.name}" skipped — images only (optimised to WebP)`);
           continue;
         }
-        await adminMediaService.upload(file);
+        await adminMediaService.upload(file, folder === "ai" ? "ai" : "products");
         ok += 1;
       }
-      if (ok) toast.success(ok === 1 ? "Uploaded & optimized to WebP" : `${ok} files uploaded as WebP`);
+      if (ok) toast.success(ok === 1 ? "Uploaded & optimised to WebP" : `${ok} files uploaded as WebP`);
       await loadFiles();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Could not upload file(s)");
@@ -457,7 +457,7 @@ export default function MediaLibrary() {
         {files.length} file{files.length === 1 ? "" : "s"}
         {folder !== "all" ? ` in ${folder}` : ""}
         {selected.size ? ` · ${selected.size} selected` : ""}
-        {" · "}Max 10 MB · optimized to WebP on upload
+        {" · "}Max 10 MB · optimised to WebP on upload
       </p>
     </div>
   );
