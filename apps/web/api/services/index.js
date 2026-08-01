@@ -3,7 +3,6 @@ export {
   authService,
   productService,
   orderService,
-  stripeService,
   paymentService,
   shippingService,
   couponService,

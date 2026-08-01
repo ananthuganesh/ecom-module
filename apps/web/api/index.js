@@ -4,7 +4,6 @@ export {
   authService,
   productService,
   orderService,
-  stripeService,
   paymentService,
   adminUserService,
   adminProductService,

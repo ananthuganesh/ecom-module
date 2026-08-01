@@ -3,7 +3,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
@@ -82,10 +81,6 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     @app.get("/api/health")
     async def health():
         return {"status": "ok", "backend": "fastapi"}
-
-    @app.api_route("/api/stripe/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    async def stripe_gone(path: str = ""):
-        return JSONResponse({"detail": "Stripe removed; use Razorpay"}, status_code=410)
 
     app.include_router(users.router)
     app.include_router(products.router)

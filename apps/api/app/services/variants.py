@@ -4,7 +4,7 @@
 def find_variant(product, *, color: str = "", size: str = ""):
     """Return the best-matching variant for an order/cart line.
 
-    Preference: color+size → size → color. Siyara catalogs are size-led;
+    Preference: color+size → size → color. Urban Aana catalogs are size-led;
     color is optional and often empty.
     """
     variants = list(getattr(product, "variants", None) or [])

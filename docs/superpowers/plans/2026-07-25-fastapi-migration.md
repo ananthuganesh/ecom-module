@@ -13,8 +13,8 @@
 - Path prefixes unchanged for Next rewrites
 - JWT claim `id`, 30-day expiry, Bearer header
 - No auth bypass
-- No Stripe port
-- Shiprocket only after paid/COD
+- Razorpay only
+- DTDC only after paid/COD
 - Spec: `docs/superpowers/specs/2026-07-25-fastapi-migration-design.md`
 
 ---
@@ -37,7 +37,7 @@
 
 - [ ] Orders with ownership
 - [ ] Razorpay create/verify/webhook
-- [ ] Shiprocket deferred
+- [ ] DTDC deferred
 - [ ] Tests for ownership + verify binding
 - [ ] Commit
 

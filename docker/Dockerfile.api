@@ -2,23 +2,31 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Low-RAM defaults: less glibc arena waste; no .pyc on disk
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
-
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl \
-  && rm -rf /var/lib/apt/lists/*
+    MALLOC_ARENA_MAX=2 \
+    PORT=8000 \
+    UVICORN_WORKERS=1 \
+    UVICORN_LIMIT_CONCURRENCY=40 \
+    UVICORN_TIMEOUT_KEEP_ALIVE=5
 
 COPY apps/api/requirements.prod.txt /tmp/requirements.prod.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.prod.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.prod.txt \
+  && rm -rf /root/.cache/pip /tmp/requirements.prod.txt
 
 COPY apps/api/app ./app
-RUN mkdir -p /app/uploads/products
+RUN mkdir -p /app/uploads/products \
+  && useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
+  && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
-  CMD curl -fsS http://127.0.0.1:8000/api/health || exit 1
+# Avoid curl/apt in the image — use Python stdlib for health checks
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# One worker on 2-core hosts (async FastAPI); more workers multiply memory
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-1} --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY:-40} --timeout-keep-alive ${UVICORN_TIMEOUT_KEEP_ALIVE:-5} --proxy-headers --forwarded-allow-ips='*'"]

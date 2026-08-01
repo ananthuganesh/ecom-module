@@ -1,4 +1,4 @@
-/** Browser storage keys for Urban Aana. Migrates legacy `siyara-*` keys once. */
+/** Browser storage keys for Urban Aana. Migrates one-time from legacy brand keys. */
 
 export const AUTH_STORAGE_KEY = "urban-aana-auth";
 export const CART_STORAGE_KEY = "urban-aana-cart";

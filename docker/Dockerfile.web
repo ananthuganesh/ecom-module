@@ -1,44 +1,70 @@
+FROM node:20-bookworm-slim AS deps
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    npm_config_fund=false \
+    npm_config_audit=false \
+    npm_config_update_notifier=false
+
+COPY apps/web/package.json apps/web/package-lock.json ./
+# Prefer lockfile-reproducible install; fall back if lock is out of sync
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
 FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY apps/web/package*.json ./
-RUN npm install
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    DOCKER_BUILD=1 \
+    NODE_ENV=production \
+    # Cap build heap so Next build does not OOM a 4GB host
+    NODE_OPTIONS=--max-old-space-size=1536
 
+COPY --from=deps /app/node_modules ./node_modules
 COPY apps/web ./
 
 ARG NEXT_PUBLIC_API_URL=/api
-ARG NEXT_PUBLIC_GTM_ID=GTM-WVQMZLZF
+ARG NEXT_PUBLIC_GTM_ID=
 ARG NEXT_PUBLIC_GTM_ENABLED=true
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_GTM_ID=$NEXT_PUBLIC_GTM_ID
-ENV NEXT_PUBLIC_GTM_ENABLED=$NEXT_PUBLIC_GTM_ENABLED
-# Used by next.config rewrites during build if evaluated then
-ENV INTERNAL_BACKEND_URL=http://api:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_GTM_ID=$NEXT_PUBLIC_GTM_ID \
+    NEXT_PUBLIC_GTM_ENABLED=$NEXT_PUBLIC_GTM_ENABLED \
+    INTERNAL_BACKEND_URL=http://urbanaana-api:8000
 
-RUN npm run build
+RUN npm run build \
+  && rm -rf node_modules \
+  && npm cache clean --force
 
+# Runtime: Next standalone only (no full node_modules tree)
 FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production \
-    INTERNAL_BACKEND_URL=http://api:8000 \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    # Cap Node heap so Next cannot balloon past container limit
+    NODE_OPTIONS=--max-old-space-size=768 \
+    INTERNAL_BACKEND_URL=http://urbanaana-api:8000 \
     NEXT_PUBLIC_API_URL=/api \
-    NEXT_PUBLIC_GTM_ID=GTM-WVQMZLZF \
+    NEXT_PUBLIC_GTM_ID= \
     NEXT_PUBLIC_GTM_ENABLED=true \
-    GTM_ID=GTM-WVQMZLZF \
+    GTM_ID= \
     GTM_ENABLED=true
 
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.mjs ./
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin nextjs
+
+COPY --from=builder --chown=nextjs:nextjs /app/public ./public
+COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
+
+USER nextjs
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["node", "server.js"]

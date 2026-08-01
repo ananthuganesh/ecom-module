@@ -109,7 +109,7 @@ def test_sanitize_both_empty_touches_returns_none():
 
 - [ ] **Step 2: Run tests — expect FAIL**
 
-Run: `cd /Users/ananthuganesh/Documents/siyara/apps/api && .venv/bin/pytest tests/test_attribution.py -v`
+Run: `cd /Users/ananthuganesh/Documents/ecom-module/apps/api && .venv/bin/pytest tests/test_attribution.py -v`
 
 Expected: FAIL (module not found / import error)
 
@@ -197,14 +197,14 @@ attribution=attribution,
 
 - [ ] **Step 6: Run tests — expect PASS**
 
-Run: `cd /Users/ananthuganesh/Documents/siyara/apps/api && .venv/bin/pytest tests/test_attribution.py -v`
+Run: `cd /Users/ananthuganesh/Documents/ecom-module/apps/api && .venv/bin/pytest tests/test_attribution.py -v`
 
 Expected: all PASS
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/ananthuganesh/Documents/siyara
+cd /Users/ananthuganesh/Documents/ecom-module
 git add apps/api/app/services/attribution.py apps/api/tests/test_attribution.py apps/api/app/documents/__init__.py apps/api/app/routers/orders.py
 git commit -m "$(cat <<'EOF'
 feat: store sanitized UTM attribution on order create
@@ -323,7 +323,7 @@ describe("applyTouchToState", () => {
 
 - [ ] **Step 2: Run tests — expect FAIL**
 
-Run: `cd /Users/ananthuganesh/Documents/siyara/apps/web && node --test lib/attribution.test.mjs`
+Run: `cd /Users/ananthuganesh/Documents/ecom-module/apps/web && node --test lib/attribution.test.mjs`
 
 Expected: FAIL (cannot find module / exports)
 
@@ -423,7 +423,7 @@ export function getAttributionSnapshot() {
 
 - [ ] **Step 4: Run tests — expect PASS**
 
-Run: `cd /Users/ananthuganesh/Documents/siyara/apps/web && node --test lib/attribution.test.mjs`
+Run: `cd /Users/ananthuganesh/Documents/ecom-module/apps/web && node --test lib/attribution.test.mjs`
 
 Expected: all PASS
 
@@ -479,7 +479,7 @@ import AttributionCapture from "@/components/AttributionCapture";
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/ananthuganesh/Documents/siyara
+cd /Users/ananthuganesh/Documents/ecom-module
 git add apps/web/lib/attribution.js apps/web/lib/attribution.test.mjs apps/web/components/AttributionCapture.jsx apps/web/app/layout.js
 git commit -m "$(cat <<'EOF'
 feat: capture first/last UTM attribution in localStorage
@@ -532,7 +532,7 @@ attribution: getAttributionSnapshot(),
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/ananthuganesh/Documents/siyara
+cd /Users/ananthuganesh/Documents/ecom-module
 git add apps/web/app/checkout/page.js
 git commit -m "$(cat <<'EOF'
 feat: send attribution snapshot with checkout order create
@@ -634,7 +634,7 @@ describe("buildOrderTimeline", () => {
 
 - [ ] **Step 2: Run tests — expect FAIL**
 
-Run: `cd /Users/ananthuganesh/Documents/siyara/apps/web && node --test lib/orderTimeline.test.mjs`
+Run: `cd /Users/ananthuganesh/Documents/ecom-module/apps/web && node --test lib/orderTimeline.test.mjs`
 
 Expected: FAIL
 
@@ -748,7 +748,7 @@ export function buildOrderTimeline(order) {
 
 - [ ] **Step 4: Run tests — expect PASS**
 
-Run: `cd /Users/ananthuganesh/Documents/siyara/apps/web && node --test lib/orderTimeline.test.mjs`
+Run: `cd /Users/ananthuganesh/Documents/ecom-module/apps/web && node --test lib/orderTimeline.test.mjs`
 
 Expected: PASS
 
@@ -863,7 +863,7 @@ Remove the old hard-coded “Order Created” / “Expected Fullfillment” bloc
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/ananthuganesh/Documents/siyara
+cd /Users/ananthuganesh/Documents/ecom-module
 git add apps/web/lib/orderTimeline.js apps/web/lib/orderTimeline.test.mjs apps/web/app/admin/orders/[id]/page.js
 git commit -m "$(cat <<'EOF'
 feat: show order attribution and activity timeline in admin

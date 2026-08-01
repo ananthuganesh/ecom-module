@@ -2,16 +2,12 @@
 
 Ecommerce platform for streetwear & accessories.
 
-> Repo folder / npm package name remains `siyara` for local paths and Docker project naming.
-
 ## Repo layout
 
 ```text
 apps/
   web/          # Next.js storefront + admin UI
   api/          # FastAPI backend
-legacy/
-  express-backend/   # previous Express API (reference only)
 docker/
   Dockerfile.web
   Dockerfile.api
@@ -26,8 +22,12 @@ docker-compose.yml   # web + api
 | Web | Next.js (App Router) |
 | API | FastAPI + Beanie/Motor |
 | DB | MongoDB |
+| Payments | Razorpay |
+| Shipping | DTDC (Shipsy) |
 
 ## Docker (recommended)
+
+Tuned for a **2 vCPU / 4 GB** host (Mongo via Atlas `MONGO_URI`).
 
 ```bash
 docker compose up -d --build
@@ -35,6 +35,9 @@ docker compose up -d --build
 
 - Storefront: http://localhost:3000  
 - API health: http://localhost:8001/api/health  
+- Caps: API ~640 MB / 0.7 CPU · Web ~1280 MB / 0.9 CPU (Next standalone)  
+- Prefer building on a machine with ≥4 GB free RAM, then deploy images; building on the live 4 GB box can OOM during `next build`.
+
 - Database: MongoDB Atlas via `MONGO_URI` in `.env` (no local DB container)
 
 ## Local development

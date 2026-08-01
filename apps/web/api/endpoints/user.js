@@ -24,11 +24,6 @@ const orders = {
   releaseReservation: (id) => `orders/${id}/release-reservation`,
 };
 
-const stripe = {
-  config: "stripe/config",
-  createPaymentIntent: "stripe/create-payment-intent",
-};
-
 const razorpay = {
   createOrder: "payments/create-order",
   verify: "payments/verify",
@@ -37,4 +32,4 @@ const razorpay = {
   refund: "payments/refund",
 };
 
-export const userEndpoints = { users, products, orders, stripe, razorpay };
+export const userEndpoints = { users, products, orders, razorpay };

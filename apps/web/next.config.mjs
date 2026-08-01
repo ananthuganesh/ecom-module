@@ -1,8 +1,17 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+const appDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(appDir, '../..');
+// Docker builds copy only apps/web → keep tracing inside /app (flat standalone/server.js).
+// Local monorepo keeps the repo root so Turbopack/file tracing sees the workspace.
+const tracingRoot = process.env.DOCKER_BUILD === '1' ? appDir : repoRoot;
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Minimal runtime image for low-RAM Docker hosts (2c / 4GB)
+  output: 'standalone',
+  outputFileTracingRoot: tracingRoot,
   images: {
     remotePatterns: [
       {
@@ -50,13 +59,13 @@ const nextConfig = {
   experimental: {
     serverActions: {
       // Use ALLOWED_ORIGINS from env, fallback to a safe default
-      allowedOrigins: process.env.ALLOWED_ORIGINS 
-        ? process.env.ALLOWED_ORIGINS.split(',') 
+      allowedOrigins: process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',')
         : ["localhost:3000", "localhost:4000"],
     },
   },
   turbopack: {
-    root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
+    root: tracingRoot,
   },
   async redirects() {
     return [
