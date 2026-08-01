@@ -12,7 +12,7 @@ const createAdmin = async () => {
         await connectDB();
 
         const email = 'fathimasalam217@gmail.com';
-        const password = process.env.SHIPROCKET_PASSWORD || 'urbanaana123';
+        const password = process.env.ADMIN_PASSWORD || 'urbanaana123';
 
         const userExists = await User.findOne({ email });
 

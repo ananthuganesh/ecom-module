@@ -1,7 +1,6 @@
 import asyncHandler from '../middleware/asyncHandler.js';
 import Order from '../models/orderModel.js';
 import Product from '../models/productModel.js';
-import ShiprocketService from '../services/shiprocketService.js';
 import paymentService from '../modules/payment/payment.service.js';
 import Coupon from '../models/couponModel.js';
 
@@ -63,7 +62,7 @@ const addOrderItems = asyncHandler(async (req, res) => {
     const deliveryAmount = Number(shippingPrice) || 0;
     const giftFee = isGift ? 39 : 0;
 
-    // Recalculate true subtotal from safe items to ensure Shiprocket sync
+    // Recalculate true subtotal from safe items
     const subtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     
     // Handle Coupon
@@ -163,22 +162,13 @@ const addOrderItems = asyncHandler(async (req, res) => {
         console.error('[OrderController] Abandoned checkout conversion failed:', err.message);
     }
 
-    // ── Shiprocket Integration (Only for COD - Prepaid syncs after payment) ───
     if (payment === 'cod') {
-        try {
-            await ShiprocketService.processFullOrderFlow(createdOrder, req.user);
-        } catch (srError) {
-            console.error('[Checkout] Shiprocket sync failed:', srError.message);
-            // Non-fatal: Allow checkout to finish, admin can retry later
-            createdOrder.shippingStatus = 'Shipping Sync Failed';
-            await createdOrder.save();
-        }
+        createdOrder.shippingStatus = 'Awaiting Shipment';
+        await createdOrder.save();
     } else {
-        // Prepaid order - waiting for payment
         createdOrder.shippingStatus = 'Payment Pending';
         await createdOrder.save();
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     res.status(201).json(createdOrder);
 });

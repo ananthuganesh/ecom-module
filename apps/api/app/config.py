@@ -1,7 +1,6 @@
 from functools import lru_cache
 from typing import List
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,9 +22,6 @@ class Settings(BaseSettings):
     aisensy_api_key: str = ""
     aisensy_project_id: str = ""
     aisensy_project_api_key: str = ""
-
-    shiprocket_email: str = ""
-    shiprocket_password: str = ""
 
     encryption_key: str = ""
 
@@ -71,14 +67,6 @@ class Settings(BaseSettings):
             )
         if not str(self.razorpay_webhook_secret or "").strip():
             raise RuntimeError("RAZORPAY_WEBHOOK_SECRET is required in production")
-
-    @field_validator("shiprocket_password", mode="before")
-    @classmethod
-    def unescape_shiprocket_password(cls, value: object) -> object:
-        # docker-compose / dotenv often turn a real `$` into `$$`
-        if isinstance(value, str):
-            return value.replace("$$", "$")
-        return value
 
     @property
     def cors_origins(self) -> List[str] | None:

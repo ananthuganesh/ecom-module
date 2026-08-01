@@ -25,8 +25,3 @@ if (fs.existsSync(localEnv)) {
 }
 
 console.log('[Env] Environment variables loaded.');
-
-// Handle Docker Compose dollar sign escaping ($$ -> $) for local development
-if (process.env.SHIPROCKET_PASSWORD) {
-    process.env.SHIPROCKET_PASSWORD = process.env.SHIPROCKET_PASSWORD.replace(/\$\$/g, '$');
-}

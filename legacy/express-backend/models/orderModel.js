@@ -86,8 +86,6 @@ const orderSchema = new mongoose.Schema(
     },
     // paymentMethod: 'razorpay', 'cod', 'wallet', etc.
     paymentMethod: { type: String, trim: true, default: null },
-    // ── Shiprocket fields ────────────────────────────────────────────────────
-    shiprocketOrderId: { type: String, trim: true, default: null },
     shipmentId: { type: String, trim: true, default: null },
     awbCode: { type: String, trim: true, default: null },
     courierName: { type: String, trim: true, default: null },

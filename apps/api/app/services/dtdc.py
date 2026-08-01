@@ -350,7 +350,6 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 if isinstance(consignment, dict)
                 else None
             ) or data.get("courier_partner") or "DTDC"
-            order.shiprocketOrderId = None
             order.shippingStatus = "Awaiting Shipment"
             order.transactionDetails = {
                 **(order.transactionDetails or {}),

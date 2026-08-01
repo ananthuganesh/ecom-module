@@ -398,7 +398,7 @@ export default function ShippingSettingsPage() {
 
         <Section
           title="Carrier notes"
-          description="Shiprocket auto-create is disabled. Create consignments from the order page."
+          description="Create DTDC consignments from the order page."
         >
           <p className="text-[13px] text-muted-foreground">
             After payment, orders are marked Awaiting Shipment until you create a DTDC consignment.

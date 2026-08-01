@@ -233,7 +233,6 @@ class Order(Document):
     transactionDetails: dict = Field(default_factory=dict)
     razorpayOrderId: Optional[str] = None
     razorpayPaymentId: Optional[str] = None
-    shiprocketOrderId: Optional[str] = None
     awb: Optional[str] = None
     courier: Optional[str] = None
     shippingStatus: Optional[str] = None

@@ -192,7 +192,7 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
     except Exception as exc:
         order.shippingStatus = "Shipping Sync Failed"
         await order.save()
-        print(f"[Payment] Shiprocket failed: {exc}")
+        print(f"[Payment] Fulfillment update failed: {exc}")
     try:
         from app.services import aisensy as aisensy_svc
         from app.services import email_resend as email_svc

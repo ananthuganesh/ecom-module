@@ -20,9 +20,7 @@ import getRazorpayClient, { getActiveKeyId } from './razorpay.client.js';
 import Setting from '../../models/settingModel.js';
 import { decrypt } from '../../utils/encryption.js';
 import Order from '../../models/orderModel.js';
-import User from '../../models/userModel.js';
 import PaymentTransaction from './paymentTransaction.model.js';
-import ShiprocketService from '../../services/shiprocketService.js';
 
 class PaymentService {
   // ─────────────────────────────────────────────────────────────────────────────
@@ -180,19 +178,8 @@ class PaymentService {
             paymentStatus: 'paid'
         };
         order.status = 'order placed';
+        order.shippingStatus = order.shippingStatus || 'Awaiting Shipment';
         await order.save();
-
-        // Trigger Shiprocket for prepaid now that it's paid
-        if (!order.shiprocketOrderId) {
-            try {
-                const user = await User.findById(order.customerId);
-                await ShiprocketService.processFullOrderFlow(order, user);
-            } catch (srError) {
-                console.error('[Payment Module] Shiprocket sync failed:', srError.message);
-                order.shippingStatus = 'Shipping Sync Failed';
-                await order.save();
-            }
-        }
     }
 
     return order;
@@ -269,22 +256,11 @@ class PaymentService {
                 paymentStatus: 'paid'
             };
             order.status = 'order placed';
+            order.shippingStatus = order.shippingStatus || 'Awaiting Shipment';
             await order.save();
-
-            // Trigger Shiprocket for prepaid now that it's paid
-            if (!order.shiprocketOrderId) {
-                try {
-                    const user = await User.findById(order.customerId);
-                    await ShiprocketService.processFullOrderFlow(order, user);
-                } catch (srError) {
-                    console.error('[Webhook] Shiprocket sync failed:', srError.message);
-                    order.shippingStatus = 'Shipping Sync Failed';
-                    await order.save();
-                }
-            }
         }
 
-        console.log(`[Webhook] Order ${transaction.orderId} marked as paid and synced via ${eventName}`);
+        console.log(`[Webhook] Order ${transaction.orderId} marked as paid via ${eventName}`);
       }
 
       return { processed: true, orderId: transaction.orderId };

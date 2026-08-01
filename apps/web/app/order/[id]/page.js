@@ -181,7 +181,7 @@ function OrderContent({ params: paramsPromise }) {
                                             <PackageIcon className="w-5 h-5 text-gray-600" />
                                         </div>
                                         <div>
-                                            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Courier: {order.courierName || 'Shiprocket'}</p>
+                                            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Courier: {order.courierName || 'DTDC'}</p>
                                             <p className="text-xs font-bold uppercase tracking-tight">AWB: {order.awbCode}</p>
                                         </div>
                                     </div>
@@ -390,11 +390,7 @@ function OrderContent({ params: paramsPromise }) {
                                     )}
                                 </div>
 
-                                <div className="p-6 bg-gray-50 flex items-center justify-between border-t border-gray-100 mt-2">
-                                    <div className="flex items-center space-x-2">
-                                        <img src="/shiprocket-logo.png" alt="Shiprocket" className="h-4 opacity-50 grayscale" onError={(e) => e.target.style.display='none'} />
-                                        <span className="text-[8px] font-bold uppercase tracking-widest text-gray-400">Powered by Shiprocket</span>
-                                    </div>
+                                <div className="p-6 bg-gray-50 flex items-center justify-end border-t border-gray-100 mt-2">
                                     <button
                                         onClick={() => setShowTrackingModal(false)}
                                         className="text-[9px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-gray-200 transition-colors"
