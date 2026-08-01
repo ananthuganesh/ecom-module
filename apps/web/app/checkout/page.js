@@ -411,7 +411,11 @@ export default function CheckoutPage() {
     const email = (formData.email || "").trim().toLowerCase();
     if (!email || email === resolvedEmail) return;
     const data = await resolveCheckoutEmail(email);
-    if (data?.requiresLogin || data?.hasPassword) && data.authMethod === "checkout" && !loginPromptSkipped) {
+    if (
+      (data?.requiresLogin || data?.hasPassword) &&
+      data.authMethod === "checkout" &&
+      !loginPromptSkipped
+    ) {
       setShowLoginPrompt(true);
     }
   };
