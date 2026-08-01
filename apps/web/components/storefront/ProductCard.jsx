@@ -1,15 +1,13 @@
 "use client";
 
-import { Ban, Loader2, Zap } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
-  BagIcon,
   CloseIcon,
   MinusIcon,
-  PlusIcon
+  PlusIcon,
 } from "@/components/icons/storeIcons";
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import SafeImage from "@/components/SafeImage";
 import { useCartStore } from "@/store/useCartStore";
 import { adaptProductForCard } from "@/utils/urbanProductAdapter";
@@ -17,30 +15,69 @@ import { resolveImageUrl } from "@/utils/imageResolver";
 import { getProductSizeOptions } from "@/utils/productSizes";
 import { trackSelectItem } from "@/lib/tracking";
 
-export default function ProductCard({ product, listName = "Catalog", listId = "catalog" }) {
-  const router = useRouter();
+function formatInr(value) {
+  return Number(value || 0).toLocaleString("en-IN");
+}
+
+export default function ProductCard({
+  product,
+  listName = "Catalog",
+  listId = "catalog",
+}) {
   const addItem = useCartStore((s) => s.addItem);
 
   const [showPicker, setShowPicker] = useState(false);
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [adding, setAdding] = useState(false);
+  const [quickAddingSize, setQuickAddingSize] = useState("");
 
   if (!product) return null;
 
-  const { id, title, price, image, href } = adaptProductForCard(product);
-  const variants = product.variants?.filter((v) => !v.isDeleted) || product.variants || [];
+  const {
+    id,
+    title,
+    productType,
+    price,
+    compareAt,
+    discountPercent,
+    badge,
+    image,
+    hoverImage,
+    href,
+  } = adaptProductForCard(product);
+  const variants =
+    product.variants?.filter((v) => !v.isDeleted) || product.variants || [];
 
   const totalStock =
     product.totalStock ??
-    variants.reduce((acc, variant) => acc + (variant.quantity ?? variant.stock ?? 0), 0);
+    variants.reduce(
+      (acc, variant) => acc + (variant.quantity ?? variant.stock ?? 0),
+      0
+    );
 
   const isOutOfStock = totalStock <= 0;
-  const category = product.category?.name || product.product || "Drops";
 
   const availableSizes = getProductSizeOptions(product);
   const currentSizeData = availableSizes.find((s) => s.size === selectedSize);
-  const maxStock = currentSizeData?.stock ?? currentSizeData?.quantity ?? totalStock;
+  const maxStock =
+    currentSizeData?.stock ?? currentSizeData?.quantity ?? totalStock;
+
+  const addSizeToCart = (sizeLabel, qty = 1) => {
+    const sizeData = availableSizes.find((s) => s.size === sizeLabel);
+    const stock = sizeData?.stock ?? sizeData?.quantity ?? totalStock;
+    addItem({
+      ...product,
+      _id: id,
+      slug: product.slug,
+      qty,
+      size: sizeLabel,
+      color: "",
+      price,
+      totalStock: stock || totalStock,
+      variants,
+    });
+  };
 
   const handleOpenPicker = (e) => {
     e.preventDefault();
@@ -51,11 +88,16 @@ export default function ProductCard({ product, listName = "Catalog", listId = "c
     setShowPicker(true);
   };
 
-  const handleBuyNow = (e) => {
+  const handleQuickAddSize = async (e, sizeLabel, stock) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isOutOfStock) return;
-    router.push(href);
+    if (!sizeLabel || stock <= 0 || quickAddingSize) return;
+    setQuickAddingSize(sizeLabel);
+    try {
+      addSizeToCart(sizeLabel, 1);
+    } finally {
+      setQuickAddingSize("");
+    }
   };
 
   const handleConfirmAddToCart = async () => {
@@ -63,17 +105,7 @@ export default function ProductCard({ product, listName = "Catalog", listId = "c
 
     setAdding(true);
     try {
-      addItem({
-        ...product,
-        _id: id,
-        slug: product.slug,
-        qty: quantity,
-        size: selectedSize,
-        color: "",
-        price,
-        totalStock: maxStock || totalStock,
-        variants,
-      });
+      addSizeToCart(selectedSize, quantity);
       setShowPicker(false);
     } finally {
       setAdding(false);
@@ -82,152 +114,235 @@ export default function ProductCard({ product, listName = "Catalog", listId = "c
 
   return (
     <>
-      <div
-        className={`group flex h-full flex-col overflow-hidden rounded-lg border border-gray-100 bg-white transition-all duration-300 ${
-          isOutOfStock ? "opacity-70" : "hover:border-black/20 hover:shadow-xl"
+      <article
+        className={`group flex h-full flex-col justify-between overflow-hidden rounded-xl border-[0.5px] border-[#c9cbcc] bg-white lg:rounded-2xl ${
+          isOutOfStock ? "opacity-70" : ""
         }`}
       >
-        <Link
-          href={href}
-          className="relative block w-full overflow-hidden bg-gray-50"
-          style={{ aspectRatio: "2/3" }}
-          onClick={() => trackSelectItem(product, listName, listId)}
-        >
-          <SafeImage
-            src={resolveImageUrl(image)}
-            alt={title}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 20vw"
-            className={`object-cover transition-transform duration-700 ${
-              !isOutOfStock && "group-hover:scale-105"
-            }`}
-          />
-          {isOutOfStock && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center z-10">
-              <span className="font-vina text-white text-lg sm:text-2xl border-y border-white px-3 py-1.5 tracking-widest leading-none">
-                SOLD OUT
-              </span>
-            </div>
-          )}
-        </Link>
-
-        <div className="flex flex-1 flex-col p-2 sm:p-3 font-sans [font-style:normal]">
-          <div className="flex items-baseline justify-between w-full gap-1">
-            {category && (
-              <span
-                className={`text-[12px] sm:text-[12px] font-extrabold uppercase tracking-widest leading-none flex-shrink-0 ${
-                  isOutOfStock ? "text-gray-400" : "text-[#DF1721]"
-                }`}
-              >
-                {category}
-              </span>
-            )}
-            <div className="flex items-baseline gap-1 flex-1 justify-end min-w-0 overflow-hidden">
-              <h3
-                className={`text-[12px] sm:text-[12px] md:text-[13px] font-bold uppercase tracking-tight leading-tight truncate text-right ${
-                  isOutOfStock ? "text-gray-400" : "text-black"
-                }`}
-              >
-                {title}
-              </h3>
-            </div>
-          </div>
-
-          <div className="mt-0.5">
-            <span
-              className={`text-[13px] sm:text-[14px] md:text-[15px] font-black leading-none ${
-                isOutOfStock ? "text-gray-300" : "text-black"
-              }`}
+        <div className="relative flex flex-col">
+          <div className="relative w-full p-0.5">
+            <div
+              className="relative w-full overflow-hidden rounded-lg border-[0.5px] border-[#eee] bg-[#f5f5f5] lg:rounded-xl"
+              style={{ aspectRatio: "2 / 3" }}
             >
-              ₹{price.toLocaleString("en-IN")}
-            </span>
+              <Link
+                href={href}
+                className="absolute inset-0 z-0 block"
+                onClick={() => trackSelectItem(product, listName, listId)}
+              >
+                <SafeImage
+                  src={resolveImageUrl(image)}
+                  alt={title}
+                  fill
+                  sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                  className={`object-cover transition-opacity duration-300 ${
+                    hoverImage ? "group-hover:opacity-0" : ""
+                  }`}
+                />
+                {hoverImage ? (
+                  <SafeImage
+                    src={resolveImageUrl(hoverImage)}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                    className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                  />
+                ) : null}
+              </Link>
+
+              {badge ? (
+                <div className="pointer-events-none absolute top-2 left-2 z-10 rounded-sm bg-white px-1.5 py-1 lg:top-3 lg:left-3 lg:px-2">
+                  <span
+                    className={`text-[8px] font-medium uppercase leading-none tracking-wide lg:text-xs ${
+                      badge.key === "sold_out"
+                        ? "text-[#c70a24]"
+                        : badge.key === "low_stock"
+                          ? "text-[#b45309]"
+                          : "text-[#133b5f]"
+                    }`}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
+              ) : null}
+
+              {!isOutOfStock && availableSizes.length > 0 ? (
+                <div
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex translate-y-full flex-wrap justify-center gap-1 px-1.5 pb-2 transition-transform duration-300 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 max-lg:hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {availableSizes.map((sizeObj) => {
+                    const sizeLabel = sizeObj.size || sizeObj;
+                    const stock =
+                      sizeObj.stock ?? sizeObj.quantity ?? totalStock;
+                    const outOfStock = stock <= 0;
+                    const busy = quickAddingSize === sizeLabel;
+                    return (
+                      <button
+                        key={sizeLabel}
+                        type="button"
+                        disabled={outOfStock || Boolean(quickAddingSize)}
+                        onClick={(e) =>
+                          handleQuickAddSize(e, sizeLabel, stock)
+                        }
+                        className={`min-w-[2rem] rounded border px-2 py-1.5 text-[11px] font-semibold uppercase shadow-sm transition-colors lg:min-w-[2.25rem] lg:text-xs ${
+                          outOfStock
+                            ? "cursor-not-allowed border-[#eee] bg-white/80 text-[#c9cbcc] line-through"
+                            : busy
+                              ? "border-[#131814] bg-[#131814] text-white"
+                              : "border-[#e5e5e5] bg-white text-[#131814] hover:border-[#131814] hover:bg-[#131814] hover:text-white"
+                        }`}
+                        aria-label={
+                          outOfStock
+                            ? `${sizeLabel} sold out`
+                            : `Add size ${sizeLabel} to cart`
+                        }
+                      >
+                        {busy ? (
+                          <Loader2
+                            size={12}
+                            className="mx-auto animate-spin"
+                          />
+                        ) : (
+                          sizeLabel
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          <div className="mt-auto pt-1.5 flex flex-col gap-1">
-            {isOutOfStock ? (
-              <div className="flex w-full items-center justify-center gap-1.5 rounded-md bg-gray-100 py-2 sm:py-2.5 text-[12px] sm:text-[12px] font-black text-gray-400 uppercase tracking-widest border border-gray-200 min-h-[2.5rem]">
-                <Ban size={14} /> OUT OF ARCHIVE
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={handleOpenPicker}
-                  className="flex w-full items-center justify-center gap-1 rounded-md border border-black bg-white py-1.5 sm:py-2 text-[12px] sm:text-[12px] md:text-[12px] font-black uppercase tracking-wide text-black transition-all duration-300 hover:bg-black hover:text-white active:scale-95 cursor-pointer min-h-[2rem]"
-                >
-                  <BagIcon size={14} className="flex-shrink-0" />
-                  <span className="hidden sm:inline">ADD TO BAG</span>
-                  <span className="sm:hidden text-[12px]">ADD</span>
-                </button>
-
-                <button
-                  onClick={handleBuyNow}
-                  className="flex w-full items-center justify-center gap-1 rounded-md border border-black bg-black py-1.5 sm:py-2 text-[12px] sm:text-[12px] md:text-[12px] font-black uppercase tracking-wide text-white transition-all duration-300 hover:bg-white hover:text-black active:scale-95 cursor-pointer min-h-[2rem]"
-                >
-                  <Zap size={14} className="flex-shrink-0" />
-                  <span className="hidden sm:inline">BUY NOW</span>
-                  <span className="sm:hidden text-[12px]">BUY</span>
-                </button>
-              </>
-            )}
-          </div>
+          <Link
+            href={href}
+            className="flex flex-col gap-1 px-2.5 pt-2.5 pb-2 sm:gap-1.5 sm:px-3 sm:pt-3"
+            onClick={() => trackSelectItem(product, listName, listId)}
+          >
+            <h3 className="w-full truncate text-[12px] font-medium uppercase tracking-wide text-[#131814] lg:text-sm">
+              {productType ? `${title} ${productType}` : title}
+            </h3>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              <span className="text-sm font-semibold text-[#131814] lg:text-base">
+                ₹{formatInr(price)}
+              </span>
+              {compareAt ? (
+                <span className="text-[11px] font-medium text-[#afb2b4] line-through lg:text-sm">
+                  ₹{formatInr(compareAt)}
+                </span>
+              ) : null}
+              {discountPercent > 0 ? (
+                <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-1.5 py-1 text-[10px] font-semibold leading-none tracking-wide text-white uppercase lg:px-2 lg:py-1 lg:text-[11px]">
+                  {discountPercent}% off
+                </span>
+              ) : null}
+            </div>
+          </Link>
         </div>
-      </div>
+
+        <div className="flex border-t-[0.5px] border-[#c9cbcc]">
+          {isOutOfStock ? (
+            <div className="flex flex-1 items-center justify-center p-2 text-[11px] font-semibold tracking-wide text-[#afb2b4] uppercase lg:p-4 lg:text-sm">
+              Out of stock
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleOpenPicker}
+              className="flex flex-1 cursor-pointer items-center justify-center p-2 transition-colors hover:bg-[#f7f7f7] lg:p-4"
+            >
+              <span className="text-[11px] font-semibold tracking-wide text-[#131814] uppercase lg:text-sm">
+                Add to cart
+              </span>
+            </button>
+          )}
+        </div>
+      </article>
 
       {showPicker && (
-        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowPicker(false)}
           />
 
-          <div className="relative bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl z-10 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="relative w-10 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                  <SafeImage src={resolveImageUrl(image)} alt={title} fill className="object-cover" sizes="40px" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900 leading-tight line-clamp-1">{title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    ₹{price.toLocaleString("en-IN")}
-                    {quantity > 1 && (
-                      <span className="ml-1 text-gray-400">
-                        × {quantity} = ₹{(price * quantity).toLocaleString("en-IN")}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPicker(false)}
-                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <CloseIcon size={18} className="text-gray-500" />
-              </button>
+          <div className="relative z-10 flex w-full max-w-lg min-h-[280px] overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-2xl sm:min-h-[320px]">
+            <div className="relative w-[38%] min-w-[120px] shrink-0 bg-[#f5f5f5] sm:w-[42%]">
+              <SafeImage
+                src={resolveImageUrl(image)}
+                alt={title}
+                fill
+                className="object-cover"
+                sizes="220px"
+              />
             </div>
 
-            <div className="px-5 py-4 space-y-5">
+            <div className="relative flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-5">
+              <button
+                type="button"
+                onClick={() => setShowPicker(false)}
+                className="absolute top-2.5 right-2.5 rounded-md p-1.5 transition-colors hover:bg-gray-100"
+                aria-label="Close"
+              >
+                <CloseIcon size={16} className="text-gray-500" />
+              </button>
+
+              <div className="pr-8">
+                {productType ? (
+                  <p className="mb-1 text-[10px] font-medium tracking-[0.08em] text-[#8a8f93] uppercase">
+                    {productType}
+                  </p>
+                ) : null}
+                <h3 className="line-clamp-2 text-sm font-semibold uppercase tracking-wide text-[#131814] sm:text-base">
+                  {title}
+                </h3>
+                <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span className="text-sm font-semibold text-[#131814] sm:text-base">
+                    ₹{formatInr(price)}
+                  </span>
+                  {compareAt ? (
+                    <span className="text-[11px] font-medium text-[#afb2b4] line-through sm:text-sm">
+                      ₹{formatInr(compareAt)}
+                    </span>
+                  ) : null}
+                  {discountPercent > 0 ? (
+                    <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-1.5 py-1 text-[10px] font-semibold leading-none tracking-wide text-white uppercase">
+                      {discountPercent}% off
+                    </span>
+                  ) : null}
+                  {quantity > 1 && selectedSize ? (
+                    <span className="w-full text-[11px] text-[#8a8f93]">
+                      × {quantity} = ₹{formatInr(price * quantity)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Select Size
+                <p className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-[#8a8f93] uppercase">
+                  Size
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {availableSizes.map((sizeObj) => {
                     const sizeLabel = sizeObj.size || sizeObj;
-                    const stock = sizeObj.stock ?? sizeObj.quantity ?? totalStock;
+                    const stock =
+                      sizeObj.stock ?? sizeObj.quantity ?? totalStock;
                     const outOfStock = stock === 0;
                     const selected = selectedSize === sizeLabel;
                     return (
                       <button
                         key={sizeLabel}
-                        onClick={() => !outOfStock && setSelectedSize(sizeLabel)}
+                        type="button"
+                        onClick={() =>
+                          !outOfStock && setSelectedSize(sizeLabel)
+                        }
                         disabled={outOfStock}
-                        className={`min-w-[48px] px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                        className={`min-w-[40px] rounded border px-2.5 py-1.5 text-xs font-semibold uppercase transition-all sm:min-w-[44px] sm:text-sm ${
                           selected
-                            ? "border-black bg-black text-white"
+                            ? "border-[#131814] bg-[#131814] text-white"
                             : outOfStock
-                              ? "border-gray-100 text-gray-300 line-through cursor-not-allowed bg-gray-50"
-                              : "border-gray-200 hover:border-gray-400 text-gray-800"
+                              ? "cursor-not-allowed border-[#eee] bg-[#f7f7f7] text-[#c9cbcc] line-through"
+                              : "border-[#e5e5e5] text-[#131814] hover:border-[#131814]"
                         }`}
                       >
                         {sizeLabel}
@@ -237,49 +352,55 @@ export default function ProductCard({ product, listName = "Catalog", listId = "c
                 </div>
               </div>
 
-              {selectedSize && (
+              {selectedSize ? (
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  <p className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-[#8a8f93] uppercase">
                     Quantity
                   </p>
-                  <div className="flex items-center border border-gray-200 rounded-xl w-fit overflow-hidden">
+                  <div className="inline-flex items-center overflow-hidden rounded-lg border border-[#e5e5e5]">
                     <button
+                      type="button"
                       onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                       disabled={quantity <= 1}
-                      className="w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors disabled:opacity-40"
+                      className="flex h-9 w-9 items-center justify-center transition-colors hover:bg-gray-50 disabled:opacity-40"
                     >
                       <MinusIcon size={14} className="text-gray-600" />
                     </button>
-                    <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
+                    <span className="w-9 text-center text-sm font-semibold">
+                      {quantity}
+                    </span>
                     <button
-                      onClick={() => setQuantity((q) => Math.min(maxStock || 5, q + 1))}
+                      type="button"
+                      onClick={() =>
+                        setQuantity((q) => Math.min(maxStock || 5, q + 1))
+                      }
                       disabled={quantity >= Math.min(maxStock || 5, 5)}
-                      className="w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors disabled:opacity-40"
+                      className="flex h-9 w-9 items-center justify-center transition-colors hover:bg-gray-50 disabled:opacity-40"
                     >
                       <PlusIcon size={14} className="text-gray-600" />
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <button
+                type="button"
                 onClick={handleConfirmAddToCart}
                 disabled={!selectedSize || adding}
-                className={`w-full py-3.5 rounded-xl font-bold text-sm tracking-widest transition-all flex items-center justify-center gap-2 ${
+                className={`mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-3 text-xs font-bold tracking-widest uppercase transition-all sm:text-sm ${
                   selectedSize && !adding
-                    ? "bg-black hover:bg-gray-800 text-white active:scale-[0.98]"
-                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    ? "bg-[#131814] text-white hover:bg-black active:scale-[0.98]"
+                    : "cursor-not-allowed bg-[#f1f1f1] text-[#afb2b4]"
                 }`}
               >
                 {adding ? (
                   <>
                     <Loader2 size={15} className="animate-spin" /> Adding...
                   </>
+                ) : selectedSize ? (
+                  "Add to cart"
                 ) : (
-                  <>
-                    <BagIcon size={15} />
-                    {selectedSize ? "ADD TO CART" : "SELECT A SIZE"}
-                  </>
+                  "Select a size"
                 )}
               </button>
             </div>

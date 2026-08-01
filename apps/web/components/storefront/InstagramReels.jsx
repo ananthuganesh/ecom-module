@@ -1,113 +1,158 @@
 "use client";
 
-import { Instagram } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { reelsService } from "@/api";
+import {
+  DEFAULT_STOREFRONT_REELS,
+  normalizeStorefrontReels,
+} from "@/utils/storefrontReels";
 
-const REELS = [
-  {
-    id: "reel-1",
-    videoUrl: "https://images.urbanaana.com/urban-aana/reels/reel-1.mp4",
-    instagramUrl: "https://www.instagram.com/reel/DZpH3I5zHhG/",
-  },
-  {
-    id: "reel-2",
-    videoUrl: "https://images.urbanaana.com/urban-aana/reels/reel-2.mp4",
-    instagramUrl: "https://www.instagram.com/reel/DZmkorVTpo6/",
-  },
-  {
-    id: "reel-3",
-    videoUrl: "https://images.urbanaana.com/urban-aana/reels/reel-3.mp4",
-    instagramUrl: "https://www.instagram.com/reel/DZj_Ohlz1MO/",
-  },
-  {
-    id: "reel-4",
-    videoUrl: "https://images.urbanaana.com/urban-aana/reels/reel-4.mp4",
-    instagramUrl: "https://www.instagram.com/p/DZwhemdTEO_/",
-  },
-  {
-    id: "reel-5",
-    videoUrl: "https://images.urbanaana.com/urban-aana/reels/reel-5.mp4",
-    instagramUrl: "https://www.instagram.com/p/DaR85YJTCxh/",
-  },
-];
+function playMuted(video) {
+  if (!video) return;
+  video.muted = true;
+  video.playsInline = true;
+  const attempt = video.play();
+  if (attempt?.catch) attempt.catch(() => undefined);
+}
 
-function ReelCard({ videoUrl, instagramUrl }) {
+function ReelCard({ videoUrl, altText }) {
   const containerRef = useRef(null);
   const videoRef = useRef(null);
 
   useEffect(() => {
     const container = containerRef.current;
     const video = videoRef.current;
-    if (!container || !video) return;
+    if (!container || !video || !videoUrl) return;
+
+    video.src = videoUrl;
+    video.load();
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          video.play().catch(() => undefined);
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
+          playMuted(video);
         } else {
           video.pause();
         }
       },
-      { threshold: 0.5 }
+      { threshold: [0, 0.2, 0.5, 1] }
     );
 
     observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
+    // Kick playback immediately for cards already in view.
+    playMuted(video);
+
+    return () => {
+      observer.disconnect();
+      video.pause();
+    };
+  }, [videoUrl]);
 
   return (
-    <a
+    <div
       ref={containerRef}
-      href={instagramUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group relative flex-shrink-0 w-[200px] sm:w-[240px] md:w-[280px] snap-center"
+      className="group relative block w-[calc((100vw-1.5rem)/2)] shrink-0 overflow-hidden rounded-xl border-[0.5px] border-[#c9cbcc] bg-white md:w-[calc((100vw-3.5rem)/3)] lg:w-[calc((100vw-7rem)/4)] lg:rounded-2xl"
+      aria-label={altText || "Product showcase"}
     >
-      <div className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-black shadow-lg ring-1 ring-black/10 transition-transform duration-300 group-hover:scale-[1.02] group-hover:shadow-xl">
+      <div
+        className="relative w-full overflow-hidden rounded-lg bg-black lg:rounded-xl"
+        style={{ aspectRatio: "2 / 3" }}
+      >
         <video
           ref={videoRef}
-          src={videoUrl}
-          className="h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover"
           muted
           loop
           playsInline
           autoPlay
           preload="auto"
+          aria-label={altText || "Product showcase"}
         />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
-        <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2 text-white">
-          <Instagram size={16} className="flex-shrink-0" />
-          <span className="text-[12px] font-bold uppercase tracking-widest">
-            Watch on Instagram
-          </span>
-        </div>
       </div>
-    </a>
+    </div>
   );
 }
 
 export default function InstagramReels() {
+  const [reels, setReels] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    reelsService
+      .list()
+      .then((data) => {
+        if (cancelled) return;
+        const next = normalizeStorefrontReels(data);
+        setReels(next.length ? next : DEFAULT_STOREFRONT_REELS);
+      })
+      .catch(() => {
+        if (!cancelled) setReels(DEFAULT_STOREFRONT_REELS);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!loaded && reels.length === 0) {
+    return (
+      <section className="scroll-mt-24 py-6 md:py-10">
+        <header className="mb-3 w-full px-2 text-center md:mb-6 md:px-4 lg:px-8">
+          <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+            Product <span className="title-knewave-accent">Showcase</span>
+          </h2>
+        </header>
+        <div className="grid grid-cols-2 gap-2 px-2 md:grid-cols-3 md:gap-3 md:px-4 lg:grid-cols-4 lg:gap-4 lg:px-8">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
+              style={{ aspectRatio: "2 / 3" }}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  const marqueeItems = [...reels, ...reels];
+
   return (
-    <section className="py-6 md:py-10 px-2 md:px-4 lg:px-8">
-      <header className="mb-6 md:mb-10 text-center space-y-2">
-        <h2 className="title-knewave text-2xl md:text-4xl uppercase leading-none tracking-tight">
-          STREET <span className="title-knewave-accent">REELS</span>
+    <section className="scroll-mt-24 py-6 md:py-10">
+      <header className="mb-3 w-full px-2 text-center md:mb-6 md:px-4 lg:px-8">
+        <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+          Product <span className="title-knewave-accent">Showcase</span>
         </h2>
-        <div className="h-1 w-16 bg-black mx-auto" />
-        <p className="text-xs md:text-sm text-gray-500 uppercase tracking-widest font-semibold">
-          @urbanaana.in on Instagram
-        </p>
       </header>
 
-      <div className="flex gap-4 md:gap-6 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide justify-start md:justify-center">
-        {REELS.map((reel) => (
-          <ReelCard
-            key={reel.id}
-            videoUrl={reel.videoUrl}
-            instagramUrl={reel.instagramUrl}
-          />
-        ))}
+      <div className="ua-reels-marquee-mask relative overflow-hidden px-2 md:px-4 lg:px-8">
+        <div className="ua-reels-marquee flex w-max gap-2 md:gap-3 lg:gap-4">
+          {marqueeItems.map((reel, index) => (
+            <ReelCard
+              key={`${reel.id}-${index}`}
+              videoUrl={reel.videoUrl}
+              altText={reel.altText}
+            />
+          ))}
+        </div>
       </div>
+
+      <style>{`
+        @keyframes ua-reels-marquee {
+          from { transform: translate3d(0, 0, 0); }
+          to { transform: translate3d(-50%, 0, 0); }
+        }
+        .ua-reels-marquee {
+          animation: ua-reels-marquee 40s linear infinite;
+          will-change: transform;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ua-reels-marquee { animation: none; }
+        }
+      `}</style>
     </section>
   );
 }

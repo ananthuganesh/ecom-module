@@ -2,12 +2,20 @@ import client from "../../axios/client.js";
 
 const MEDIA_BASE = "/admin/media";
 
+function resolveFolder(folder = "products") {
+  if (folder === "ai" || folder === "reels") return folder;
+  if (folder === "all") return "all";
+  return "products";
+}
+
 export const adminMediaService = {
   list: (folder = "all") =>
-    client.get(MEDIA_BASE, { params: { folder } }).then((res) => res.data),
+    client
+      .get(MEDIA_BASE, { params: { folder: resolveFolder(folder) } })
+      .then((res) => res.data),
 
   upload: (file, folder = "products") => {
-    const target = folder === "ai" ? "ai" : "products";
+    const target = resolveFolder(folder);
     const form = new FormData();
     form.append("file", file);
     return client
@@ -19,7 +27,9 @@ export const adminMediaService = {
   },
 
   updateAlt: ({ folder, name, altText }) =>
-    client.patch(`${MEDIA_BASE}/alt`, { folder, name, altText }).then((res) => res.data),
+    client
+      .patch(`${MEDIA_BASE}/alt`, { folder, name, altText })
+      .then((res) => res.data),
 
   delete: ({ folder, name }) =>
     client

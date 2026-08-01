@@ -47,11 +47,24 @@ async def next_product_url_id() -> str:
 
 
 async def ensure_product_url_id(product: Product) -> str | None:
-    """Assign productUrlId if missing."""
+    """Assign productUrlId if missing. Normalize numeric ids to zero-padded strings."""
     existing = getattr(product, "productUrlId", None)
-    if existing and str(existing).isdigit() and len(str(existing)) == 12:
-        return str(existing)
+    if existing is not None and str(existing).strip() != "":
+        text = str(existing).strip()
+        if text.isdigit():
+            normalized = text.zfill(12) if len(text) <= 12 else text
+            if normalized != existing:
+                product.productUrlId = normalized
+                await product.save()
+            return normalized
+        return text
+
     url_id = await next_product_url_id()
+    previous = getattr(product, "productUrlId", None)
     product.productUrlId = url_id
-    await product.save()
+    try:
+        await product.save()
+    except Exception:
+        product.productUrlId = previous
+        raise
     return url_id

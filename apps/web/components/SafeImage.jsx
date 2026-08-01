@@ -14,10 +14,10 @@ export default function SafeImage({ src, alt = "", className, fill, ...props }) 
   if (!src || typeof src !== "string" || !src.trim()) {
     return (
       <div
-        className={`bg-gray-100 flex items-center justify-center ${className || ""}`}
+        className={`flex items-center justify-center bg-gray-100 ${className || ""}`}
         style={fill ? { position: "absolute", inset: 0 } : undefined}
       >
-        <span className="text-gray-300 text-xs uppercase">No image</span>
+        <span className="text-xs uppercase text-gray-300">No image</span>
       </div>
     );
   }
@@ -25,10 +25,10 @@ export default function SafeImage({ src, alt = "", className, fill, ...props }) 
   if (error) {
     return (
       <div
-        className={`bg-gray-100 flex items-center justify-center ${className || ""}`}
+        className={`flex items-center justify-center bg-gray-100 ${className || ""}`}
         style={fill ? { position: "absolute", inset: 0 } : undefined}
       >
-        <span className="text-gray-300 text-xs uppercase">No image</span>
+        <span className="text-xs uppercase text-gray-300">No image</span>
       </div>
     );
   }
@@ -69,10 +69,9 @@ export default function SafeImage({ src, alt = "", className, fill, ...props }) 
     />
   );
 
+  // Absolute fill so stacked images (e.g. product-card hover) overlay correctly.
   return fill ? (
-    <div className="relative w-full h-full">
-      {imageElement}
-    </div>
+    <div className="absolute inset-0">{imageElement}</div>
   ) : (
     imageElement
   );

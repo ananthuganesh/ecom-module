@@ -23,6 +23,7 @@ import {
   TicketPercent,
   BarChart3,
   Folder,
+  Film,
   Truck,
 } from "./LocalIcons";
 
@@ -168,6 +169,9 @@ const menuItems = [
     name: "Content",
     href: "/admin/content",
     icon: Folder,
+    subItems: [
+      { name: "Reels", href: "/admin/reels" },
+    ],
   },
   { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
 ];

@@ -124,6 +124,8 @@ class Product(Document):
     thumbnails: list[str] = Field(default_factory=list)
     totalStock: int = 0
     status: str = "active"
+    # Storefront card badge: new_arrival | trending | best_seller
+    badge: Optional[str] = None
     hsnCode: Optional[str] = None
     taxClassId: Optional[str] = None
     priceTaxMode: Optional[str] = "inclusive"

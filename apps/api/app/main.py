@@ -117,6 +117,7 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(collections.router)
     app.include_router(admin.router)
     app.include_router(media.router)
+    app.include_router(media.public_router)
     app.include_router(stock_admin.router)
     app.include_router(erp.router)
     app.include_router(abandoned.router)

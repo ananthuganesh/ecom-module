@@ -10,24 +10,31 @@ from app.documents import MediaAsset
 from app.services import image_optimize as img_opt
 from app.services import r2 as r2_svc
 
-router = APIRouter(prefix="/api/admin/media", tags=["media"])
+router = APIRouter(prefix="/api/admin/media", tags=["admin"])
+public_router = APIRouter(prefix="/api/reels", tags=["reels"])
 
-_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+_MAX_VIDEO_BYTES = 80 * 1024 * 1024
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_FOLDERS = {
     "products": UPLOAD_ROOT / "products",
     "ai": UPLOAD_ROOT / "ai",
+    "reels": UPLOAD_ROOT / "reels",
 }
+LIBRARY_FOLDERS = ("products", "ai")
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
+VIDEO_MIME_PREFIXES = ("video/",)
 
 
 def _folders(folder: str) -> list[tuple[str, Path]]:
     if folder == "all":
-        return list(UPLOAD_FOLDERS.items())
+        return [(name, UPLOAD_FOLDERS[name]) for name in LIBRARY_FOLDERS]
     if folder in UPLOAD_FOLDERS:
         return [(folder, UPLOAD_FOLDERS[folder])]
-    raise HTTPException(status_code=400, detail="folder must be products, ai, or all")
+    raise HTTPException(
+        status_code=400, detail="folder must be products, ai, reels, or all"
+    )
 
 
 def _file_type(path: Path) -> str:
@@ -37,6 +44,14 @@ def _file_type(path: Path) -> str:
     if (mime_type or "").startswith("video/") or path.suffix.lower() in VIDEO_EXTENSIONS:
         return "video"
     return "file"
+
+
+def _is_video_upload(filename: str | None, content_type: str | None) -> bool:
+    mime = (content_type or "").lower()
+    if any(mime.startswith(prefix) for prefix in VIDEO_MIME_PREFIXES):
+        return True
+    suffix = Path(filename or "").suffix.lower()
+    return suffix in VIDEO_EXTENSIONS
 
 
 def _asset_key(folder: str, name: str) -> str:
@@ -58,7 +73,7 @@ def _serialize_file(folder: str, path: Path) -> dict:
 
 def _resolve_file(folder: str, name: str) -> Path:
     if folder not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products or ai")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
     if not name or Path(name).name != name or ".." in Path(name).parts:
         raise HTTPException(status_code=400, detail="Invalid file name")
 
@@ -88,6 +103,23 @@ async def _attach_alt(files: list[dict]) -> list[dict]:
     return files
 
 
+async def _list_folder_files(folder: str) -> list[dict]:
+    if r2_svc.is_configured():
+        files = r2_svc.list_objects(folder)
+    else:
+        files = []
+        for folder_name, root in _folders(folder):
+            if not root.exists():
+                continue
+            files.extend(
+                _serialize_file(folder_name, path)
+                for path in root.iterdir()
+                if path.is_file()
+            )
+        files = sorted(files, key=lambda item: item["modifiedAt"], reverse=True)
+    return await _attach_alt(files)
+
+
 @router.post("/upload")
 async def upload_media(
     _: AdminUser,
@@ -95,14 +127,58 @@ async def upload_media(
     file: UploadFile | None = File(default=None),
     image: UploadFile | None = File(default=None),
 ):
-    """Upload into products or ai folder (respects Content library selection)."""
+    """Upload into products, ai, or reels. Images → WebP; reels folder accepts video."""
     if folder not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products or ai")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
     upload = file or image
     if not upload:
         raise HTTPException(status_code=422, detail="file or image is required")
+
     content = await upload.read()
-    if len(content) > _MAX_UPLOAD_BYTES:
+    is_video = _is_video_upload(upload.filename, upload.content_type)
+
+    if is_video:
+        if folder != "reels":
+            raise HTTPException(status_code=400, detail="Videos can only be uploaded to reels")
+        if len(content) > _MAX_VIDEO_BYTES:
+            raise HTTPException(status_code=400, detail="Video must be 80 MB or smaller")
+        content_type = (
+            upload.content_type
+            or mimetypes.guess_type(upload.filename or "")[0]
+            or "video/mp4"
+        )
+        if r2_svc.is_configured():
+            result = r2_svc.upload_bytes(
+                folder=folder,
+                data=content,
+                filename=upload.filename,
+                content_type=content_type,
+            )
+            return {
+                "url": result["url"],
+                "name": result.get("name"),
+                "folder": folder,
+                "size": result.get("size") or len(content),
+                "contentType": content_type,
+                "type": "video",
+                "optimized": False,
+            }
+        ext = Path(upload.filename or "reel.mp4").suffix.lower() or ".mp4"
+        name = f"{uuid4().hex}{ext}"
+        dest_dir = UPLOAD_FOLDERS[folder]
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        (dest_dir / name).write_bytes(content)
+        return {
+            "url": f"/uploads/{folder}/{name}",
+            "name": name,
+            "folder": folder,
+            "size": len(content),
+            "contentType": content_type,
+            "type": "video",
+            "optimized": False,
+        }
+
+    if len(content) > _MAX_IMAGE_BYTES:
         raise HTTPException(status_code=400, detail="File must be 10 MB or smaller")
     webp_bytes, webp_name, content_type = img_opt.optimize_image_to_webp(
         content,
@@ -121,6 +197,7 @@ async def upload_media(
             "folder": folder,
             "size": result.get("size") or len(webp_bytes),
             "contentType": content_type,
+            "type": "image",
             "optimized": True,
             "format": "webp",
         }
@@ -134,6 +211,7 @@ async def upload_media(
         "folder": folder,
         "size": len(webp_bytes),
         "contentType": content_type,
+        "type": "image",
         "optimized": True,
         "format": "webp",
     }
@@ -142,20 +220,7 @@ async def upload_media(
 @router.get("")
 @router.get("/")
 async def list_media(_: AdminUser, folder: str = Query(default="all")):
-    if r2_svc.is_configured():
-        files = r2_svc.list_objects(folder)
-    else:
-        files = []
-        for folder_name, root in _folders(folder):
-            if not root.exists():
-                continue
-            files.extend(
-                _serialize_file(folder_name, path)
-                for path in root.iterdir()
-                if path.is_file()
-            )
-        files = sorted(files, key=lambda item: item["modifiedAt"], reverse=True)
-    return await _attach_alt(files)
+    return await _list_folder_files(folder)
 
 
 @router.patch("/alt")
@@ -166,11 +231,10 @@ async def update_media_alt(body: dict, _: AdminUser):
     if len(alt_text) > 500:
         raise HTTPException(status_code=400, detail="Alt text must be 500 characters or fewer")
     if folder not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products or ai")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
     if not name or Path(name).name != name or ".." in Path(name).parts:
         raise HTTPException(status_code=400, detail="Invalid file name")
 
-    # Ensure file exists
     if r2_svc.is_configured():
         listed = r2_svc.list_objects(folder)
         if not any(f.get("name") == name for f in listed):
@@ -209,7 +273,9 @@ async def update_media_alt(body: dict, _: AdminUser):
 async def delete_media_path(_: AdminUser, path: str):
     parts = Path(path.lstrip("/")).parts
     if len(parts) != 2 or parts[0] not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="path must be products/<name> or ai/<name>")
+        raise HTTPException(
+            status_code=400, detail="path must be products/<name>, ai/<name>, or reels/<name>"
+        )
     return await _delete_file(parts[0], parts[1])
 
 
@@ -233,3 +299,21 @@ async def _delete_file(folder: str, name: str) -> dict:
     if doc:
         await doc.delete()
     return result
+
+
+@public_router.get("")
+@public_router.get("/")
+async def list_public_reels():
+    """Storefront Street Reels — video URL + optional alt text."""
+    files = await _list_folder_files("reels")
+    videos = [f for f in files if f.get("type") == "video" and f.get("url")]
+    return [
+        {
+            "id": f.get("name") or f.get("key"),
+            "videoUrl": f.get("url"),
+            "altText": (f.get("altText") or "").strip(),
+            "name": f.get("name"),
+            "modifiedAt": f.get("modifiedAt"),
+        }
+        for f in videos
+    ]

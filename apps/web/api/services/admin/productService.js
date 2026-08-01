@@ -40,18 +40,22 @@ export const adminProductService = {
   },
 
   getById: (id) =>
-    client.get(e.byId(id)).then((res) => res.data),
+    client
+      .get(`/admin/products/${encodeURIComponent(String(id))}`)
+      .then((res) => res.data),
 
   getNeighbors: (id) =>
     client
-      .get(`/admin/products/${encodeURIComponent(id)}/neighbors`)
+      .get(`/admin/products/${encodeURIComponent(String(id))}/neighbors`)
       .then((res) => res.data),
 
   create: (data) =>
     client.post(e.base, data).then((res) => res.data),
 
   update: (id, data) =>
-    client.put(e.byId(id), data).then((res) => res.data),
+    client
+      .put(`/admin/products/${encodeURIComponent(String(id))}`, data)
+      .then((res) => res.data),
 
   bulkUpdate: (data) =>
     client.patch(e.bulkUpdate, data).then((res) => res.data),
@@ -74,7 +78,9 @@ export const adminProductService = {
   },
 
   delete: (id) =>
-    client.delete(e.byId(id)).then((res) => res.data),
+    client
+      .delete(`/admin/products/${encodeURIComponent(String(id))}`)
+      .then((res) => res.data),
 };
 
 export default adminProductService;

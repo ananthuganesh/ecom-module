@@ -7,7 +7,6 @@ import {
   Search,
   Trash2,
   Loader2,
-  ImageIcon,
   Video,
   File as FileIcon,
 } from "lucide-react";
@@ -65,12 +64,12 @@ const fileKey = (file) => `${file.folder}/${file.name}`;
 
 const cellClass = "!h-14 px-3 py-0 border-b border-border align-middle";
 
-export default function MediaLibrary() {
+export default function AdminReelsPage() {
   const userInfo = useAuthStore((s) => s.userInfo);
   const authed = Boolean(
     userInfo?.authenticated || userInfo?.token || userInfo?._id
   );
-  const folder = "all";
+  const folder = "reels";
   const [search, setSearch] = useState("");
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
@@ -88,7 +87,7 @@ export default function MediaLibrary() {
       setFiles(Array.isArray(data) ? data : []);
       setSelected(new Set());
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not load media files");
+      toast.error(err.response?.data?.detail || "Could not load reels");
       setFiles([]);
     } finally {
       setIsLoading(false);
@@ -99,7 +98,7 @@ export default function MediaLibrary() {
     if (!authed) return;
     loadFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authed, folder]);
+  }, [authed]);
 
   const visibleFiles = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -107,8 +106,7 @@ export default function MediaLibrary() {
     return files.filter(
       (f) =>
         (f.name || "").toLowerCase().includes(q) ||
-        (f.altText || "").toLowerCase().includes(q) ||
-        (f.folder || "").toLowerCase().includes(q)
+        (f.altText || "").toLowerCase().includes(q)
     );
   }, [files, search]);
 
@@ -172,39 +170,33 @@ export default function MediaLibrary() {
   const uploadFiles = async (event) => {
     const list = Array.from(event.target.files || []);
     if (!list.length) return;
-    const maxBytes = 10 * 1024 * 1024;
-    const tooBig = list.find(
-      (f) => f.type.startsWith("image/") && f.size > maxBytes
-    );
+    const maxBytes = 80 * 1024 * 1024;
+    const tooBig = list.find((f) => f.size > maxBytes);
     if (tooBig) {
-      toast.error(`"${tooBig.name}" is over 10 MB`);
+      toast.error(`"${tooBig.name}" is over 80 MB`);
       event.target.value = "";
       return;
     }
     setIsUploading(true);
     let ok = 0;
-    const targetFolder = folder === "ai" ? "ai" : "products";
     try {
       for (const file of list) {
-        if (!file.type.startsWith("image/")) {
-          toast.error(
-            `"${file.name}" skipped — images only (optimised to WebP)`
-          );
+        const isVideo =
+          String(file.type || "").startsWith("video/") ||
+          /\.(mp4|mov|webm|avi|mkv)$/i.test(file.name || "");
+        if (!isVideo) {
+          toast.error(`"${file.name}" skipped — videos only`);
           continue;
         }
-        await adminMediaService.upload(file, targetFolder);
+        await adminMediaService.upload(file, "reels");
         ok += 1;
       }
       if (ok) {
-        toast.success(
-          ok === 1
-            ? "Uploaded & optimised to WebP"
-            : `${ok} files uploaded as WebP`
-        );
+        toast.success(ok === 1 ? "Video uploaded" : `${ok} videos uploaded`);
       }
       await loadFiles();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not upload file(s)");
+      toast.error(err.response?.data?.detail || "Could not upload video(s)");
     } finally {
       setIsUploading(false);
       event.target.value = "";
@@ -216,7 +208,7 @@ export default function MediaLibrary() {
     if (!keys.length) return;
     if (
       !window.confirm(
-        `Delete ${keys.length} file${keys.length === 1 ? "" : "s"}? This cannot be undone.`
+        `Delete ${keys.length} reel${keys.length === 1 ? "" : "s"}? This cannot be undone.`
       )
     ) {
       return;
@@ -230,30 +222,24 @@ export default function MediaLibrary() {
       toast.success("Deleted");
       await loadFiles();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not delete file(s)");
+      toast.error(err.response?.data?.detail || "Could not delete reel(s)");
     }
   };
 
   return (
     <>
       <AdminListLayout
-        title="Files"
+        title="Reels"
         actions={
           <>
             <input
               ref={inputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/*"
               multiple
               className="hidden"
               onChange={uploadFiles}
             />
-            <AdminHeaderButton
-              variant="outline"
-              onClick={() => toast("Upload from URL coming soon")}
-            >
-              Upload from URL
-            </AdminHeaderButton>
             <AdminHeaderButton
               variant="primary"
               onClick={() => inputRef.current?.click()}
@@ -264,7 +250,7 @@ export default function MediaLibrary() {
               ) : (
                 <Upload className="h-3.5 w-3.5" />
               )}
-              {isUploading ? "Uploading…" : "Upload files"}
+              {isUploading ? "Uploading…" : "Upload video"}
             </AdminHeaderButton>
           </>
         }
@@ -277,7 +263,7 @@ export default function MediaLibrary() {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search files"
+                placeholder="Search reels"
                 className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none"
               />
             </div>
@@ -295,7 +281,7 @@ export default function MediaLibrary() {
               className: "w-12",
             },
             { label: "File", className: "min-w-[220px]" },
-            { label: "Alt text", className: "w-[28%]" },
+            { label: "Alt text", className: "w-[32%]" },
             { label: "Date added", className: "w-[140px]" },
             { label: "Size", className: "w-[100px]" },
           ]}
@@ -304,14 +290,14 @@ export default function MediaLibrary() {
               <div className="py-16 text-center">
                 <Folder className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
                 <p className="text-[13px] font-medium text-muted-foreground">
-                  No files found
+                  No reels found
                 </p>
                 <button
                   type="button"
                   onClick={() => inputRef.current?.click()}
                   className="mt-4 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  <Upload className="h-3.5 w-3.5" /> Upload files
+                  <Upload className="h-3.5 w-3.5" /> Upload video
                 </button>
               </div>
             ) : null
@@ -340,7 +326,9 @@ export default function MediaLibrary() {
                   <td className={cellClass}>
                     <Checkbox
                       checked={checked}
-                      onCheckedChange={(value) => toggleOne(file, Boolean(value))}
+                      onCheckedChange={(value) =>
+                        toggleOne(file, Boolean(value))
+                      }
                       aria-label={`Select ${file.name}`}
                       className="data-checked:border-[#303030] data-checked:bg-[#303030]"
                     />
@@ -352,16 +340,15 @@ export default function MediaLibrary() {
                       rel="noreferrer"
                       className="flex min-w-0 items-center gap-3"
                     >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
-                        {file.type === "image" ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                        {file.type === "video" ? (
+                          <video
                             src={file.url}
-                            alt={file.altText || ""}
                             className="h-full w-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
                           />
-                        ) : file.type === "video" ? (
-                          <Video className="h-4 w-4 text-muted-foreground" />
                         ) : (
                           <FileIcon className="h-4 w-4 text-muted-foreground" />
                         )}
@@ -433,9 +420,9 @@ export default function MediaLibrary() {
         </AdminDataTable>
 
         <p className="mt-3 flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted-foreground">
-          <ImageIcon className="h-3 w-3" />
-          {files.length} file{files.length === 1 ? "" : "s"}
-          {" · "}Max 10 MB · optimised to WebP on upload
+          <Video className="h-3 w-3" />
+          {files.length} reel{files.length === 1 ? "" : "s"}
+          {" · "}Max 80 MB · MP4 / MOV / WebM
         </p>
       </AdminListLayout>
 

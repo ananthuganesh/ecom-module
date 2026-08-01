@@ -801,9 +801,14 @@
   --admin-media-thumb-size: 5rem; /* secondary + add */
   border-radius: var(--admin-media-radius);
   border-width: 0.0625rem; /* --p-border-width-025 */
-  cursor: pointer;
+  cursor: grab;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  touch-action: none;
+}
+
+[data-admin-shell] .admin-product-form .admin-media-tile--dragging {
+  cursor: grabbing;
 }
 
 [data-admin-shell] .admin-product-form .admin-media-tile--thumb,

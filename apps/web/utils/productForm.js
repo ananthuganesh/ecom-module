@@ -215,6 +215,7 @@ export function defaultForm() {
     },
     variants: [emptyVariant()],
     status: "draft",
+    badge: "auto",
     hsnCode: "",
     taxClassId: "",
     priceTaxMode: "inclusive",
@@ -268,6 +269,17 @@ export function productToForm(product) {
           : product.status === "out_of_stock"
             ? "active"
             : "draft",
+    badge: ["new_arrival", "trending", "best_seller"].includes(
+      String(product.badge || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_")
+    )
+      ? String(product.badge)
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      : "auto",
     hsnCode: product.hsnCode || "",
     taxClassId: product.taxClassId || "",
     priceTaxMode: product.priceTaxMode === "exclusive" ? "exclusive" : "inclusive",
@@ -369,6 +381,17 @@ export function buildProductPayload(formData) {
       0
     ),
     status: STATUSES.includes(formData.status) ? formData.status : "draft",
+    badge: ["new_arrival", "trending", "best_seller"].includes(
+      String(formData.badge || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_")
+    )
+      ? String(formData.badge)
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      : null,
     hsnCode: (formData.hsnCode || "").trim() || null,
     taxClassId: null,
     priceTaxMode: formData.priceTaxMode === "exclusive" ? "exclusive" : "inclusive",

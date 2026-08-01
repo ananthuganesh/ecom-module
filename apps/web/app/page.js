@@ -12,8 +12,8 @@ export default function Home() {
         id="latest-drops"
         className="py-6 md:py-10 px-2 md:px-4 lg:px-8 scroll-mt-24"
       >
-        <header className="mb-3 md:mb-6 text-left">
-          <h2 className="title-knewave text-3xl md:text-4xl normal-case leading-none tracking-tight">
+        <header className="mb-3 w-full text-center md:mb-6">
+          <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
             Latest <span className="title-knewave-accent">Drops</span>
           </h2>
         </header>

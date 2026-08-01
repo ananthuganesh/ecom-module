@@ -6,9 +6,23 @@
  * @param {number} outputHeight Fixed output height
  * @returns {Promise<Blob>}
  */
-export async function getCroppedImg(imageSrc, pixelCrop, outputWidth = 600, outputHeight = 800) {
-  const sourceBlob = await (await fetch(imageSrc)).blob();
-  const image = await createImageBitmap(sourceBlob);
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load image for crop"));
+    image.src = src;
+  });
+}
+
+export async function getCroppedImg(
+  imageSrc,
+  pixelCrop,
+  outputWidth = 600,
+  outputHeight = 800
+) {
+  // Use <img> instead of fetch(blob:) — CSP connect-src often blocks blob fetches.
+  const image = await loadImageElement(imageSrc);
 
   const canvas = document.createElement("canvas");
   canvas.width = outputWidth;
@@ -27,8 +41,6 @@ export async function getCroppedImg(imageSrc, pixelCrop, outputWidth = 600, outp
     outputWidth,
     outputHeight
   );
-
-  image.close();
 
   return await new Promise((resolve, reject) => {
     canvas.toBlob(

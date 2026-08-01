@@ -125,7 +125,7 @@ function AllProductsContent() {
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-2 gap-x-3 gap-y-8 pb-20 md:grid-cols-3 md:gap-x-6 md:gap-y-12 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 pb-20 md:grid-cols-3 md:gap-3 xl:grid-cols-4 lg:gap-4">
                 {[...Array(8)].map((_, i) => (
                   <ProductSkeleton key={i} />
                 ))}
@@ -145,7 +145,7 @@ function AllProductsContent() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-3 gap-y-8 pb-20 md:grid-cols-3 md:gap-x-6 md:gap-y-12 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 pb-20 md:grid-cols-3 md:gap-3 xl:grid-cols-4 lg:gap-4">
                 {products.map((product) => (
                   <ProductCard
                     key={product._id}

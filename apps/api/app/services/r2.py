@@ -13,7 +13,9 @@ from fastapi import HTTPException
 
 from app.config import get_settings
 
-ALLOWED_FOLDERS = {"products", "ai"}
+ALLOWED_FOLDERS = {"products", "ai", "reels"}
+# Content library "All" excludes reels (managed under Content → Reels).
+LIBRARY_FOLDERS = {"products", "ai"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 
 
@@ -89,7 +91,7 @@ def upload_bytes(
     content_type: str | None = None,
 ) -> dict:
     if folder not in ALLOWED_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products or ai")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
     if not is_configured():
         raise HTTPException(status_code=503, detail="R2 is not configured")
 
@@ -123,11 +125,13 @@ def list_objects(folder: str = "all") -> list[dict]:
     if not is_configured():
         raise HTTPException(status_code=503, detail="R2 is not configured")
     if folder == "all":
-        prefixes = list(ALLOWED_FOLDERS)
+        prefixes = sorted(LIBRARY_FOLDERS)
     elif folder in ALLOWED_FOLDERS:
         prefixes = [folder]
     else:
-        raise HTTPException(status_code=400, detail="folder must be products, ai, or all")
+        raise HTTPException(
+            status_code=400, detail="folder must be products, ai, reels, or all"
+        )
 
     settings = get_settings()
     client = _client()
@@ -168,7 +172,7 @@ def list_objects(folder: str = "all") -> list[dict]:
 
 def delete_object(*, folder: str, name: str) -> dict:
     if folder not in ALLOWED_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products or ai")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
     if not name or Path(name).name != name or ".." in Path(name).parts:
         raise HTTPException(status_code=400, detail="Invalid file name")
     if not is_configured():

@@ -4,6 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   adminProductService,
   adminProductColorService,
 } from "@/api";
@@ -17,7 +31,6 @@ import {
   Printer,
 } from "lucide-react";
 import SafeImage from "@/components/SafeImage";
-import ImageCropModal from "@/components/admin/ImageCropModal";
 import SelectExistingMediaDialog from "@/components/admin/SelectExistingMediaDialog";
 import { AdminHeaderButton, AdminStatusText } from "@/components/admin/list";
 import { Button } from "@/components/ui/button";
@@ -44,7 +57,6 @@ import ProductColorChips from "@/components/admin/ProductColorChips";
 import ProductInventoryCard from "@/components/admin/ProductInventoryCard";
 import ProductSeoCard from "@/components/admin/ProductSeoCard";
 import { cn } from "@/lib/utils";
-import { getCroppedImg } from "@/utils/cropImage";
 import { adminProductHref, productUrlKey } from "@/utils/formatProductUrl";
 import { gstRateForUnitPrice } from "@/utils/gstRate";
 import {
@@ -70,9 +82,73 @@ import {
 } from "@/utils/printProductBarcodeLabel";
 import { storefrontHref } from "../columns";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
+import { PRODUCT_CARD_BADGE_OPTIONS } from "@/utils/urbanProductAdapter";
 
 const productSelectTriggerClass =
   "h-8 w-full border-[#e3e3e3] bg-white shadow-none ring-0 focus-visible:border-[#b5b5b5] focus-visible:ring-0";
+
+const PRIMARY_VARIANT_INDEX = 0;
+
+function SortableMediaTile({
+  src,
+  featured,
+  active,
+  selectionMode,
+  onToggleSelect,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: src });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 20 : undefined,
+      }}
+      onClick={() => onToggleSelect(src)}
+      aria-label={featured ? "Featured product image" : "Product image"}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "admin-media-tile group relative shrink-0 overflow-hidden border bg-[#fafafa]",
+        featured ? "admin-media-tile--featured" : "admin-media-tile--thumb",
+        active ? "border-[#303030]" : "border-[#e3e3e3]",
+        isDragging && "admin-media-tile--dragging opacity-90 shadow-md"
+      )}
+    >
+      <SafeImage src={src} alt="" fill className="object-cover" />
+      <span
+        className={cn(
+          "admin-media-tile-overlay",
+          (active || selectionMode) && "opacity-100"
+        )}
+      >
+        <span
+          className="absolute top-2 left-2"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={active}
+            onCheckedChange={(checked) => {
+              onToggleSelect(src, Boolean(checked));
+            }}
+            className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-[#303030] data-checked:bg-[#303030]"
+          />
+        </span>
+      </span>
+    </button>
+  );
+}
 
 function ProductSelectContent({ children, ...props }) {
   return (
@@ -138,7 +214,7 @@ export default function AdminProductDetailPage() {
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
-  const productRef = params?.id;
+  const productRef = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const isNew =
     String(productRef || "") === "new" ||
     String(pathname || "").endsWith("/products/new");
@@ -157,13 +233,17 @@ export default function AdminProductDetailPage() {
   const barcodeBtnRef = useRef(null);
   const qtyInputRef = useRef(null);
 
-  const [cropOpen, setCropOpen] = useState(false);
-  const [cropSrc, setCropSrc] = useState("");
-  const [cropTarget, setCropTarget] = useState(null);
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState(() => new Set());
   const [addMediaOpen, setAddMediaOpen] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const addMediaInputRef = useRef(null);
+  const primaryVariantIndex = PRIMARY_VARIANT_INDEX;
+  const mediaSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
 
   const dirty = form && snapshot ? isProductFormDirty(form, snapshot) : false;
   const showSaveBar = useProductSaveBarStore((s) => s.show);
@@ -321,65 +401,101 @@ export default function AdminProductDetailPage() {
       },
     }));
 
-  const attachMediaUrls = (urls) => {
+  const attachMediaUrls = (urls, variantIndex = PRIMARY_VARIANT_INDEX) => {
     const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
     if (!nextUrls.length) return;
     setForm((prev) => {
       const list = Array.isArray(prev.variants) ? [...prev.variants] : [];
       if (!list.length) list.push(emptyVariant());
+      const idx = Math.min(
+        Math.max(0, Number(variantIndex) || 0),
+        Math.max(0, list.length - 1)
+      );
       const imgs = [
-        ...(Array.isArray(list[primaryVariantIndex]?.images)
-          ? list[primaryVariantIndex].images.filter(Boolean)
+        ...(Array.isArray(list[idx]?.images)
+          ? list[idx].images.filter(Boolean)
           : []),
       ];
       for (const url of nextUrls) {
         if (!imgs.includes(url)) imgs.push(url);
       }
-      list[primaryVariantIndex] = {
-        ...list[primaryVariantIndex],
+      list[idx] = {
+        ...list[idx],
         images: imgs,
       };
       return { ...prev, variants: list };
     });
   };
 
-  const openCrop = (file, target) => {
-    const src = URL.createObjectURL(file);
-    setCropSrc(src);
-    setCropTarget(target);
-    setCropOpen(true);
-  };
-
-  const closeCrop = () => {
-    if (cropSrc) URL.revokeObjectURL(cropSrc);
-    setCropSrc("");
-    setCropTarget(null);
-    setCropOpen(false);
-  };
-
-  const handleCropped = async (croppedAreaPixels) => {
-    if (!croppedAreaPixels || !cropTarget || !cropSrc) return;
-    try {
-      const blob = await getCroppedImg(cropSrc, croppedAreaPixels, 600, 800);
-      const file = new File([blob], "product.jpg", { type: "image/jpeg" });
-      const { url } = await adminProductService.uploadImage(file);
-      setForm((prev) => {
-        const idx = cropTarget.variantIndex;
-        const imageIndex = cropTarget.imageIndex ?? 0;
-        const nextVariants = prev.variants.map((v, i) => {
-          if (i !== idx) return v;
-          const imgs = Array.isArray(v.images) ? [...v.images.filter(Boolean)] : [];
-          if (imageIndex === -1) imgs.push(url);
-          else if (imageIndex === 0) imgs[0] = url;
-          else imgs[imageIndex] = url;
-          return { ...v, images: imgs };
-        });
-        return { ...prev, variants: nextVariants };
+  const reorderMedia = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    setForm((prev) => {
+      const current = [
+        ...new Set(
+          (prev.variants || []).flatMap((v) =>
+            Array.isArray(v.images) ? v.images.filter(Boolean) : []
+          )
+        ),
+      ];
+      const oldIndex = current.indexOf(activeId);
+      const newIndex = current.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const nextOrder = arrayMove(current, oldIndex, newIndex);
+      const rank = new Map(nextOrder.map((url, i) => [url, i]));
+      const variants = (prev.variants || []).map((v, i) => {
+        if (i === PRIMARY_VARIANT_INDEX) {
+          return { ...v, images: nextOrder };
+        }
+        const imgs = (Array.isArray(v.images) ? v.images : []).filter(Boolean);
+        if (!imgs.length) return v;
+        const sorted = [...imgs].sort(
+          (a, b) => (rank.get(a) ?? 9999) - (rank.get(b) ?? 9999)
+        );
+        return { ...v, images: sorted };
       });
+      return { ...prev, variants };
+    });
+  };
+
+  const toggleMediaSelect = (src, forceChecked) => {
+    setSelectedMedia((prev) => {
+      const next = new Set(prev);
+      if (typeof forceChecked === "boolean") {
+        if (forceChecked) next.add(src);
+        else next.delete(src);
+        return next;
+      }
+      if (next.has(src)) next.delete(src);
+      else next.add(src);
+      return next;
+    });
+  };
+
+  const uploadImageFiles = async (fileList, variantIndex = PRIMARY_VARIANT_INDEX) => {
+    const files = Array.from(fileList || []).filter((f) =>
+      String(f?.type || "").startsWith("image/")
+    );
+    if (!files.length) return;
+    setUploadingMedia(true);
+    try {
+      const urls = [];
+      for (const file of files) {
+        const { url } = await adminProductService.uploadImage(file);
+        if (url) urls.push(url);
+      }
+      attachMediaUrls(urls, variantIndex);
+      toast.success(
+        urls.length === 1 ? "Image uploaded" : `${urls.length} images uploaded`
+      );
     } catch (e) {
-      toast.error(e?.response?.data?.message || e?.message || "Image upload failed");
+      toast.error(
+        e?.response?.data?.detail ||
+          e?.response?.data?.message ||
+          e?.message ||
+          "Image upload failed"
+      );
     } finally {
-      closeCrop();
+      setUploadingMedia(false);
     }
   };
 
@@ -541,7 +657,6 @@ export default function AdminProductDetailPage() {
   );
   const uniqueMedia = [...new Set(mediaImages)];
   const selectedMediaList = uniqueMedia.filter((src) => selectedMedia.has(src));
-  const primaryVariantIndex = 0;
 
   return (
     <>
@@ -738,33 +853,27 @@ export default function AdminProductDetailPage() {
                     onDrop={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const file = e.dataTransfer?.files?.[0];
-                      if (!file || !String(file.type || "").startsWith("image/")) {
-                        return;
-                      }
-                      openCrop(file, {
-                        type: "variant",
-                        variantIndex: primaryVariantIndex,
-                        imageIndex: 0,
-                      });
+                      if (uploadingMedia) return;
+                      void uploadImageFiles(
+                        e.dataTransfer?.files,
+                        primaryVariantIndex
+                      );
                     }}
                   >
                     <div className="flex flex-wrap items-center justify-center gap-3">
                       <FieldLabel className="m-0 inline-flex h-8 cursor-pointer items-center rounded-lg border border-[#c9cccf] bg-white px-3 text-[13px] font-medium text-[#303030] hover:bg-[#f7f7f7]">
-                        Upload new
+                        {uploadingMedia ? "Uploading…" : "Upload new"}
                         <Input
                           type="file"
                           accept="image/*"
+                          multiple
+                          disabled={uploadingMedia}
                           className="hidden"
                           onChange={(e) => {
-                            const file = e.target.files?.[0];
+                            const files = e.target.files;
                             e.target.value = "";
-                            if (!file) return;
-                            openCrop(file, {
-                              type: "variant",
-                              variantIndex: primaryVariantIndex,
-                              imageIndex: 0,
-                            });
+                            if (!files?.length) return;
+                            void uploadImageFiles(files, primaryVariantIndex);
                           }}
                         />
                       </FieldLabel>
@@ -825,65 +934,30 @@ export default function AdminProductDetailPage() {
                     ) : null}
 
                     <div className="flex flex-wrap items-start gap-3">
-                      {uniqueMedia.map((src, imgIdx) => {
-                        const active = selectedMedia.has(src);
-                        const featured = imgIdx === 0;
-                        return (
-                          <button
-                            key={`${src}-${imgIdx}`}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMedia((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(src)) next.delete(src);
-                                else next.add(src);
-                                return next;
-                              });
-                            }}
-                            className={cn(
-                              "admin-media-tile group relative shrink-0 overflow-hidden border bg-[#fafafa]",
-                              featured
-                                ? "admin-media-tile--featured"
-                                : "admin-media-tile--thumb",
-                              active
-                                ? "border-[#303030]"
-                                : "border-[#e3e3e3]"
-                            )}
-                          >
-                            <SafeImage
+                      <DndContext
+                        sensors={mediaSensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={({ active, over }) => {
+                          if (!over) return;
+                          reorderMedia(String(active.id), String(over.id));
+                        }}
+                      >
+                        <SortableContext
+                          items={uniqueMedia}
+                          strategy={rectSortingStrategy}
+                        >
+                          {uniqueMedia.map((src, imgIdx) => (
+                            <SortableMediaTile
+                              key={src}
                               src={src}
-                              alt=""
-                              fill
-                              className="object-cover"
+                              featured={imgIdx === 0}
+                              active={selectedMedia.has(src)}
+                              selectionMode={selectedMediaList.length > 0}
+                              onToggleSelect={toggleMediaSelect}
                             />
-                            <span
-                              className={cn(
-                                "admin-media-tile-overlay",
-                                (active || selectedMediaList.length > 0) &&
-                                  "opacity-100"
-                              )}
-                            >
-                              <span
-                                className="absolute top-2 left-2"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Checkbox
-                                  checked={active}
-                                  onCheckedChange={(checked) => {
-                                    setSelectedMedia((prev) => {
-                                      const next = new Set(prev);
-                                      if (checked) next.add(src);
-                                      else next.delete(src);
-                                      return next;
-                                    });
-                                  }}
-                                  className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-[#303030] data-checked:bg-[#303030]"
-                                />
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
+                          ))}
+                        </SortableContext>
+                      </DndContext>
 
                       <Popover open={addMediaOpen} onOpenChange={setAddMediaOpen}>
                         <PopoverTrigger
@@ -924,16 +998,14 @@ export default function AdminProductDetailPage() {
                         ref={addMediaInputRef}
                         type="file"
                         accept="image/*"
+                        multiple
+                        disabled={uploadingMedia}
                         className="hidden"
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
+                          const files = e.target.files;
                           e.target.value = "";
-                          if (!file) return;
-                          openCrop(file, {
-                            type: "variant",
-                            variantIndex: primaryVariantIndex,
-                            imageIndex: -1,
-                          });
+                          if (!files?.length) return;
+                          void uploadImageFiles(files, primaryVariantIndex);
                         }}
                       />
                     </div>
@@ -1031,17 +1103,15 @@ export default function AdminProductDetailPage() {
               focusPricing={focusPricing}
               blurPricing={blurPricing}
               onUploadImage={(variantIndex) => {
+                if (uploadingMedia) return;
                 const fileInput = document.createElement("input");
                 fileInput.type = "file";
                 fileInput.accept = "image/*";
+                fileInput.multiple = true;
                 fileInput.onchange = (ev) => {
-                  const file = ev.target?.files?.[0];
-                  if (!file) return;
-                  openCrop(file, {
-                    type: "variant",
-                    variantIndex,
-                    imageIndex: 0,
-                  });
+                  const files = ev.target?.files;
+                  if (!files?.length) return;
+                  void uploadImageFiles(files, variantIndex);
                 };
                 fileInput.click();
               }}
@@ -1071,6 +1141,29 @@ export default function AdminProductDetailPage() {
                     ))}
                   </ProductSelectContent>
                 </Select>
+                <Field>
+                  <FieldLabel>Card badge</FieldLabel>
+                  <Select
+                    value={form.badge || "auto"}
+                    onValueChange={(badge) => updateForm({ badge })}
+                  >
+                    <SelectTrigger className={productSelectTriggerClass}>
+                      <SelectValue placeholder="Auto">
+                        {(value) =>
+                          PRODUCT_CARD_BADGE_OPTIONS.find((o) => o.value === value)
+                            ?.label || "Auto"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <ProductSelectContent>
+                      {PRODUCT_CARD_BADGE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </ProductSelectContent>
+                  </Select>
+                </Field>
               </CardContent>
             </Card>
 
@@ -1242,15 +1335,6 @@ export default function AdminProductDetailPage() {
           </aside>
         </div>
       </main>
-
-      <ImageCropModal
-        isOpen={cropOpen}
-        imageSrc={cropSrc}
-        aspect={3 / 4}
-        title="Crop image (product card)"
-        onCancel={closeCrop}
-        onCropComplete={handleCropped}
-      />
 
       <SelectExistingMediaDialog
         open={mediaPickerOpen}

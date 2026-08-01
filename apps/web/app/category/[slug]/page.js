@@ -133,7 +133,7 @@ export default function CategoryPage() {
                                         </div>
 
                                         {/* Products Grid */}
-                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-12 md:gap-x-8 md:gap-y-20">
+                                        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 lg:gap-4">
                                             {collection.products.map((product) => (
                                                 <ProductCard key={product._id} product={product} />
                                             ))}

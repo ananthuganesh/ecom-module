@@ -266,7 +266,7 @@ export default function ProductDetailPage() {
       {similarProducts.length > 0 && <section className="border-t border-gray-100 bg-[#F9F9F5] py-16 sm:py-20">
         <div className="mx-auto max-w-[1500px] px-4 sm:px-6 lg:px-8">
           <div className="mb-10 flex items-end justify-between gap-4"><div><p className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-[#DF1721]">Keep exploring</p><h2 className="mt-2 font-vina text-4xl uppercase leading-none tracking-tight sm:text-5xl">You may also like</h2></div><Link href="/all-products" className="border-b-2 border-black pb-1 text-[12px] font-extrabold uppercase tracking-widest">View all</Link></div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-6">{similarProducts.map((item) => <ProductCard key={item._id} product={item} />)}</div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3 lg:gap-4">{similarProducts.map((item) => <ProductCard key={item._id} product={item} />)}</div>
         </div>
       </section>}
       <RecentlyViewed />

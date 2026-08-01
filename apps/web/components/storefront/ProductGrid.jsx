@@ -31,9 +31,12 @@ export default function ProductGrid() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
         {[...Array(8)].map((_, i) => (
-          <div key={i} className="aspect-[2/3] bg-gray-100 animate-pulse rounded-lg" />
+          <div
+            key={i}
+            className="aspect-[2/3] animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
+          />
         ))}
       </div>
     );
@@ -48,7 +51,7 @@ export default function ProductGrid() {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
       {products.map((product) => (
         <ProductCard key={product._id} product={product} />
       ))}
