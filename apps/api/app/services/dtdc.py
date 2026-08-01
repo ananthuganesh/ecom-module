@@ -102,8 +102,15 @@ async def _origin_details() -> dict[str, Any]:
     phone = (
         (os.environ.get("ORIGIN_PHONE") or "").strip()
         or profile.get("phone")
-        or "9999999999"
+        or ""
     )
+    phone_digits = "".join(ch for ch in str(phone) if ch.isdigit())
+    if len(phone_digits) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Origin phone required for DTDC (set company profile phone or ORIGIN_PHONE)",
+        )
+    phone = phone_digits[-10:]
     line1 = (
         (os.environ.get("ORIGIN_ADDRESS") or "").strip()
         or (wh.addressLine1 if wh and wh.addressLine1 else None)
@@ -145,9 +152,18 @@ async def _origin_details() -> dict[str, Any]:
 
 def _destination_details(order: Order, user: User | None) -> dict[str, Any]:
     addr = order.shippingAddress or {}
+    phone_raw = _addr_field(
+        addr, "phone", "contact", default=(user.phone if user else "") or ""
+    )
+    phone_digits = "".join(ch for ch in str(phone_raw) if ch.isdigit())
+    if len(phone_digits) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer phone required for DTDC shipment",
+        )
     return {
         "name": _addr_field(addr, "name", default=(user.name if user else "") or "Customer"),
-        "phone": _addr_field(addr, "phone", "contact", default=(user.phone if user else "") or "9999999999")[:15],
+        "phone": phone_digits[-10:],
         "alternate_phone": "",
         "address_line_1": _addr_field(addr, "address", "street", "house", "line1", default="Address"),
         "address_line_2": _addr_field(addr, "address2", "line2"),

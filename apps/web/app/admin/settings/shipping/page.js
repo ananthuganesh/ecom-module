@@ -26,10 +26,8 @@ function Section({ title, description, action, children }) {
 export default function ShippingSettingsPage() {
   const [form, setForm] = useState({
     estimatedDeliveryEnabled: false,
-    codFee: 0,
     profiles: [],
     packages: [],
-    carrierAccounts: [],
   });
   const [dtdc, setDtdc] = useState({
     apiKey: "",
@@ -55,10 +53,8 @@ export default function ShippingSettingsPage() {
         if (!mounted) return;
         setForm({
           estimatedDeliveryEnabled: !!data.estimatedDeliveryEnabled,
-          codFee: Number(data.codFee || 0),
           profiles: Array.isArray(data.profiles) ? data.profiles : [],
           packages: Array.isArray(data.packages) ? data.packages : [],
-          carrierAccounts: Array.isArray(data.carrierAccounts) ? data.carrierAccounts : [],
         });
         if (dtdcData) {
           setDtdc((prev) => ({ ...prev, ...dtdcData, apiKey: "" }));
@@ -81,10 +77,8 @@ export default function ShippingSettingsPage() {
       const saved = await adminSettingsService.saveShippingSettings(form);
       setForm({
         estimatedDeliveryEnabled: !!saved.estimatedDeliveryEnabled,
-        codFee: Number(saved.codFee || 0),
         profiles: Array.isArray(saved.profiles) ? saved.profiles : [],
         packages: Array.isArray(saved.packages) ? saved.packages : [],
-        carrierAccounts: Array.isArray(saved.carrierAccounts) ? saved.carrierAccounts : [],
       });
       toast.success("Shipping settings saved");
     } catch (err) {

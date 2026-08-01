@@ -12,11 +12,6 @@ const adminAisensyService = {
     return response.data;
   },
 
-  disconnect: async () => {
-    const response = await axiosClient.post(adminEndpoints.aisensy.disconnect);
-    return response.data;
-  },
-
   syncCustomers: async () => {
     const response = await axiosClient.post(adminEndpoints.aisensy.syncCustomers);
     return response.data;
@@ -24,13 +19,6 @@ const adminAisensyService = {
 
   syncCatalog: async () => {
     const response = await axiosClient.post(adminEndpoints.aisensy.syncCatalog);
-    return response.data;
-  },
-
-  sendAbandonedRecovery: async (checkoutId) => {
-    const response = await axiosClient.post(
-      adminEndpoints.aisensy.sendAbandonedRecovery(checkoutId)
-    );
     return response.data;
   },
 };

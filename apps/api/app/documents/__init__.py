@@ -336,19 +336,6 @@ class Coupon(Document):
         name = "coupons"
 
 
-class Inventory(Document):
-    productName: str
-    supplier: Optional[str] = None
-    purchasePrice: float = 0
-    quantity: int = 0
-    totalCost: float = 0
-    purchaseDate: Optional[datetime] = None
-    notes: Optional[str] = None
-
-    class Settings:
-        name = "inventories"
-
-
 class Warehouse(Document):
     name: str
     code: Indexed(str, unique=True)  # type: ignore[valid-type]
@@ -708,7 +695,6 @@ ALL_DOCUMENTS = [
     Brand,
     CollectionDoc,
     Coupon,
-    Inventory,
     Warehouse,
     StockBalance,
     StockMovement,

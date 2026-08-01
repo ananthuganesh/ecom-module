@@ -1,4 +1,8 @@
-"""Extract and persist Razorpay payment instrument details (card / UPI / netbanking)."""
+"""Extract and persist Razorpay payment instrument details (card / UPI / netbanking).
+
+Note: method label "wallet" means Razorpay's payment instrument type (e.g. Paytm wallet),
+not the removed store-credit wallet feature.
+"""
 
 from __future__ import annotations
 

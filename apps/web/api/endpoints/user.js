@@ -20,7 +20,6 @@ const orders = {
   base: "orders",
   myOrders: "orders/myorders",
   byId: (id) => `orders/${id}`,
-  pay: (id) => `orders/${id}/pay`,
   releaseReservation: (id) => `orders/${id}/release-reservation`,
 };
 

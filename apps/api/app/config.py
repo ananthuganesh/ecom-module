@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     mongo_uri: str = "mongodb://127.0.0.1:27017/urbanaana"
     jwt_secret: str = "dev-secret-change-in-production"
     jwt_expire_days: int = 7
-    port: int = 8000
     environment: str = "development"
     node_env: str = "development"
     allowed_origins: str = ""
@@ -23,14 +22,11 @@ class Settings(BaseSettings):
     aisensy_project_id: str = ""
     aisensy_project_api_key: str = ""
 
-    encryption_key: str = ""
-
     r2_bucket: str = ""
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
     r2_endpoint: str = ""
     r2_public_url: str = ""
-    r2_account_id: str = ""
     r2_key_prefix: str = ""
 
     openrouter_api_key: str = ""
@@ -41,9 +37,6 @@ class Settings(BaseSettings):
 
     resend_api_key: str = ""
     resend_from: str = "Urban Aana <noreply@urbanaana.com>"
-
-    gtm_id: str = ""
-    gtm_enabled: bool = True
 
     ga4_property_id: str = ""
     ga4_credentials_json: str = ""

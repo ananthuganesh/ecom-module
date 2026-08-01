@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, collections, coupons, erp, gtm, media, orders, payments, products, shipping, stock_admin, users
+from app.routers import abandoned, admin, collections, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
 
 
 @asynccontextmanager
@@ -94,7 +94,6 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(stock_admin.router)
     app.include_router(erp.router)
     app.include_router(abandoned.router)
-    app.include_router(gtm.router)
 
     upload_root = Path(__file__).resolve().parent.parent / "uploads"
     upload_root.mkdir(parents=True, exist_ok=True)

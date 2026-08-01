@@ -6,25 +6,9 @@ export const adminShippingService = {
     return response.data;
   },
 
-  /** @deprecated use createShipment */
-  retryShipping: async (orderId) => {
-    const response = await api.post(`/shipping/create/${orderId}`);
-    return response.data;
-  },
-
-  trackShipment: async (orderId) => {
-    const response = await api.get(`/shipping/track/${orderId}`);
-    return response.data;
-  },
-
   /** Soft-refresh DTDC statuses for open AWB orders; returns updated order payloads. */
   syncStatuses: async (orderIds) => {
     const response = await api.post(`/shipping/sync-statuses`, { orderIds });
-    return response.data;
-  },
-
-  cancelShipment: async (orderId) => {
-    const response = await api.post(`/shipping/cancel/${orderId}`);
     return response.data;
   },
 

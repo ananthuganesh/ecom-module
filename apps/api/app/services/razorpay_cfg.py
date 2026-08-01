@@ -63,20 +63,3 @@ async def get_prefs() -> dict[str, Any]:
         "hasSecret": bool(creds["keySecret"]),
         "hasWebhookSecret": bool(creds["webhookSecret"]),
     }
-
-
-async def save_prefs(body: dict) -> dict[str, Any]:
-    """Persist only non-secret preferences. Credentials always come from env."""
-    s = await Setting.find_one(Setting.key == SETTING_KEY)
-    current = dict(s.value) if s and isinstance(s.value, dict) else {}
-    value = {
-        "publicApiBaseUrl": str(
-            body.get("publicApiBaseUrl") if "publicApiBaseUrl" in body else current.get("publicApiBaseUrl") or ""
-        ).strip().rstrip("/"),
-    }
-    if s:
-        s.value = value
-        await s.save()
-    else:
-        await Setting(key=SETTING_KEY, value=value).insert()
-    return await get_prefs()

@@ -5,7 +5,6 @@ const { products: e } = adminEndpoints;
 
 export const adminProductService = {
   getProducts: (params = {}) => {
-    console.log('[ProductService] Fetching products with params:', params);
     let url = `${e.base}?_t=${Date.now()}`;
     if (params.category) {
       url += `&category=${params.category}`;
@@ -27,15 +26,6 @@ export const adminProductService = {
   update: (id, data) =>
     client.put(e.byId(id), data).then((res) => res.data),
 
-  updatePricing: (id, data) =>
-    client.patch(e.pricing(id), data).then((res) => res.data),
-
-  updateStock: (id, data) =>
-    client.patch(e.stock(id), data).then((res) => res.data),
-
-  updateVariant: (id, data) =>
-    client.patch(e.variant(id), data).then((res) => res.data),
-
   bulkUpdate: (data) =>
     client.patch(e.bulkUpdate, data).then((res) => res.data),
 
@@ -51,16 +41,6 @@ export const adminProductService = {
     form.append("file", file);
     return client
       .post("/admin/upload/image", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      .then((res) => res.data);
-  },
-
-  importProducts: (file) => {
-    const form = new FormData();
-    form.append("file", file);
-    return client
-      .post(`${e.base}/import`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       })
       .then((res) => res.data);

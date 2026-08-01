@@ -9,10 +9,11 @@ from typing import Any
 from app.documents import Order
 
 # Customers who leave Razorpay without paying → abandoned after this idle window.
-# Keep aligned with stock soft-reserve TTL (30m) so late pay still has a hold when possible.
+# Default 30m — aligned with STOCK_RESERVE_TTL_MINUTES. Separate from AiSensy
+# abandoned-cart WhatsApp delay (admin AiSensy abandonedMinutes, default 15).
 DEFAULT_ABANDONED_ORDER_MINUTES = 30
 ABANDONABLE_STATUSES = {"order placed", "draft"}
-PAID_LIKE = {"paid", "refunded", "partially_refunded", "pay_on_delivery"}
+PAID_LIKE = {"paid", "refunded", "partially_refunded", "pay_on_delivery", "refund_pending"}
 COD_LIKE = {"cod", "cash_on_delivery", "pay_on_delivery"}
 
 

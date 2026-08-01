@@ -62,10 +62,10 @@ async def _upgrade_guest_customer_from_order(order: Order) -> None:
         await user.save()
 
 
-async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict | None:
-    """Best-effort full refund when we cannot fulfill after capture."""
+async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict:
+    """Full refund when we cannot fulfill after capture. Never invents success."""
     if not payment_id:
-        return None
+        return {"ok": False, "error": "missing_payment_id"}
     try:
         key_id, key_secret = await _get_razorpay_creds()
         import razorpay
@@ -76,8 +76,12 @@ async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict
         already_refunded = int(payment.get("amount_refunded") or 0)
         remaining = amount_paid - already_refunded
         if remaining <= 0:
-            return None
-        return client.payment.refund(
+            return {
+                "ok": True,
+                "already_refunded": True,
+                "amount_refunded": already_refunded,
+            }
+        refund = client.payment.refund(
             payment_id,
             {
                 "amount": remaining,
@@ -85,9 +89,39 @@ async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict
                 "notes": {"reason": reason[:200]},
             },
         )
+        return {
+            "ok": True,
+            "refund": refund if isinstance(refund, dict) else {"raw": refund},
+            "amount_refunded": remaining,
+        }
     except Exception as exc:
         print(f"[Payment] Auto-refund failed for {payment_id}: {exc}")
-        return None
+        return {"ok": False, "error": str(exc)[:300]}
+
+
+def _apply_auto_refund_to_order(order: Order, *, reason: str, result: dict) -> None:
+    """Persist refund outcome. Only mark refunded when Razorpay confirms."""
+    details = dict(order.transactionDetails or {})
+    details["autoRefundReason"] = reason
+    if result.get("ok"):
+        order.paymentStatus = "refunded"
+        details["paymentStatus"] = "refunded"
+        details.pop("autoRefundFailed", None)
+        details.pop("autoRefundError", None)
+        refund = result.get("refund") or {}
+        if isinstance(refund, dict) and refund.get("id"):
+            details["autoRefundId"] = refund["id"]
+        if result.get("amount_refunded") is not None:
+            details["autoRefundAmount"] = result["amount_refunded"]
+        if result.get("already_refunded"):
+            details["autoRefundAlreadyDone"] = True
+    else:
+        order.paymentStatus = "refund_pending"
+        details["paymentStatus"] = "refund_pending"
+        details["autoRefundFailed"] = True
+        details["autoRefundError"] = result.get("error") or "refund_failed"
+    order.transactionDetails = details
+    order.updatedAt = datetime.utcnow()
 
 
 async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dict, user: User | None = None) -> None:
@@ -109,26 +143,30 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
     try:
         await ensure_stock_for_payment(order)
     except HTTPException as stock_exc:
-        await _auto_refund_razorpay_payment(rz_payment_id, reason="stock_unavailable_at_capture")
-        order.paymentStatus = "refunded"
-        order.transactionDetails = {
-            **(order.transactionDetails or {}),
-            "paymentStatus": "refunded",
-            "stockFailureReason": str(stock_exc.detail),
-            "autoRefundReason": "stock_unavailable_at_capture",
-        }
-        order.updatedAt = datetime.utcnow()
+        refund_result = await _auto_refund_razorpay_payment(
+            rz_payment_id, reason="stock_unavailable_at_capture"
+        )
+        _apply_auto_refund_to_order(
+            order, reason="stock_unavailable_at_capture", result=refund_result
+        )
+        details = dict(order.transactionDetails or {})
+        details["stockFailureReason"] = str(stock_exc.detail)
+        order.transactionDetails = details
         await order.save()
-        raise HTTPException(
-            status_code=409,
-            detail="Item no longer available. Payment has been refunded.",
-        ) from stock_exc
+        if refund_result.get("ok"):
+            detail = "Item no longer available. Payment has been refunded."
+        else:
+            detail = (
+                "Item no longer available. Automatic refund failed — "
+                "our team will refund you shortly."
+            )
+        raise HTTPException(status_code=409, detail=detail) from stock_exc
 
     col = Order.get_pymongo_collection()
     claim = await col.find_one_and_update(
         {
             "_id": order.id,
-            "paymentStatus": {"$nin": ["paid", "refunded", "partially_refunded"]},
+            "paymentStatus": {"$nin": ["paid", "refunded", "partially_refunded", "refund_pending"]},
         },
         {
             "$set": {
@@ -164,19 +202,19 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
     try:
         await apply_order_commitments(order)
     except Exception as commit_exc:
-        await _auto_refund_razorpay_payment(rz_payment_id, reason="stock_commit_failed")
-        order.paymentStatus = "refunded"
-        order.transactionDetails = {
-            **(order.transactionDetails or {}),
-            "paymentStatus": "refunded",
-            "autoRefundReason": "stock_commit_failed",
-        }
-        order.updatedAt = datetime.utcnow()
+        refund_result = await _auto_refund_razorpay_payment(
+            rz_payment_id, reason="stock_commit_failed"
+        )
+        _apply_auto_refund_to_order(order, reason="stock_commit_failed", result=refund_result)
         await order.save()
-        raise HTTPException(
-            status_code=409,
-            detail="Could not allocate stock. Payment has been refunded.",
-        ) from commit_exc
+        if refund_result.get("ok"):
+            detail = "Could not allocate stock. Payment has been refunded."
+        else:
+            detail = (
+                "Could not allocate stock. Automatic refund failed — "
+                "our team will refund you shortly."
+            )
+        raise HTTPException(status_code=409, detail=detail) from commit_exc
 
     await _upgrade_guest_customer_from_order(order)
     try:

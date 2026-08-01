@@ -18,7 +18,6 @@ const products = {
 
 const orders = {
   base: "/admin/orders",
-  stats: "/admin/orders/counts",
   counts: "/admin/orders/counts",
   byId: (id) => `/admin/orders/${id}`,
   status: (id) => `/admin/orders/${id}/status`,
@@ -26,11 +25,6 @@ const orders = {
   bulkStatus: "/admin/orders/bulk-update",
   deliveryDate: (id) => `/admin/orders/${id}/delivery-date`,
   return: (id) => `/admin/orders/${id}/return`,
-};
-
-const brands = {
-  base: "/admin/brands",
-  byId: (id) => `/admin/brands/${id}`,
 };
 
 const categories = {
@@ -44,23 +38,12 @@ const productColors = {
 
 const aisensy = {
   settings: "/admin/aisensy/settings",
-  disconnect: "/admin/aisensy/disconnect",
   syncCustomers: "/admin/aisensy/sync-customers",
   syncCatalog: "/admin/aisensy/sync-catalog",
-  sendAbandonedRecovery: (id) => `/admin/abandoned-checkouts/${id}/send-recovery`,
 };
 
 const ga4 = {
   report: "/admin/ga4/report",
-};
-
-const aiMedia = {
-  generate: "/admin/ai-media/generate",
-  jobs: "/admin/ai-media/jobs",
-  job: (id) => `/admin/ai-media/jobs/${id}`,
-  approve: (id) => `/admin/ai-media/jobs/${id}/approve`,
-  attachProduct: (id) => `/admin/ai-media/jobs/${id}/attach-product`,
-  status: "/admin/ai-media/status",
 };
 
 const collections = {
@@ -95,12 +78,10 @@ export const adminEndpoints = {
   users,
   products,
   orders,
-  brands,
   categories,
   productColors,
   aisensy,
   ga4,
-  aiMedia,
   collections,
   taxClasses,
   companyProfile,

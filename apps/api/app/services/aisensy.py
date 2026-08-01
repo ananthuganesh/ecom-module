@@ -23,10 +23,6 @@ CAMPAIGN_URL = "https://backend.aisensy.com/campaign/t1/api/v2"
 CONTACT_URL_DEFAULT = "https://backend.aisensy.com/direct-apis/t1/contacts"
 DEFAULT_ABANDONED_MINUTES = 15
 ABANDONED_POLL_SECONDS = 60
-PLACEHOLDER_IMAGE = (
-    "https://images.unsplash.com/photo-1600716051809-e997e11a5d52"
-    "?auto=format&fit=crop&w=800&q=80"
-)
 DEFAULT_PUBLIC_SITE = "https://urbanaana.com"
 
 
@@ -433,7 +429,7 @@ def _product_unit_price(product: Product) -> tuple[float, float | None]:
     return selling_f, None
 
 
-def _variant_image(product: Product, variant: dict | None, *, site: str) -> str:
+def _variant_image(product: Product, variant: dict | None, *, site: str) -> str | None:
     images = list((variant or {}).get("images") or [])
     for img in images:
         abs_url = absolute_http_url(img, base=site)
@@ -443,7 +439,7 @@ def _variant_image(product: Product, variant: dict | None, *, site: str) -> str:
         abs_url = absolute_http_url(img, base=site)
         if abs_url:
             return abs_url
-    return PLACEHOLDER_IMAGE
+    return None
 
 
 def _variant_label(product: Product, variant: dict | None) -> str:
@@ -485,9 +481,11 @@ async def sync_catalog() -> dict[str, Any]:
             **public_settings(cfg),
         }
 
+    site = resolve_public_site_url(cfg)
+    catalog_placeholder = absolute_http_url("/banner.webp", base=site) or f"{site}/banner.webp"
     ensured = await client.ensure_catalog_id(
         preferred_id=str(cfg.get("catalogId") or "").strip() or None,
-        default_image_url=PLACEHOLDER_IMAGE,
+        default_image_url=catalog_placeholder,
     )
     if not ensured.get("ok"):
         err = str(ensured.get("error") or "catalog_ensure_failed")[:500]
@@ -495,7 +493,6 @@ async def sync_catalog() -> dict[str, Any]:
         return {"ok": False, "error": err, **public_settings(await get_settings())}
 
     catalog_id = str(ensured["catalogId"])
-    site = resolve_public_site_url(cfg)
     products = await Product.find(Product.status == "active").to_list()
 
     created = 0
@@ -536,6 +533,9 @@ async def sync_catalog() -> dict[str, Any]:
                 }
 
             image_url = _variant_image(product, vdict if variant is not None else None, site=site)
+            if not image_url:
+                skipped += 1
+                continue
             payload: dict[str, Any] = {
                 "catalogId": catalog_id,
                 "name": _variant_label(product, vdict if variant is not None else None)[:200],

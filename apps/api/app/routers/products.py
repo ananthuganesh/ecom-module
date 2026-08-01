@@ -1,23 +1,15 @@
 import math
 import re
-from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
-from app.deps import AdminUser, CurrentUser
 from app.documents import Product
 from app.serializers import product_dict
 from app.services.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/api/products", tags=["products"])
-
-
-class ReviewBody(BaseModel):
-    rating: int
-    comment: str = ""
 
 
 @router.get("")
@@ -144,51 +136,3 @@ async def by_id(product_id: str):
         raise HTTPException(status_code=404, detail="Product not found")
     return product_dict(product)
 
-
-@router.post("", status_code=201)
-async def create_product(body: dict, _: AdminUser):
-    data = {k: v for k, v in body.items() if k != "_id"}
-    if "type" not in data and "subcategory" in data:
-        data["type"] = data.get("subcategory")
-    data.pop("subcategory", None)
-    product = Product(**data)
-    product.createdAt = datetime.utcnow()
-    product.updatedAt = datetime.utcnow()
-    await product.insert()
-    return product_dict(product)
-
-
-@router.put("/{product_id}")
-async def update_product(product_id: str, body: dict, _: AdminUser):
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    data = dict(body)
-    if "type" not in data and "subcategory" in data:
-        data["type"] = data.get("subcategory")
-    data.pop("subcategory", None)
-    for k, v in data.items():
-        if k in ("_id", "id"):
-            continue
-        setattr(product, k, v)
-    product.updatedAt = datetime.utcnow()
-    await product.save()
-    return product_dict(product)
-
-
-@router.delete("/{product_id}")
-async def delete_product(product_id: str, _: AdminUser):
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    await product.delete()
-    return {"message": "Product removed"}
-
-
-@router.post("/{product_id}/reviews")
-async def add_review(product_id: str, body: ReviewBody, user: CurrentUser):
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    # Schema historically lacked reviews; acknowledge without breaking clients
-    return {"message": "Review submitted", "product": str(product.id), "user": str(user.id), "rating": body.rating}

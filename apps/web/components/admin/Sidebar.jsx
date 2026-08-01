@@ -20,7 +20,6 @@ import {
   ShoppingBag,
   Users,
   Settings,
-  Grid2X2,
   TicketPercent,
   BarChart3,
   Folder,
@@ -161,7 +160,7 @@ const menuItems = [
     icon: Package,
     subItems: [
       { name: "Inventory", href: "/admin/products/inventory" },
-      { name: "Collections", href: "/admin/collections", icon: Grid2X2 },
+      { name: "Collections", href: "/admin/collections" },
     ],
   },
   { name: "Customers", href: "/admin/customers", icon: Users },
@@ -176,7 +175,6 @@ const menuItems = [
     name: "Content",
     href: "/admin/content",
     icon: Folder,
-    subItems: [{ name: "AI Studio", href: "/admin/content/ai-studio" }],
   },
   {
     name: "Purchase",

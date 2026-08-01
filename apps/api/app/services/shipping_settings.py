@@ -18,16 +18,28 @@ DEFAULT_SHIPPING_SETTINGS = {
             ],
         }
     ],
-    "packages": [],
-    "carrierAccounts": [],
+    "packages": [
+        {
+            "id": "box-1",
+            "name": "Standard box",
+            "lengthCm": 30,
+            "widthCm": 20,
+            "heightCm": 10,
+            "weightKg": 0.5,
+        }
+    ],
 }
 
 
 async def get_shipping_settings() -> dict:
     s = await Setting.find_one(Setting.key == "shipping_settings")
     if s and isinstance(s.value, dict):
-        return {**DEFAULT_SHIPPING_SETTINGS, **s.value}
-    return dict(DEFAULT_SHIPPING_SETTINGS)
+        merged = {**DEFAULT_SHIPPING_SETTINGS, **s.value}
+    else:
+        merged = dict(DEFAULT_SHIPPING_SETTINGS)
+    merged.pop("codFee", None)
+    merged.pop("carrierAccounts", None)
+    return merged
 
 
 def rate_for_zip(settings: dict, zipcode: str, country: str = "IN") -> tuple[bool, float]:

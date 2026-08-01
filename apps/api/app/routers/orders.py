@@ -5,7 +5,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pymongo import ReturnDocument
 
-from app.deps import AdminUser, CurrentUser
+from app.deps import AdminUser, CurrentUser, PaymentsWriter
 from app.documents import AbandonedCheckout, Order, OrderItem, Product, Setting
 from app.serializers import remap_order
 from app.services import erp_ops
@@ -629,25 +629,30 @@ async def get_order(order_id: str, user: CurrentUser):
 
 
 @router.put("/{order_id}/pay")
-async def mark_paid(order_id: str, user: CurrentUser, body: dict | None = None):
-    """Admin-only manual mark paid. Customer payments must use /api/payments/verify."""
-    if not user.isAdmin:
-        raise HTTPException(status_code=403, detail="Only admin can manually mark orders paid")
+async def mark_paid(order_id: str, admin: PaymentsWriter, body: dict | None = None):
+    """Staff with payments.write only. Customer payments must use /api/payments/verify."""
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     from app.services.stock import ensure_stock_for_payment
 
     await ensure_stock_for_payment(order)
+    reason = str((body or {}).get("reason") or "admin_manual_mark_paid").strip()[:200]
     order.paymentStatus = "paid"
-    order.transactionDetails = {**(order.transactionDetails or {}), "paymentStatus": "paid", **(body or {})}
+    order.transactionDetails = {
+        **(order.transactionDetails or {}),
+        "paymentStatus": "paid",
+        "markedPaidBy": str(admin.id),
+        "markedPaidReason": reason,
+        **{k: v for k, v in (body or {}).items() if k not in {"reason"}},
+    }
     order.updatedAt = datetime.utcnow()
     await order.save()
     await apply_order_commitments(order)
     try:
-        await process_full_order_flow(order, user)
-    except Exception:
-        pass
+        await process_full_order_flow(order, admin)
+    except Exception as exc:
+        print(f"[Orders] mark_paid fulfillment failed: {exc}")
     return remap_order(order)
 
 

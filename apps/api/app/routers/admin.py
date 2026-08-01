@@ -38,6 +38,7 @@ from app.documents import (
 from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
 from app.services import erp_ops
 from app.services.rate_limit import rate_limit_dependency
+from app.services.shipping_settings import get_shipping_settings as load_shipping_settings
 from app.services.stock import apply_order_commitments, reserve_order_stock
 from app.services.store_settings import (
     get_notification_prefs,
@@ -83,27 +84,6 @@ DEFAULT_COMPANY_PROFILE = {
     "lowStockThreshold": 10,
     "orderPrefix": "#",
     "orderSuffix": "",
-}
-
-DEFAULT_SHIPPING_SETTINGS = {
-    "estimatedDeliveryEnabled": False,
-    "codFee": 0,
-    "profiles": [
-        {
-            "id": "default",
-            "name": "General profile",
-            "isDefault": True,
-            "appliesTo": "all_products",
-            "zones": [
-                {"name": "Local", "countries": ["India"], "rate": 0, "rateType": "flat"},
-                {"name": "Rest of India", "countries": ["India"], "rate": 49, "rateType": "flat"},
-            ],
-        }
-    ],
-    "packages": [
-        {"id": "box-1", "name": "Standard box", "lengthCm": 30, "widthCm": 20, "heightCm": 10, "weightKg": 0.5}
-    ],
-    "carrierAccounts": [],
 }
 
 INDIA_TAX_REGIONS = [
@@ -1459,14 +1439,27 @@ async def order_payment_status(order_id: str, body: dict, _: PaymentsWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    order.paymentStatus = body.get("paymentStatus", order.paymentStatus)
+    next_status = str(body.get("paymentStatus") or order.paymentStatus or "").strip().lower()
+    # Manual refunds require Razorpay; do not invent refunded state here.
+    allowed = {"pending", "paid", "failed", "pay_on_delivery"}
+    if next_status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid paymentStatus '{next_status}'. "
+                "Allowed: pending, paid, failed, pay_on_delivery. "
+                "Refunded statuses require a Razorpay refund."
+            ),
+        )
+    order.paymentStatus = next_status
     order.transactionDetails = {
         **(order.transactionDetails or {}),
         "paymentStatus": order.paymentStatus,
+        "paymentStatusSetBy": "admin",
     }
     order.updatedAt = datetime.utcnow()
     await order.save()
-    if str(order.paymentStatus or "").lower() == "paid":
+    if next_status == "paid":
         await apply_order_commitments(order)
         try:
             await erp_ops.ensure_order_invoice_safe(order, context="admin_payment_paid")
@@ -1773,14 +1766,6 @@ async def save_aisensy_settings(body: dict, _: AdminUser):
     return await aisensy_svc.save_prefs(body or {})
 
 
-@router.post("/aisensy/disconnect")
-async def disconnect_aisensy(_: AdminUser):
-    raise HTTPException(
-        status_code=400,
-        detail="AiSensy is configured via environment variables. Remove AISENSY_* from the API env and restart to disconnect.",
-    )
-
-
 @router.get("/ga4/report")
 async def ga4_report(
     _: AdminUser,
@@ -1806,21 +1791,6 @@ async def ai_media_status(_: AdminUser):
         "enabled": bool(api_key),
         "provider": provider,
     }
-
-
-@router.get("/openrouter/settings")
-async def openrouter_settings_gone(_: AdminUser):
-    raise HTTPException(status_code=410, detail="AI provider is configured via server environment")
-
-
-@router.put("/openrouter/settings")
-async def save_openrouter_settings_gone(_: AdminUser):
-    raise HTTPException(status_code=410, detail="AI provider is configured via server environment")
-
-
-@router.post("/openrouter/disconnect")
-async def disconnect_openrouter_gone(_: AdminUser):
-    raise HTTPException(status_code=410, detail="AI provider is configured via server environment")
 
 
 async def _save_upload_temp(upload: UploadFile, folder: Path) -> tuple[str, Path]:
@@ -2200,23 +2170,26 @@ async def save_company_profile(body: dict, _: AdminUser):
 
 @router.get("/shipping-settings")
 async def get_shipping_settings(_: AdminUser):
-    s = await Setting.find_one(Setting.key == "shipping_settings")
-    if not s or not isinstance(s.value, dict):
-        return {**DEFAULT_SHIPPING_SETTINGS}
-    return {**DEFAULT_SHIPPING_SETTINGS, **s.value}
+    return await load_shipping_settings()
 
 
 @router.put("/shipping-settings")
 async def save_shipping_settings(body: dict, _: AdminUser):
-    current = await get_shipping_settings(_)
-    value = {**current, **(body or {})}
+    current = await load_shipping_settings()
+    incoming = dict(body or {})
+    # Drop legacy Shiprocket-era keys if clients still send them.
+    incoming.pop("codFee", None)
+    incoming.pop("carrierAccounts", None)
+    value = {**current, **incoming}
+    value.pop("codFee", None)
+    value.pop("carrierAccounts", None)
     s = await Setting.find_one(Setting.key == "shipping_settings")
     if s:
         s.value = value
         await s.save()
     else:
         await Setting(key="shipping_settings", value=value).insert()
-    return value
+    return await load_shipping_settings()
 
 
 @router.get("/dtdc/settings")
