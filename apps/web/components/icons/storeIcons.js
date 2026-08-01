@@ -1,0 +1,34 @@
+/** Storefront icon set mapped to /public/icons */
+import { createPublicIcon } from "@/components/icons/PublicIcon";
+
+export const MenuIcon = createPublicIcon("icon-menu");
+export const CartIcon = createPublicIcon("icon-cart");
+export const AccountIcon = createPublicIcon("icon-account");
+export const StoreIcon = createPublicIcon("icon-store-01");
+export const BagIcon = createPublicIcon("icon-shopping-bag-01");
+export const PackageIcon = createPublicIcon("icon-package");
+export const OrdersIcon = createPublicIcon("icon-orders");
+export const TruckIcon = createPublicIcon("icon-delivery-truck-01");
+export const PlusIcon = createPublicIcon("icon-plus");
+export const MinusIcon = createPublicIcon("icon-minus");
+export const CloseIcon = createPublicIcon("icon-close");
+export const DeleteIcon = createPublicIcon("icon-delete");
+export const FilterIcon = createPublicIcon("icon-filter");
+export const SearchIcon = createPublicIcon("icon-search");
+export const ChevronLeftIcon = createPublicIcon("icon-chevron-left");
+export const ChevronRightIcon = createPublicIcon("icon-chevron-right");
+export const CaretIcon = createPublicIcon("icon-caret");
+export const ArrowIcon = createPublicIcon("icon-arrow");
+export const HeartBagIcon = createPublicIcon("icon-shopping-bag-favorite");
+export const AddToCartIcon = createPublicIcon("icon-add-to-cart");
+export const CheckIcon = createPublicIcon("icon-checkmark");
+export const CheckBurstIcon = createPublicIcon("icon-checkmark-burst");
+export const WarningIcon = createPublicIcon("icon-warning");
+export const InfoIcon = createPublicIcon("icon-info");
+export const ExternalIcon = createPublicIcon("icon-external");
+export const CardIcon = createPublicIcon("icon-loyalty-card");
+export const TagIcon = createPublicIcon("icon-tags");
+export const AvailableIcon = createPublicIcon("icon-available");
+export const RulerIcon = createPublicIcon("icon-ruler");
+export const ReturnIcon = createPublicIcon("icon-return-request");
+export const ErrorIcon = createPublicIcon("icon-error");

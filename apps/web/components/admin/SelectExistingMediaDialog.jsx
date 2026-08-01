@@ -1,0 +1,201 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
+import { toast } from "sonner";
+import { adminMediaService } from "@/api";
+import SafeImage from "@/components/SafeImage";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
+
+function mediaKey(file) {
+  return file?.key || `${file?.folder || ""}/${file?.name || ""}`;
+}
+
+export default function SelectExistingMediaDialog({
+  open,
+  onOpenChange,
+  onSelect,
+  excludeUrls = [],
+}) {
+  const [files, setFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
+
+  const excluded = useMemo(
+    () => new Set((excludeUrls || []).filter(Boolean)),
+    [excludeUrls]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setSelected(new Set());
+    setSearch("");
+    (async () => {
+      try {
+        const data = await adminMediaService.list("products");
+        if (cancelled) return;
+        const list = (Array.isArray(data) ? data : []).filter(
+          (f) => (f.type || "image") === "image" && f.url
+        );
+        setFiles(list);
+      } catch (err) {
+        if (!cancelled) {
+          setFiles([]);
+          toast.error(
+            err?.response?.data?.detail || "Could not load media library"
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return files.filter((f) => {
+      if (excluded.has(f.url)) return false;
+      if (!q) return true;
+      return (
+        String(f.name || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(f.altText || "")
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [files, search, excluded]);
+
+  const toggle = (url) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  };
+
+  const handleDone = () => {
+    const urls = [...selected];
+    if (!urls.length) {
+      onOpenChange?.(false);
+      return;
+    }
+    onSelect?.(urls);
+    onOpenChange?.(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[min(90vh,40rem)] w-full flex-col gap-3 sm:max-w-2xl"
+        showCloseButton
+      >
+        <DialogHeader>
+          <DialogTitle className="text-[16px] font-medium text-[#303030]">
+            Select existing media
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-[#8a8a8a]" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search files"
+            className="h-8 border-[#e3e3e3] bg-white pl-8"
+          />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[#e3e3e3]">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-[#616161]">
+              <Spinner className="size-4" /> Loading media…
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="px-4 py-16 text-center text-[13px] text-[#616161]">
+              No images in the media library yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
+              {visible.map((file) => {
+                const active = selected.has(file.url);
+                return (
+                  <button
+                    key={mediaKey(file)}
+                    type="button"
+                    onClick={() => toggle(file.url)}
+                    className={cn(
+                      "relative aspect-square overflow-hidden rounded-lg border bg-[#fafafa] text-left",
+                      active
+                        ? "border-[#005bd3] ring-2 ring-[#005bd3]/30"
+                        : "border-[#e3e3e3] hover:border-[#b5b5b5]"
+                    )}
+                    title={file.name}
+                  >
+                    <SafeImage
+                      src={file.url}
+                      alt={file.altText || file.name || ""}
+                      fill
+                      className="object-cover"
+                    />
+                    {active ? (
+                      <span className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#005bd3] text-[11px] font-bold text-white">
+                        ✓
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:justify-between">
+          <p className="text-[12px] text-[#616161]">
+            {selected.size
+              ? `${selected.size} selected`
+              : `${visible.length} image${visible.length === 1 ? "" : "s"}`}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => onOpenChange?.(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 bg-[#1a1a1a] text-white hover:bg-[#000]"
+              disabled={!selected.size}
+              onClick={handleDone}
+            >
+              Add
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

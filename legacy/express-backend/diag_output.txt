@@ -1,0 +1,41 @@
+[dotenv@17.3.1] injecting env (6) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+Total products: 21
+Unique "product" values in DB: [ 'Accessories', 'Necklace', 'Earring', 'Rings', 'Hijabs' ]
+Unique "category" values in DB: [ 'magnets', 'Necklace', 'Earrings', 'Rings', 'hijabs' ]
+Necklace-related products in DB: [
+  {
+    "id": "1KHGCAVTX9",
+    "product": "Necklace",
+    "name": "Pearl  Necklace"
+  },
+  {
+    "id": "HV3SWBPPSD",
+    "product": "Necklace",
+    "name": "Necklace"
+  },
+  {
+    "id": "4NCMKGNZBY",
+    "product": "Necklace",
+    "name": "Necklace"
+  },
+  {
+    "id": "WA3R35YF3P",
+    "product": "Necklace",
+    "name": "NECKLACE"
+  },
+  {
+    "id": "DP8CB5HL5H",
+    "product": "Necklace",
+    "name": "NECKLACES"
+  },
+  {
+    "id": "D3RTPQS8CJ",
+    "product": "Necklace",
+    "name": "NECKLACES"
+  },
+  {
+    "id": "6W4IZCJ1T4",
+    "product": "Necklace",
+    "name": "NECKLACES"
+  }
+]

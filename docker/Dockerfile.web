@@ -1,0 +1,44 @@
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app
+
+COPY apps/web/package*.json ./
+RUN npm install
+
+COPY apps/web ./
+
+ARG NEXT_PUBLIC_API_URL=/api
+ARG NEXT_PUBLIC_GTM_ID=GTM-WVQMZLZF
+ARG NEXT_PUBLIC_GTM_ENABLED=true
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_GTM_ID=$NEXT_PUBLIC_GTM_ID
+ENV NEXT_PUBLIC_GTM_ENABLED=$NEXT_PUBLIC_GTM_ENABLED
+# Used by next.config rewrites during build if evaluated then
+ENV INTERNAL_BACKEND_URL=http://api:8000
+
+RUN npm run build
+
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    INTERNAL_BACKEND_URL=http://api:8000 \
+    NEXT_PUBLIC_API_URL=/api \
+    NEXT_PUBLIC_GTM_ID=GTM-WVQMZLZF \
+    NEXT_PUBLIC_GTM_ENABLED=true \
+    GTM_ID=GTM-WVQMZLZF \
+    GTM_ENABLED=true
+
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.mjs ./
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]

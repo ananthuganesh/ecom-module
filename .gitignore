@@ -1,0 +1,62 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Python
+apps/api/.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+
+# testing
+coverage/
+
+# next.js
+.next/
+out/
+
+# production
+build/
+dist/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+.env.test
+.env.production
+.env.development
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# uploads
+apps/api/uploads/**
+!apps/api/uploads/.gitkeep
+
+# git worktrees
+.worktrees/

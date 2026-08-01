@@ -1,0 +1,4 @@
+[dotenv@17.3.1] injecting env (6) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+Results for product="Hijabs": 6
+Results for product="Necklaces": 0
+Results for product="Necklace": 7

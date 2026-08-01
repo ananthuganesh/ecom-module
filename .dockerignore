@@ -1,0 +1,17 @@
+.git
+**/node_modules
+**/.next
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/*.pyc
+apps/api/.venv
+apps/web/.next
+legacy
+docs
+.env
+.env.*
+!.env.example
+*.md
+!README.md
+.cursor

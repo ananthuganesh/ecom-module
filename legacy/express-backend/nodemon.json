@@ -1,0 +1,14 @@
+{
+  "ignore": [
+    "*.log",
+    "error_log.txt",
+    "diag_output.txt",
+    "hijabs_output.txt",
+    "verify_output.txt",
+    "test_db.js",
+    "check_*.js",
+    "node_modules",
+    "public/uploads/*"
+  ],
+  "delay": "1000"
+}

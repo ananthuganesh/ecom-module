@@ -1,0 +1,216 @@
+"use client";
+
+import React from "react";
+import Link from "next/link";
+import Image from "next/image";
+
+const FOOTER_INK = "rgb(243, 241, 236)";
+const FOOTER_BG = "#222222";
+const FOOTER_LINK =
+  "footer-link relative inline-block w-fit text-[13px] font-medium opacity-90 transition-colors duration-300 hover:text-gray-400";
+
+const InstagramIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+  </svg>
+);
+
+const FacebookIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  </svg>
+);
+
+const Footer = () => {
+  return (
+    <footer className="w-full" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
+      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 pt-14 pb-10">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr] gap-x-6 gap-y-10 lg:gap-x-12">
+          <div className="col-span-2 sm:col-span-2 lg:col-span-1 flex flex-col gap-5">
+            <Link href="/" className="inline-block w-fit">
+              <Image
+                src="/urban/Logo.png"
+                alt="URBAN AANA"
+                width={140}
+                height={50}
+                className="object-contain h-10 w-auto brightness-0 invert"
+                priority={false}
+              />
+            </Link>
+
+            <p className="text-[12px] uppercase tracking-widest opacity-70">Crafted in India</p>
+
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => window.open("https://www.instagram.com/urbanaana.in", "_blank", "noopener,noreferrer")}
+                className="w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:text-brand-red"
+                style={{ borderColor: "rgba(243, 241, 236, 0.25)", color: FOOTER_INK }}
+                aria-label="Instagram"
+              >
+                <InstagramIcon />
+              </button>
+              <a
+                href="https://www.facebook.com/share/18vF3ZB3BJ/"
+                target="_blank"
+                rel="noreferrer"
+                className="w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:text-brand-red"
+                style={{ borderColor: "rgba(243, 241, 236, 0.25)", color: FOOTER_INK }}
+                aria-label="Facebook"
+              >
+                <FacebookIcon />
+              </a>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <p
+              className="inline-block w-fit bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: FOOTER_INK }}
+            >
+              Shop
+            </p>
+            <ul className="flex flex-col gap-3">
+              <li>
+                <Link href="/all-products" className={FOOTER_LINK}>
+                  All Products
+                </Link>
+              </li>
+              <li>
+                <Link href="/#latest-drops" className={FOOTER_LINK}>
+                  Latest Drops
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <p
+              className="inline-block w-fit bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: FOOTER_INK }}
+            >
+              About
+            </p>
+            <ul className="flex flex-col gap-3">
+              <li>
+                <Link href="/about" className={FOOTER_LINK}>
+                  Our Story
+                </Link>
+              </li>
+              <li>
+                <Link href="/profile" className={FOOTER_LINK}>
+                  My Account
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact" className={FOOTER_LINK}>
+                  Contact Us
+                </Link>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12">
+        <div className="border-t" style={{ borderColor: "rgba(243, 241, 236, 0.15)" }} />
+      </div>
+
+      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 py-5">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-[12px] tracking-wide opacity-80 text-center sm:text-left">
+            © {new Date().getFullYear()} Urban Aana. All rights reserved.
+          </p>
+          <p className="text-[12px] tracking-wide opacity-80 text-center sm:text-right">
+            Design &amp; Development by{" "}
+            <a
+              href="https://bridnetwork.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-brand-red transition-colors"
+            >
+              Brid Network
+            </a>
+          </p>
+        </div>
+      </div>
+
+      <div
+        className="w-full overflow-hidden select-none pt-6 md:pt-8 pb-0"
+        aria-hidden="true"
+      >
+        <div className="flex w-max items-end">
+          {[0, 1].map((copy) => (
+            <div
+              key={copy}
+              className="footer-marquee flex shrink-0 items-end whitespace-nowrap"
+            >
+              {Array.from({ length: 6 }).map((_, i) => (
+                <span
+                  key={`${copy}-${i}`}
+                  className="footer-marquee-text font-knewave px-6 text-[clamp(1.25rem,4vw,2.75rem)] font-normal uppercase italic leading-none tracking-tight block"
+                >
+                  Where Style Meets Strength
+                  <span className="footer-marquee-sep mx-6 inline-block align-baseline" aria-hidden>
+                    /
+                  </span>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+        <style>{`
+          @keyframes footer-marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
+          }
+          .footer-marquee {
+            animation: footer-marquee 40s linear infinite;
+            will-change: transform;
+          }
+          .footer-marquee-text {
+            font-family: var(--font-archivo-black), "Archivo Black", sans-serif;
+            color: ${FOOTER_BG};
+            -webkit-text-stroke: 2px ${FOOTER_INK};
+            paint-order: stroke fill;
+            text-shadow: 3px 3px 0 ${FOOTER_INK};
+          }
+          .footer-marquee-sep {
+            font-family: var(--font-archivo-black), "Archivo Black", sans-serif;
+            color: ${FOOTER_BG};
+            -webkit-text-stroke: 2px ${FOOTER_INK};
+            text-shadow: 3px 3px 0 ${FOOTER_INK};
+          }
+          @media (max-width: 768px) {
+            .footer-marquee-text,
+            .footer-marquee-sep {
+              -webkit-text-stroke-width: 1.5px;
+              text-shadow: 2px 2px 0 ${FOOTER_INK};
+            }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .footer-marquee { animation: none; }
+          }
+          .footer-link::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            bottom: -2px;
+            width: 100%;
+            height: 1px;
+            background: currentColor;
+            transform: scaleX(0);
+            transform-origin: left center;
+            transition: transform 0.3s ease;
+          }
+          .footer-link:hover::after {
+            transform: scaleX(1);
+          }
+        `}</style>
+      </div>
+    </footer>
+  );
+};
+
+export default Footer;

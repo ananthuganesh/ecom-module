@@ -1,0 +1,1263 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import {
+  adminProductService,
+  adminProductColorService,
+} from "@/api";
+import { toast } from "sonner";
+import {
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Package,
+  Plus,
+  Printer,
+} from "lucide-react";
+import SafeImage from "@/components/SafeImage";
+import ImageCropModal from "@/components/admin/ImageCropModal";
+import SelectExistingMediaDialog from "@/components/admin/SelectExistingMediaDialog";
+import { AdminHeaderButton, AdminStatusText } from "@/components/admin/list";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import ProductRichTextEditor from "@/components/admin/ProductRichTextEditor";
+import ProductVariantsCard from "@/components/admin/ProductVariantsCard";
+import ProductColorChips from "@/components/admin/ProductColorChips";
+import ProductInventoryCard from "@/components/admin/ProductInventoryCard";
+import ProductSeoCard from "@/components/admin/ProductSeoCard";
+import { cn } from "@/lib/utils";
+import { getCroppedImg } from "@/utils/cropImage";
+import { adminProductHref, productUrlKey } from "@/utils/formatProductUrl";
+import { gstRateForUnitPrice } from "@/utils/gstRate";
+import {
+  buildProductPayload,
+  defaultForm,
+  emptyVariant,
+  isProductFormDirty,
+  PRODUCT_CATEGORIES,
+  PRODUCT_ATTR_FIELDS,
+  productToForm,
+  productTypesForCategory,
+  sanitizePriceInput,
+  formatPriceDisplay,
+  slugify,
+  STATUSES,
+  validateProductForm,
+} from "@/utils/productForm";
+import {
+  listProductVariants,
+  normalizeBarcodeCopies,
+  printProductBarcodeLabel,
+  variantLabel,
+} from "@/utils/printProductBarcodeLabel";
+import { storefrontHref } from "../columns";
+import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
+
+const productSelectTriggerClass =
+  "h-8 w-full border-[#e3e3e3] bg-white shadow-none ring-0 focus-visible:border-[#b5b5b5] focus-visible:ring-0";
+
+function ProductSelectContent({ children, ...props }) {
+  return (
+    <SelectContent
+      align="start"
+      alignItemWithTrigger={false}
+      side="bottom"
+      sideOffset={4}
+      {...props}
+    >
+      {children}
+    </SelectContent>
+  );
+}
+
+function statusTone(status) {
+  if (status === "active") return "success";
+  if (status === "draft") return "neutral";
+  return "neutral";
+}
+
+function statusLabel(status) {
+  const map = {
+    active: "Active",
+    draft: "Draft",
+  };
+  const key = String(status || "").toLowerCase();
+  if (map[key]) return map[key];
+  return String(status || "")
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function variantMenuLabel(variant, index) {
+  const label = variantLabel(variant);
+  const sku = String(variant?.sku || "").trim();
+  if (label && sku) return `${label} · ${sku}`;
+  if (label) return label;
+  if (sku) return sku;
+  return `Variant ${index + 1}`;
+}
+
+function formatCreatedAt(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function cloneForm(form) {
+  return JSON.parse(JSON.stringify(form));
+}
+
+export default function AdminProductDetailPage() {
+  const params = useParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const productRef = params?.id;
+  const isNew =
+    String(productRef || "") === "new" ||
+    String(pathname || "").endsWith("/products/new");
+
+  const [product, setProduct] = useState(null);
+  const [form, setForm] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
+  const [loading, setLoading] = useState(!isNew);
+  const [saving, setSaving] = useState(false);
+  const [neighbors, setNeighbors] = useState({ previous: null, next: null });
+  const [productColors, setProductColors] = useState([]);
+  const [variantMenuOpen, setVariantMenuOpen] = useState(false);
+  const [qtyOpen, setQtyOpen] = useState(false);
+  const [pendingVariant, setPendingVariant] = useState(null);
+  const [copies, setCopies] = useState("1");
+  const barcodeBtnRef = useRef(null);
+  const qtyInputRef = useRef(null);
+
+  const [cropOpen, setCropOpen] = useState(false);
+  const [cropSrc, setCropSrc] = useState("");
+  const [cropTarget, setCropTarget] = useState(null);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState(() => new Set());
+  const [addMediaOpen, setAddMediaOpen] = useState(false);
+  const addMediaInputRef = useRef(null);
+
+  const dirty = form && snapshot ? isProductFormDirty(form, snapshot) : false;
+  const showSaveBar = useProductSaveBarStore((s) => s.show);
+  const hideSaveBar = useProductSaveBarStore((s) => s.hide);
+  const setSaveBarSaving = useProductSaveBarStore((s) => s.setSaving);
+  const saveHandlerRef = useRef(() => {});
+  const discardHandlerRef = useRef(() => {});
+
+  const loadProduct = useCallback(async () => {
+    if (!productRef) return;
+    if (isNew) {
+      const next = defaultForm();
+      next.productName = "";
+      next.status = "draft";
+      setProduct(null);
+      setForm(next);
+      setSnapshot(cloneForm(next));
+      setNeighbors({ previous: null, next: null });
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [data, nav] = await Promise.all([
+        adminProductService.getById(productRef),
+        adminProductService.getNeighbors(productRef).catch(() => ({
+          previous: null,
+          next: null,
+        })),
+      ]);
+      const nextForm = productToForm(data);
+      setProduct(data || null);
+      setForm(nextForm);
+      setSnapshot(cloneForm(nextForm));
+      setNeighbors({
+        previous: nav?.previous || null,
+        next: nav?.next || null,
+      });
+      const key = productUrlKey(data);
+      if (key && key !== String(productRef)) {
+        router.replace(adminProductHref(data));
+      }
+    } catch (error) {
+      console.error("Error loading product:", error);
+      setProduct(null);
+      setForm(null);
+      setSnapshot(null);
+      toast.error(
+        error?.response?.status === 404 ? "Product not found" : "Failed to load product"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [productRef, router, isNew]);
+
+  useEffect(() => {
+    loadProduct();
+  }, [loadProduct]);
+
+  useEffect(() => {
+    adminProductColorService
+      .getAll()
+      .then((data) => {
+        const list = Array.isArray(data?.colors) ? data.colors : [];
+        setProductColors(list.filter(Boolean));
+      })
+      .catch(() => setProductColors([]));
+  }, []);
+
+  useEffect(() => {
+    setVariantMenuOpen(false);
+    setQtyOpen(false);
+    setPendingVariant(null);
+    setCopies("1");
+  }, [product?._id]);
+
+  useEffect(() => {
+    if (!dirty && !isNew) return;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty, isNew]);
+
+  useEffect(() => {
+    if (!variantMenuOpen && !qtyOpen) return;
+    const onDoc = (e) => {
+      if (barcodeBtnRef.current && !barcodeBtnRef.current.contains(e.target)) {
+        setVariantMenuOpen(false);
+        setQtyOpen(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setVariantMenuOpen(false);
+        setQtyOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [variantMenuOpen, qtyOpen]);
+
+  useEffect(() => {
+    if (!qtyOpen) return;
+    const t = window.setTimeout(() => {
+      qtyInputRef.current?.focus();
+      qtyInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [qtyOpen]);
+
+  const barcodeVariants = useMemo(
+    () => listProductVariants({ ...product, variants: form?.variants }),
+    [product, form?.variants]
+  );
+
+  const typeOptions = useMemo(
+    () => productTypesForCategory(form?.category),
+    [form?.category]
+  );
+
+  const updateForm = (patch) => setForm((prev) => ({ ...prev, ...patch }));
+
+  const updatePricing = (field, value) =>
+    setForm((prev) => ({
+      ...prev,
+      pricing: { ...prev.pricing, [field]: sanitizePriceInput(value) },
+    }));
+
+  const focusPricing = (field) =>
+    setForm((prev) => {
+      const current = prev.pricing?.[field];
+      const n = Number(current);
+      if (current === "" || current == null || !Number.isFinite(n) || n === 0) {
+        return {
+          ...prev,
+          pricing: { ...prev.pricing, [field]: "" },
+        };
+      }
+      return prev;
+    });
+
+  const blurPricing = (field) =>
+    setForm((prev) => ({
+      ...prev,
+      pricing: {
+        ...prev.pricing,
+        [field]: formatPriceDisplay(prev.pricing?.[field]),
+      },
+    }));
+
+  const attachMediaUrls = (urls) => {
+    const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
+    if (!nextUrls.length) return;
+    setForm((prev) => {
+      const list = Array.isArray(prev.variants) ? [...prev.variants] : [];
+      if (!list.length) list.push(emptyVariant());
+      const imgs = [
+        ...(Array.isArray(list[primaryVariantIndex]?.images)
+          ? list[primaryVariantIndex].images.filter(Boolean)
+          : []),
+      ];
+      for (const url of nextUrls) {
+        if (!imgs.includes(url)) imgs.push(url);
+      }
+      list[primaryVariantIndex] = {
+        ...list[primaryVariantIndex],
+        images: imgs,
+      };
+      return { ...prev, variants: list };
+    });
+  };
+
+  const openCrop = (file, target) => {
+    const src = URL.createObjectURL(file);
+    setCropSrc(src);
+    setCropTarget(target);
+    setCropOpen(true);
+  };
+
+  const closeCrop = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc("");
+    setCropTarget(null);
+    setCropOpen(false);
+  };
+
+  const handleCropped = async (croppedAreaPixels) => {
+    if (!croppedAreaPixels || !cropTarget || !cropSrc) return;
+    try {
+      const blob = await getCroppedImg(cropSrc, croppedAreaPixels, 600, 800);
+      const file = new File([blob], "product.jpg", { type: "image/jpeg" });
+      const { url } = await adminProductService.uploadImage(file);
+      setForm((prev) => {
+        const idx = cropTarget.variantIndex;
+        const imageIndex = cropTarget.imageIndex ?? 0;
+        const nextVariants = prev.variants.map((v, i) => {
+          if (i !== idx) return v;
+          const imgs = Array.isArray(v.images) ? [...v.images.filter(Boolean)] : [];
+          if (imageIndex === -1) imgs.push(url);
+          else if (imageIndex === 0) imgs[0] = url;
+          else imgs[imageIndex] = url;
+          return { ...v, images: imgs };
+        });
+        return { ...prev, variants: nextVariants };
+      });
+    } catch (e) {
+      toast.error(e?.response?.data?.message || e?.message || "Image upload failed");
+    } finally {
+      closeCrop();
+    }
+  };
+
+  const handleDiscard = () => {
+    if (isNew) {
+      if (!window.confirm("Discard unsaved product?")) return;
+      router.push("/admin/products");
+      return;
+    }
+    if (!snapshot) return;
+    setForm(cloneForm(snapshot));
+  };
+
+  const handleSave = async () => {
+    if (!form || saving) return;
+    const payload = buildProductPayload(form);
+    const check = validateProductForm(payload);
+    if (!check.ok) {
+      toast.error(check.error);
+      return;
+    }
+    setSaving(true);
+    try {
+      if (isNew) {
+        const created = await adminProductService.create(payload);
+        toast.success("Product saved");
+        router.replace(adminProductHref(created));
+        return;
+      }
+      if (!product?._id) return;
+      const updated = await adminProductService.update(product._id, payload);
+      const nextForm = productToForm(updated);
+      setProduct(updated);
+      setForm(nextForm);
+      setSnapshot(cloneForm(nextForm));
+      toast.success("Product saved");
+      const key = productUrlKey(updated);
+      if (key && key !== String(productRef)) {
+        router.replace(adminProductHref(updated));
+      }
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.detail ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to save product"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmLeave = () => {
+    if (isNew) {
+      return window.confirm("You have unsaved changes. Leave without saving?");
+    }
+    if (!dirty) return true;
+    return window.confirm("You have unsaved changes. Leave without saving?");
+  };
+
+  saveHandlerRef.current = () => {
+    void handleSave();
+  };
+  discardHandlerRef.current = () => {
+    handleDiscard();
+  };
+
+  useEffect(() => {
+    if (!isNew && !dirty) {
+      hideSaveBar();
+      return undefined;
+    }
+    showSaveBar({
+      saving,
+      onSave: () => saveHandlerRef.current?.(),
+      onDiscard: () => discardHandlerRef.current?.(),
+    });
+    return () => hideSaveBar();
+  }, [isNew, dirty, saving, hideSaveBar, showSaveBar]);
+
+  useEffect(() => {
+    setSaveBarSaving(saving);
+  }, [saving, setSaveBarSaving]);
+
+  const openQtyPrompt = (variant) => {
+    setPendingVariant(variant);
+    setCopies("1");
+    setVariantMenuOpen(false);
+    setQtyOpen(true);
+  };
+
+  const confirmBarcodePrint = async () => {
+    const count = normalizeBarcodeCopies(copies);
+    setQtyOpen(false);
+    const variant = pendingVariant;
+    setPendingVariant(null);
+    try {
+      const result = await printProductBarcodeLabel({
+        product: {
+          ...product,
+          productName: form.productName,
+          name: form.productName,
+          category: form.category,
+          type: form.type,
+          pricing: form.pricing,
+        },
+        variant,
+        copies: count,
+      });
+      if (!result.ok) {
+        toast.error(result.error || "Barcode print failed");
+        return;
+      }
+      toast.success(
+        result.copies === 1
+          ? "Print dialog opened"
+          : `Printing ${result.copies} barcodes`
+      );
+    } catch (err) {
+      toast.error(err?.message || "Barcode print failed");
+    }
+  };
+
+  const handleBarcodePrintClick = () => {
+    if (!form) return;
+    if (barcodeVariants.length <= 1) {
+      openQtyPrompt(barcodeVariants[0] || form.variants?.[0]);
+      return;
+    }
+    setQtyOpen(false);
+    setVariantMenuOpen((v) => !v);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Spinner className="size-8 text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!form || (!isNew && !product)) {
+    return (
+      <main className="flex h-screen flex-col items-center justify-center bg-background p-10">
+        <Package className="mb-4 h-12 w-12 text-muted-foreground/40" />
+        <p className="text-sm font-medium text-muted-foreground">Product not found</p>
+        <Link
+          href="/admin/products"
+          className="mt-6 border-b border-primary pb-1 text-xs font-medium text-primary"
+        >
+          Return to products
+        </Link>
+      </main>
+    );
+  }
+
+  const mediaImages = (form.variants || []).flatMap((v) =>
+    Array.isArray(v.images) ? v.images.filter(Boolean) : []
+  );
+  const uniqueMedia = [...new Set(mediaImages)];
+  const selectedMediaList = uniqueMedia.filter((src) => selectedMedia.has(src));
+  const primaryVariantIndex = 0;
+
+  return (
+    <>
+      <main className="admin-product-form mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
+        <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 bg-transparent px-4 py-3 backdrop-blur-sm">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-foreground">
+              <Package className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="m-0 truncate text-[16px] leading-5 font-medium text-foreground">
+                  {isNew
+                    ? form.productName || "Add product"
+                    : form.productName || "Untitled product"}
+                </p>
+                <AdminStatusText tone={statusTone(form.status)} dot>
+                  {statusLabel(form.status)}
+                </AdminStatusText>
+                {!isNew && dirty ? (
+                  <span className="text-[12px] font-medium text-muted-foreground">
+                    Unsaved
+                  </span>
+                ) : null}
+              </div>
+              <p className="m-0 mt-0.5 truncate text-[13px] font-normal text-muted-foreground">
+                {isNew ? "New product" : formatCreatedAt(product?.createdAt)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {!isNew ? (
+              <>
+            <div className="relative" ref={barcodeBtnRef}>
+              <AdminHeaderButton onClick={handleBarcodePrintClick}>
+                <Printer className="h-3.5 w-3.5" /> Print Barcode
+                {barcodeVariants.length > 1 ? (
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 opacity-70 transition-transform ${
+                      variantMenuOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                ) : null}
+              </AdminHeaderButton>
+              {variantMenuOpen && barcodeVariants.length > 1 ? (
+                <div className="absolute right-0 top-[calc(100%+6px)] z-50 min-w-[220px] max-w-[280px] rounded-xl border border-border bg-card py-1.5 shadow-sm">
+                  <p className="px-3 py-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                    Choose variant
+                  </p>
+                  {barcodeVariants.map((v, i) => (
+                    <button
+                      key={v._id || v.sku || i}
+                      type="button"
+                      onClick={() => openQtyPrompt(v)}
+                      className="w-full cursor-pointer px-3 py-2 text-left text-[13px] font-normal text-foreground hover:bg-muted"
+                    >
+                      {variantMenuLabel(v, i)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {qtyOpen ? (
+                <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-[240px] rounded-xl border border-border bg-card p-3 shadow-sm">
+                  <p className="mb-2 text-[13px] font-medium text-foreground">
+                    Number of barcodes
+                  </p>
+                  <input
+                    ref={qtyInputRef}
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={copies}
+                    onChange={(e) => setCopies(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        confirmBarcodePrint();
+                      }
+                    }}
+                    className="h-8 w-full rounded-lg border border-border px-3 text-[13px] font-medium text-foreground focus:border-border focus:outline-none"
+                  />
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQtyOpen(false);
+                        setPendingVariant(null);
+                      }}
+                      className="h-8 flex-1 cursor-pointer rounded-lg border border-border text-[13px] font-medium text-muted-foreground hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmBarcodePrint}
+                      className="h-8 flex-1 cursor-pointer rounded-lg bg-primary text-[13px] font-medium text-primary-foreground hover:bg-black"
+                    >
+                      Print
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <AdminHeaderButton
+              onClick={() =>
+                window.open(
+                  storefrontHref({ ...product, slug: form.slug }),
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
+            >
+              <Eye className="h-3.5 w-3.5" /> View store
+            </AdminHeaderButton>
+
+            <div className="ml-1 inline-flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-lg"
+                title="Previous product"
+                disabled={!neighbors.previous}
+                className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+                onClick={() => {
+                  if (!neighbors.previous || !confirmLeave()) return;
+                  router.push(
+                    `/admin/products/${encodeURIComponent(neighbors.previous.key)}`
+                  );
+                }}
+              >
+                <ChevronUp strokeWidth={1.75} />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-lg"
+                title="Next product"
+                disabled={!neighbors.next}
+                className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+                onClick={() => {
+                  if (!neighbors.next || !confirmLeave()) return;
+                  router.push(
+                    `/admin/products/${encodeURIComponent(neighbors.next.key)}`
+                  );
+                }}
+              >
+                <ChevronDown strokeWidth={1.75} />
+              </Button>
+            </div>
+              </>
+            ) : null}
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 items-start gap-3 p-3 pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+          <div className="flex min-w-0 flex-col gap-3">
+            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+              <CardContent className="flex flex-col gap-4 p-4">
+                <Field>
+                  <FieldLabel>Title</FieldLabel>
+                  <Input
+                    value={form.productName}
+                    onChange={(e) => {
+                      const productName = e.target.value;
+                      setForm((prev) => ({
+                        ...prev,
+                        productName,
+                        slug: prev.slugManual ? prev.slug : slugify(productName),
+                      }));
+                    }}
+                    placeholder="Product title"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Description</FieldLabel>
+                  <ProductRichTextEditor
+                    value={form.description}
+                    onChange={(description) => updateForm({ description })}
+                    placeholder="Describe this product"
+                  />
+                </Field>
+
+                <div className="flex flex-col gap-3">
+                  <CardTitle className="admin-card-heading m-0">Media</CardTitle>
+                  {uniqueMedia.length === 0 ? (
+                  <div
+                    className="admin-media-dropzone flex flex-col items-center justify-center gap-3 bg-white px-4 py-12 text-center"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer?.files?.[0];
+                      if (!file || !String(file.type || "").startsWith("image/")) {
+                        return;
+                      }
+                      openCrop(file, {
+                        type: "variant",
+                        variantIndex: primaryVariantIndex,
+                        imageIndex: 0,
+                      });
+                    }}
+                  >
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <FieldLabel className="m-0 inline-flex h-8 cursor-pointer items-center rounded-lg border border-[#c9cccf] bg-white px-3 text-[13px] font-medium text-[#303030] hover:bg-[#f7f7f7]">
+                        Upload new
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file) return;
+                            openCrop(file, {
+                              type: "variant",
+                              variantIndex: primaryVariantIndex,
+                              imageIndex: 0,
+                            });
+                          }}
+                        />
+                      </FieldLabel>
+                      <button
+                        type="button"
+                        className="text-[13px] font-medium text-[#005bd3] hover:underline"
+                        onClick={() => setMediaPickerOpen(true)}
+                      >
+                        Select existing
+                      </button>
+                    </div>
+                    <p className="text-[12px] text-[#616161]">
+                      Accepts images, videos
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedMediaList.length > 0 ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="inline-flex items-center gap-2 text-[13px] font-medium text-[#303030]">
+                          <Checkbox
+                            checked={
+                              uniqueMedia.length > 0 &&
+                              selectedMediaList.length === uniqueMedia.length
+                            }
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedMedia(new Set(uniqueMedia));
+                              } else {
+                                setSelectedMedia(new Set());
+                              }
+                            }}
+                            className="data-checked:border-[#303030] data-checked:bg-[#303030]"
+                          />
+                          {selectedMediaList.length} file
+                          {selectedMediaList.length === 1 ? "" : "s"} selected
+                        </label>
+                        <button
+                          type="button"
+                          className="text-[13px] font-medium text-[#c70a24] hover:underline"
+                          onClick={() => {
+                            const remove = new Set(selectedMediaList);
+                            setForm((prev) => ({
+                              ...prev,
+                              variants: (prev.variants || []).map((v) => ({
+                                ...v,
+                                images: (v.images || []).filter(
+                                  (img) => !remove.has(img)
+                                ),
+                              })),
+                            }));
+                            setSelectedMedia(new Set());
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap items-start gap-3">
+                      {uniqueMedia.map((src, imgIdx) => {
+                        const active = selectedMedia.has(src);
+                        const featured = imgIdx === 0;
+                        return (
+                          <button
+                            key={`${src}-${imgIdx}`}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMedia((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(src)) next.delete(src);
+                                else next.add(src);
+                                return next;
+                              });
+                            }}
+                            className={cn(
+                              "admin-media-tile group relative shrink-0 overflow-hidden border bg-[#fafafa]",
+                              featured
+                                ? "admin-media-tile--featured"
+                                : "admin-media-tile--thumb",
+                              active
+                                ? "border-[#303030]"
+                                : "border-[#e3e3e3]"
+                            )}
+                          >
+                            <SafeImage
+                              src={src}
+                              alt=""
+                              fill
+                              className="object-cover"
+                            />
+                            <span
+                              className={cn(
+                                "admin-media-tile-overlay",
+                                (active || selectedMediaList.length > 0) &&
+                                  "opacity-100"
+                              )}
+                            >
+                              <span
+                                className="absolute top-2 left-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Checkbox
+                                  checked={active}
+                                  onCheckedChange={(checked) => {
+                                    setSelectedMedia((prev) => {
+                                      const next = new Set(prev);
+                                      if (checked) next.add(src);
+                                      else next.delete(src);
+                                      return next;
+                                    });
+                                  }}
+                                  className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-[#303030] data-checked:bg-[#303030]"
+                                />
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      <Popover open={addMediaOpen} onOpenChange={setAddMediaOpen}>
+                        <PopoverTrigger
+                          type="button"
+                          className="admin-media-tile admin-media-tile--add inline-flex shrink-0 items-center justify-center border border-dashed border-[#c9cccf] bg-[#fafafa] text-[#303030] hover:bg-[#f3f3f3]"
+                          aria-label="Add media"
+                        >
+                          <Plus className="h-5 w-5" />
+                        </PopoverTrigger>
+                        <PopoverContent
+                          align="start"
+                          className="w-44 gap-0.5 p-1.5"
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                            onClick={() => {
+                              setAddMediaOpen(false);
+                              addMediaInputRef.current?.click();
+                            }}
+                          >
+                            Upload new
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                            onClick={() => {
+                              setAddMediaOpen(false);
+                              setMediaPickerOpen(true);
+                            }}
+                          >
+                            Select existing
+                          </button>
+                        </PopoverContent>
+                      </Popover>
+
+                      <input
+                        ref={addMediaInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          openCrop(file, {
+                            type: "variant",
+                            variantIndex: primaryVariantIndex,
+                            imageIndex: -1,
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+              <CardContent className="flex flex-col gap-4 p-4">
+                <CardTitle className="admin-card-heading">Price</CardTitle>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel>MRP</FieldLabel>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                        ₹
+                      </span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={form.pricing?.mrp ?? ""}
+                        onChange={(e) => updatePricing("mrp", e.target.value)}
+                        onFocus={() => focusPricing("mrp")}
+                        onBlur={() => blurPricing("mrp")}
+                        placeholder="0.00"
+                        className="pl-6"
+                      />
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Selling Price</FieldLabel>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                        ₹
+                      </span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={form.pricing?.sellingPrice ?? ""}
+                        onChange={(e) => updatePricing("sellingPrice", e.target.value)}
+                        onFocus={() => focusPricing("sellingPrice")}
+                        onBlur={() => blurPricing("sellingPrice")}
+                        placeholder="0.00"
+                        className="pl-6"
+                      />
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Cost</FieldLabel>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                        ₹
+                      </span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={form.pricing?.buyingPrice ?? ""}
+                        onChange={(e) => updatePricing("buyingPrice", e.target.value)}
+                        onFocus={() => focusPricing("buyingPrice")}
+                        onBlur={() => blurPricing("buyingPrice")}
+                        placeholder="0.00"
+                        className="pl-6"
+                      />
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Tax (Automatic)</FieldLabel>
+                    <Input
+                      readOnly
+                      value={
+                        form.pricing?.mrp != null &&
+                        form.pricing?.mrp !== "" &&
+                        Number(form.pricing.mrp) > 0
+                          ? `GST ${gstRateForUnitPrice(form.pricing.mrp)}%`
+                          : ""
+                      }
+                      className="bg-muted/40 text-muted-foreground"
+                    />
+                  </Field>
+                </div>
+              </CardContent>
+            </Card>
+
+            <ProductInventoryCard form={form} setForm={setForm} />
+
+            <ProductVariantsCard
+              form={form}
+              setForm={setForm}
+              updatePricing={updatePricing}
+              focusPricing={focusPricing}
+              blurPricing={blurPricing}
+              onUploadImage={(variantIndex) => {
+                const fileInput = document.createElement("input");
+                fileInput.type = "file";
+                fileInput.accept = "image/*";
+                fileInput.onchange = (ev) => {
+                  const file = ev.target?.files?.[0];
+                  if (!file) return;
+                  openCrop(file, {
+                    type: "variant",
+                    variantIndex,
+                    imageIndex: 0,
+                  });
+                };
+                fileInput.click();
+              }}
+            />
+
+            <ProductSeoCard form={form} updateForm={updateForm} />
+          </div>
+
+          <aside className="flex flex-col gap-3">
+            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+              <CardContent className="flex flex-col gap-4 p-4">
+                <CardTitle className="admin-card-heading">Status</CardTitle>
+                <Select
+                  value={form.status || "draft"}
+                  onValueChange={(status) => updateForm({ status })}
+                >
+                  <SelectTrigger className={productSelectTriggerClass}>
+                    <SelectValue placeholder="Select status">
+                      {(value) => statusLabel(value || "draft")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <ProductSelectContent>
+                    {STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {statusLabel(s)}
+                      </SelectItem>
+                    ))}
+                  </ProductSelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+
+            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+              <CardContent className="flex flex-col gap-4 p-4">
+                <CardTitle className="admin-card-heading">Category</CardTitle>
+                <Field>
+                  <FieldLabel>Category</FieldLabel>
+                  <Select
+                    value={form.category || "T-Shirts"}
+                    onValueChange={(category) => {
+                      const nextTypes = productTypesForCategory(category);
+                      const keepType = nextTypes.includes(form.type)
+                        ? form.type
+                        : "";
+                      updateForm({ category, type: keepType });
+                    }}
+                  >
+                    <SelectTrigger className={productSelectTriggerClass}>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <ProductSelectContent>
+                      {PRODUCT_CATEGORIES.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                      {form.category &&
+                      !PRODUCT_CATEGORIES.includes(form.category) ? (
+                        <SelectItem value={form.category}>
+                          {form.category}
+                        </SelectItem>
+                      ) : null}
+                    </ProductSelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Product Type</FieldLabel>
+                  <Select
+                    value={form.type || null}
+                    onValueChange={(type) => updateForm({ type })}
+                    disabled={!form.category}
+                  >
+                    <SelectTrigger className={productSelectTriggerClass}>
+                      <SelectValue placeholder="Select product type" />
+                    </SelectTrigger>
+                    <ProductSelectContent>
+                      {typeOptions.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                      {form.type && !typeOptions.includes(form.type) ? (
+                        <SelectItem value={form.type}>{form.type}</SelectItem>
+                      ) : null}
+                    </ProductSelectContent>
+                  </Select>
+                </Field>
+              </CardContent>
+            </Card>
+
+            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+              <CardContent className="flex flex-col gap-4 p-4">
+                <CardTitle className="admin-card-heading">
+                  Attributes
+                </CardTitle>
+                {PRODUCT_ATTR_FIELDS.map(({ key, label, options, creatable }) => {
+                  if (creatable && key === "colors") {
+                    return (
+                      <Field key={key}>
+                        <FieldLabel>{label}</FieldLabel>
+                        <ProductColorChips
+                          value={Array.isArray(form.colors) ? form.colors : []}
+                          suggestions={productColors}
+                          onChange={(colors) => updateForm({ colors })}
+                          onSaveColor={async (name) => {
+                            try {
+                              const res = await adminProductColorService.create(name);
+                              if (Array.isArray(res?.colors)) {
+                                setProductColors(res.colors);
+                              } else {
+                                setProductColors((prev) => {
+                                  if (
+                                    prev.some(
+                                      (c) =>
+                                        c.toLowerCase() === name.toLowerCase()
+                                    )
+                                  ) {
+                                    return prev;
+                                  }
+                                  return [...prev, name].sort((a, b) =>
+                                    a.localeCompare(b)
+                                  );
+                                });
+                              }
+                            } catch {
+                              setProductColors((prev) => {
+                                if (
+                                  prev.some(
+                                    (c) => c.toLowerCase() === name.toLowerCase()
+                                  )
+                                ) {
+                                  return prev;
+                                }
+                                return [...prev, name].sort((a, b) =>
+                                  a.localeCompare(b)
+                                );
+                              });
+                            }
+                          }}
+                        />
+                      </Field>
+                    );
+                  }
+                  return (
+                  <Field key={key}>
+                    <FieldLabel>{label}</FieldLabel>
+                    {Array.isArray(options) && options.length > 0 ? (
+                      <Select
+                        value={form[key] || null}
+                        onValueChange={(value) => updateForm({ [key]: value })}
+                      >
+                        <SelectTrigger className={productSelectTriggerClass}>
+                          <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
+                        </SelectTrigger>
+                        <ProductSelectContent>
+                          {options.map((opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {opt}
+                            </SelectItem>
+                          ))}
+                          {form[key] && !options.includes(form[key]) ? (
+                            <SelectItem value={form[key]}>{form[key]}</SelectItem>
+                          ) : null}
+                        </ProductSelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={form[key] || ""}
+                        onChange={(e) => updateForm({ [key]: e.target.value })}
+                        placeholder={label}
+                      />
+                    )}
+                  </Field>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+              <CardContent className="flex flex-col gap-4 p-4">
+                <CardTitle className="admin-card-heading">Publishing</CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() =>
+                    window.open(
+                      storefrontHref({ ...product, slug: form.slug }),
+                      "_blank",
+                      "noopener,noreferrer"
+                    )
+                  }
+                >
+                  <Eye className="h-3.5 w-3.5" /> View on store
+                </Button>
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
+      </main>
+
+      <ImageCropModal
+        isOpen={cropOpen}
+        imageSrc={cropSrc}
+        aspect={3 / 4}
+        title="Crop image (product card)"
+        onCancel={closeCrop}
+        onCropComplete={handleCropped}
+      />
+
+      <SelectExistingMediaDialog
+        open={mediaPickerOpen}
+        onOpenChange={setMediaPickerOpen}
+        excludeUrls={uniqueMedia}
+        onSelect={attachMediaUrls}
+      />
+    </>
+  );
+}
