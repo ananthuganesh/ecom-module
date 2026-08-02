@@ -153,7 +153,7 @@ function mapCompany(company = {}) {
     name: company.name || company.tradeName || company.storeName || company.legalName || "Urban Aana",
     lines: companyAddressLines(company),
     phone: company.phone || "9037381610",
-    email: company.email || "hello@urbanaana.com",
+    email: company.email || "info@urbanaana.com",
     website: company.website || company.siteUrl || "urbanaana.com",
     gstin: company.gstin || "",
     stateCode: company.stateCode || "",
@@ -977,7 +977,7 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
     <p class="footer-title">Terms &amp; Conditions</p>
     <ul>
       <li>Goods once sold are subject to the applicable return policy.</li>
-      <li>For returns or support, contact ${esc(co.email || "hello@urbanaana.com")}.</li>
+      <li>For returns or support, contact ${esc(co.email || "info@urbanaana.com")}.</li>
       <li>Please retain this invoice for warranty and return purposes.</li>
     </ul>
   </footer>

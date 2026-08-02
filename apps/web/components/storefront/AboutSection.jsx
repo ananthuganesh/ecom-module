@@ -3,7 +3,11 @@
 import {
   ArrowIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  PackageIcon,
+  ReturnIcon,
+  SecureIcon,
+  TruckIcon,
 } from "@/components/icons/storeIcons";
 import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
@@ -84,24 +88,28 @@ function ImageCarousel() {
 
 const trustItems = [
   {
-    jp: "一",
     num: "1",
-    text: "Premium fabric — high-grade heavy GSM cotton built to last.",
+    Icon: PackageIcon,
+    title: "Premium fabric",
+    text: "High-grade heavy GSM cotton built to last.",
   },
   {
-    jp: "二",
     num: "2",
-    text: "Fast delivery — express shipping across India.",
+    Icon: TruckIcon,
+    title: "Fast delivery",
+    text: "Express shipping across India.",
   },
   {
-    jp: "三",
     num: "3",
-    text: "Easy exchange — hassle-free returns when you need them.",
+    Icon: ReturnIcon,
+    title: "Easy exchange",
+    text: "Hassle-free returns when you need them.",
   },
   {
-    jp: "四",
     num: "4",
-    text: "Secure pay — 100% safe checkout every time.",
+    Icon: SecureIcon,
+    title: "Secure pay",
+    text: "100% safe checkout every time.",
   },
 ];
 
@@ -143,46 +151,35 @@ const AboutSection = () => {
             </Link>
           </div>
         </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="relative max-w-4xl mx-auto mb-16 p-6 md:p-10 bg-black rounded-xl text-center overflow-hidden"
-        >
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-brand-red/50 rounded-tl-xl" />
-          <p className="text-lg md:text-xl font-bold text-white leading-snug">
-            &ldquo;Urban Aana is for those who express themselves without compromise.&rdquo;
-          </p>
-          <p className="mt-4 text-[12px] uppercase tracking-[0.3em] text-gray-500 font-bold">
-            — FOUNDER, <span className="text-red-500">URBAN AANA</span>
-          </p>
-        </motion.div>
       </div>
 
       {/* Trust / studies-style band */}
       <div className="w-full mt-4 bg-[#F9F9F5] text-[#222222]">
         <div className="max-w-7xl mx-auto px-6 py-14 md:py-20 flex flex-col items-center">
           <h2 className="trust-title text-center text-[22pt] md:text-[40pt] leading-none max-w-4xl mx-auto normal-case">
-            What you get from wearing Urban Aana
+            Why Urban Aana
           </h2>
 
           <div className="w-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-10 mt-14">
-            {trustItems.map((item) => (
+            {trustItems.map((item) => {
+              const Icon = item.Icon;
+              return (
               <div key={item.num} className="w-full text-center flex flex-row xl:flex-col items-center">
                 <div className="flex justify-center items-center mb-0 xl:mb-6 shrink-0">
-                  <div className="relative w-16 h-16 2xl:w-20 2xl:h-20 border-2 border-brand-red rotate-[-3deg] flex items-center justify-center bg-brand-red">
-                    <span className="text-3xl font-black text-white leading-none">{item.jp}</span>
+                  <div className="relative flex h-16 w-16 rotate-[-3deg] items-center justify-center bg-[#DF1721] 2xl:h-20 2xl:w-20">
+                    <Icon size={28} className="text-white" style={{ color: "#ffffff" }} />
                     <span className="trust-num absolute -bottom-8 -left-4 2xl:-left-6 text-[28pt] md:text-[48pt] leading-none font-black italic">
                       {item.num}
                     </span>
                   </div>
                 </div>
-                <p className="text-[13pt] md:text-[15pt] font-medium text-[#222222] ml-5 xl:ml-0 mt-0 xl:mt-8 text-left xl:text-center leading-snug">
-                  {item.text}
+                <p className="ml-5 mt-0 text-left xl:ml-0 xl:mt-8 xl:text-center leading-snug">
+                  <span className="block text-[13pt] md:text-[15pt] font-bold text-[#222222]">{item.title}</span>
+                  <span className="mt-1 block text-[11px] md:text-[13px] font-medium text-gray-500">{item.text}</span>
                 </p>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <Link

@@ -1,6 +1,7 @@
 import HeroBanner from "@/components/storefront/HeroBanner";
 import ProductGrid from "@/components/storefront/ProductGrid";
 import InstagramReels from "@/components/storefront/InstagramReels";
+import TwoColumnImages from "@/components/storefront/TwoColumnImages";
 import AboutSection from "@/components/storefront/AboutSection";
 
 export default function Home() {
@@ -21,6 +22,7 @@ export default function Home() {
       </section>
 
       <InstagramReels />
+      <TwoColumnImages />
       <AboutSection />
     </div>
   );

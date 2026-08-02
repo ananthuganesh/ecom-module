@@ -204,14 +204,6 @@ export default function CartDrawer() {
                     </span>
                   </div>
 
-                  <Link
-                    href="/cart"
-                    onClick={handleClose}
-                    className="block w-full rounded-lg border border-gray-900 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50"
-                  >
-                    View Full Cart
-                  </Link>
-
                   <button
                     onClick={handleCheckout}
                     className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3.5 font-medium text-white transition-all duration-200 hover:bg-gray-800"

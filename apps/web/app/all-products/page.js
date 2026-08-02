@@ -80,7 +80,7 @@ function AllProductsContent() {
 
   return (
     <section className="border-t-2 border-black bg-[#F9F9F5] py-10 md:py-16">
-      <div className="container-site">
+      <div className="w-full px-2 md:px-4 lg:px-8">
         <div className="mb-10 flex flex-col gap-4 border-b-2 border-black pb-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">

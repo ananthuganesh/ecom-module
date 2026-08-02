@@ -8,6 +8,8 @@ const FOOTER_INK = "rgb(243, 241, 236)";
 const FOOTER_BG = "#222222";
 const FOOTER_LINK =
   "footer-link relative inline-block w-fit text-[13px] font-medium opacity-90 transition-colors duration-300 hover:text-gray-400";
+const FOOTER_HEADING =
+  "inline-block w-fit -ml-2 bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]";
 
 const InstagramIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -27,11 +29,11 @@ const Footer = () => {
   return (
     <footer className="w-full" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
       <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 pt-14 pb-10">
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr] gap-x-6 gap-y-10 lg:gap-x-12">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-x-6 gap-y-10 lg:gap-x-12">
           <div className="col-span-2 sm:col-span-2 lg:col-span-1 flex flex-col gap-5">
             <Link href="/" className="inline-block w-fit">
               <Image
-                src="/urban/logo-dark.png"
+                src="/brand/logo-dark.png"
                 alt="URBAN AANA"
                 width={140}
                 height={50}
@@ -40,7 +42,7 @@ const Footer = () => {
               />
             </Link>
 
-            <p className="text-[12px] uppercase tracking-widest opacity-70">Crafted in India</p>
+            <p className="text-sm font-medium opacity-80">Where Style Meets Strength</p>
 
             <div className="flex items-center gap-4">
               <button
@@ -65,11 +67,8 @@ const Footer = () => {
           </div>
 
           <div className="flex flex-col gap-4">
-            <p
-              className="inline-block w-fit bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]"
-              style={{ color: FOOTER_INK }}
-            >
-              Shop
+            <p className={FOOTER_HEADING} style={{ color: FOOTER_INK }}>
+              Collection
             </p>
             <ul className="flex flex-col gap-3">
               <li>
@@ -78,18 +77,15 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link href="/#latest-drops" className={FOOTER_LINK}>
-                  Latest Drops
+                <Link href="/all-products?search=Oversized+T-shirt" className={FOOTER_LINK}>
+                  Oversized T-shirt
                 </Link>
               </li>
             </ul>
           </div>
 
           <div className="flex flex-col gap-4">
-            <p
-              className="inline-block w-fit bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]"
-              style={{ color: FOOTER_INK }}
-            >
+            <p className={FOOTER_HEADING} style={{ color: FOOTER_INK }}>
               About
             </p>
             <ul className="flex flex-col gap-3">
@@ -106,6 +102,29 @@ const Footer = () => {
               <li>
                 <Link href="/contact" className={FOOTER_LINK}>
                   Contact Us
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <p className={FOOTER_HEADING} style={{ color: FOOTER_INK }}>
+              Policies
+            </p>
+            <ul className="flex flex-col gap-3">
+              <li>
+                <Link href="/privacy-policy" className={FOOTER_LINK}>
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms-and-conditions" className={FOOTER_LINK}>
+                  Terms and Condition
+                </Link>
+              </li>
+              <li>
+                <Link href="/return-refund" className={FOOTER_LINK}>
+                  Returns &amp; Shipping
                 </Link>
               </li>
             </ul>

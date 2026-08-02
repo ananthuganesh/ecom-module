@@ -1,12 +1,15 @@
 "use client";
 
-import { ClipboardList, LogOut, MapPin } from "lucide-react";
 import {
   AccountIcon,
+  BagIcon,
   CartIcon,
   HeartBagIcon,
+  LocationIcon,
+  LogOutIcon,
   MenuIcon,
-  StoreIcon
+  OrdersIcon,
+  StoreIcon,
 } from "@/components/icons/storeIcons";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -72,33 +75,35 @@ const Navbar = () => {
   }, [isHome]);
 
   const transparent = isHome && overHero && !isMobileMenuOpen;
+  const iconTone = transparent ? "text-white" : "text-gray-900";
 
   return (
     <>
       <nav
-        className={`fixed top-0 left-0 right-0 z-[100] w-full transition-colors duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-[100] w-full border-b transition-[background-color,border-color] duration-300 ${
           transparent
-            ? "bg-transparent border-transparent"
-            : "bg-white border-b border-gray-100"
+            ? "border-transparent bg-transparent"
+            : "border-gray-200 bg-white"
         }`}
       >
         <div className="mx-auto grid h-14 w-full grid-cols-3 items-center px-2 md:px-4 lg:px-8">
           <div className="flex items-center justify-start">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`p-2 rounded-lg transition-colors ${
-                transparent ? "text-white hover:bg-white/10" : "hover:bg-gray-50"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+                transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
               }`}
               aria-label="Menu"
             >
-              <MenuIcon size={20} />
+              <MenuIcon size={18} />
+              <span>Menu</span>
             </button>
           </div>
 
           <div className="flex items-center justify-center">
             <Link href="/" onClick={closeMenu} className="flex items-center">
               <Image
-                src={transparent ? "/urban/logo-dark.png" : "/urban/logo.png"}
+                src={transparent ? "/brand/logo-dark.png" : "/brand/logo.png"}
                 alt="URBAN AANA"
                 width={100}
                 height={36}
@@ -108,52 +113,46 @@ const Navbar = () => {
             </Link>
           </div>
 
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-0.5 sm:gap-1">
             {isAuthenticated ? (
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
-                className={`flex items-center gap-1.5 p-1.5 rounded-lg transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
                   transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
                 }`}
               >
-                <div className="w-7 h-7 bg-black rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs font-medium uppercase">
-                    {userName?.charAt(0) || "U"}
-                  </span>
-                </div>
-                <span
-                  className={`hidden md:block text-sm font-medium ${
-                    transparent ? "text-white" : "text-gray-700"
-                  }`}
-                >
-                  {userName?.split(" ")[0]}
+                <AccountIcon size={18} />
+                <span className="max-w-[5.5rem] truncate">
+                  {userName?.split(" ")[0] || "Account"}
                 </span>
               </button>
             ) : (
               <Link
                 href="/login"
-                className={`p-2 rounded-lg transition-colors ${
-                  transparent ? "text-white hover:bg-white/10" : "hover:bg-gray-50"
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+                  transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
                 }`}
               >
-                <AccountIcon size={19} />
+                <AccountIcon size={18} />
+                <span>Account</span>
               </Link>
             )}
 
             <button
               onClick={() => setDrawerOpen(true)}
-              className={`p-2 relative rounded-lg transition-colors ${
-                transparent ? "text-white hover:bg-white/10" : "hover:bg-gray-50"
+              className={`relative inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+                transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
               }`}
               aria-label={`Cart, ${cartCount} items`}
             >
-              <CartIcon size={19} />
+              <CartIcon size={18} />
+              <span>Cart</span>
               {cartCount > 0 && (
                 <motion.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   exit={{ scale: 0 }}
-                  className="absolute -top-1 -right-1 bg-brand-red text-white text-[12px] font-bold h-5 w-5 flex items-center justify-center rounded-full"
+                  className="absolute -top-0.5 right-0 bg-brand-red text-white text-[10px] font-bold h-4 min-w-4 px-0.5 flex items-center justify-center rounded-full"
                 >
                   {cartCount}
                 </motion.span>
@@ -226,7 +225,7 @@ const Navbar = () => {
                   onClick={closeMenu}
                   className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
                 >
-                  <CartIcon size={18} />
+                  <BagIcon size={18} />
                   <span className="text-sm">All Products</span>
                 </Link>
 
@@ -237,7 +236,7 @@ const Navbar = () => {
                       onClick={closeMenu}
                       className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
                     >
-                      <ClipboardList size={18} />
+                      <OrdersIcon size={18} />
                       <span className="text-sm">My Orders</span>
                     </Link>
 
@@ -255,7 +254,7 @@ const Navbar = () => {
                       onClick={closeMenu}
                       className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
                     >
-                      <MapPin size={18} />
+                      <LocationIcon size={18} />
                       <span className="text-sm">Addresses</span>
                     </Link>
 
@@ -277,7 +276,7 @@ const Navbar = () => {
                       }}
                       className="w-full flex items-center gap-3 px-5 py-3 text-brand-red hover:bg-red-50 transition-colors text-left"
                     >
-                      <LogOut size={18} />
+                      <LogOutIcon size={18} />
                       <span className="text-sm">Sign Out</span>
                     </button>
                   </>

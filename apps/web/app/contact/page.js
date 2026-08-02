@@ -1,10 +1,14 @@
 "use client";
 
-import { Facebook, Instagram, Mail, MapPin } from "lucide-react";
-const SUPPORT_EMAIL = "hello@urbanaana.com";
+import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react";
+import {
+  STORE_EMAIL,
+  STORE_PHONE,
+  STORE_PHONE_TEL,
+} from "@/lib/storeContact";
 
 export default function ContactPage() {
-  const mailto = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Urban Aana inquiry")}`;
+  const mailto = `mailto:${STORE_EMAIL}?subject=${encodeURIComponent("Urban Aana inquiry")}`;
 
   return (
     <main className="min-h-screen bg-white">
@@ -39,13 +43,22 @@ export default function ContactPage() {
                   href={mailto}
                   className="mt-1 block text-sm font-medium text-black hover:text-brand-red"
                 >
-                  {SUPPORT_EMAIL}
+                  {STORE_EMAIL}
                 </a>
+              </div>
+            </div>
+
+            <div className="flex gap-4 border border-black bg-[#F9F9F5] p-5">
+              <div className="mt-0.5">
+                <Phone className="h-5 w-5 text-brand-red" />
+              </div>
+              <div>
+                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Phone</p>
                 <a
-                  href="mailto:support@urbanaana.com"
+                  href={`tel:${STORE_PHONE_TEL}`}
                   className="mt-1 block text-sm font-medium text-black hover:text-brand-red"
                 >
-                  support@urbanaana.com
+                  {STORE_PHONE}
                 </a>
               </div>
             </div>
@@ -81,7 +94,13 @@ export default function ContactPage() {
               href={mailto}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 bg-black py-3.5 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-brand-red"
             >
-              <Mail size={14} /> Write to {SUPPORT_EMAIL}
+              <Mail size={14} /> Write to {STORE_EMAIL}
+            </a>
+            <a
+              href={`tel:${STORE_PHONE_TEL}`}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 border border-black py-3.5 text-xs font-bold uppercase tracking-[0.16em] text-black transition-colors hover:bg-black hover:text-white"
+            >
+              <Phone size={14} /> Call {STORE_PHONE}
             </a>
           </div>
         </div>

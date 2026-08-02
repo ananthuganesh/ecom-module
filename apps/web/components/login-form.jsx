@@ -14,7 +14,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -181,19 +180,6 @@ export function LoginForm({ className, mode = "customer", ...props }) {
             </FieldGroup>
           </form>
         </CardContent>
-        <CardFooter className="justify-center pt-4">
-          <p className="text-center text-xs text-muted-foreground">
-            Custom Shopify Solution by{" "}
-            <a
-              href="https://bridnetwork.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline-offset-4 hover:underline"
-            >
-              Brid Network
-            </a>
-          </p>
-        </CardFooter>
       </Card>
     </div>
   );

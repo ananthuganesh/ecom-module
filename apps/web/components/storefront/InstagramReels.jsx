@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { reelsService } from "@/api";
 import {
   DEFAULT_STOREFRONT_REELS,
@@ -39,7 +39,6 @@ function ReelCard({ videoUrl, altText }) {
     );
 
     observer.observe(container);
-    // Kick playback immediately for cards already in view.
     playMuted(video);
 
     return () => {
@@ -51,7 +50,7 @@ function ReelCard({ videoUrl, altText }) {
   return (
     <div
       ref={containerRef}
-      className="group relative block w-[calc((100vw-1.5rem)/2)] shrink-0 overflow-hidden rounded-xl border-[0.5px] border-[#c9cbcc] bg-white md:w-[calc((100vw-3.5rem)/3)] lg:w-[calc((100vw-7rem)/4)] lg:rounded-2xl"
+      className="group relative block w-[calc((100vw-3rem)/5)] shrink-0 overflow-hidden rounded-xl bg-white md:w-[calc((100vw-5rem)/5)] lg:w-[calc((100vw-8rem)/5)] lg:rounded-2xl"
       aria-label={altText || "Product showcase"}
     >
       <div
@@ -69,6 +68,32 @@ function ReelCard({ videoUrl, altText }) {
           aria-label={altText || "Product showcase"}
         />
       </div>
+    </div>
+  );
+}
+
+/** Repeat items until the track is wide enough for a seamless loop. */
+function buildTrackItems(reels, minCount = 10) {
+  if (!reels.length) return [];
+  const items = [];
+  let i = 0;
+  while (items.length < minCount) {
+    items.push(reels[i % reels.length]);
+    i += 1;
+  }
+  return items;
+}
+
+function MarqueeTrack({ items, copy }) {
+  return (
+    <div className="ua-reels-marquee flex shrink-0 gap-2 pr-2 md:gap-3 md:pr-3 lg:gap-4 lg:pr-4">
+      {items.map((reel, index) => (
+        <ReelCard
+          key={`${copy}-${reel.id}-${index}`}
+          videoUrl={reel.videoUrl}
+          altText={reel.altText}
+        />
+      ))}
     </div>
   );
 }
@@ -97,6 +122,8 @@ export default function InstagramReels() {
     };
   }, []);
 
+  const trackItems = useMemo(() => buildTrackItems(reels, 10), [reels]);
+
   if (!loaded && reels.length === 0) {
     return (
       <section className="scroll-mt-24 py-6 md:py-10">
@@ -105,8 +132,8 @@ export default function InstagramReels() {
             Product <span className="title-knewave-accent">Showcase</span>
           </h2>
         </header>
-        <div className="grid grid-cols-2 gap-2 px-2 md:grid-cols-3 md:gap-3 md:px-4 lg:grid-cols-4 lg:gap-4 lg:px-8">
-          {[0, 1, 2, 3].map((i) => (
+        <div className="grid grid-cols-5 gap-2 px-2 md:gap-3 md:px-4 lg:gap-4 lg:px-8">
+          {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
               className="animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
@@ -118,7 +145,7 @@ export default function InstagramReels() {
     );
   }
 
-  const marqueeItems = [...reels, ...reels];
+  if (!trackItems.length) return null;
 
   return (
     <section className="scroll-mt-24 py-6 md:py-10">
@@ -128,29 +155,24 @@ export default function InstagramReels() {
         </h2>
       </header>
 
-      <div className="ua-reels-marquee-mask relative overflow-hidden px-2 md:px-4 lg:px-8">
-        <div className="ua-reels-marquee flex w-max gap-2 md:gap-3 lg:gap-4">
-          {marqueeItems.map((reel, index) => (
-            <ReelCard
-              key={`${reel.id}-${index}`}
-              videoUrl={reel.videoUrl}
-              altText={reel.altText}
-            />
-          ))}
+      <div className="relative w-full overflow-hidden px-2 md:px-4 lg:px-8">
+        <div className="flex w-max">
+          <MarqueeTrack items={trackItems} copy={0} />
+          <MarqueeTrack items={trackItems} copy={1} />
         </div>
       </div>
 
       <style>{`
         @keyframes ua-reels-marquee {
           from { transform: translate3d(0, 0, 0); }
-          to { transform: translate3d(-50%, 0, 0); }
+          to { transform: translate3d(-100%, 0, 0); }
         }
         .ua-reels-marquee {
-          animation: ua-reels-marquee 40s linear infinite;
+          animation: ua-reels-marquee 35s linear infinite;
           will-change: transform;
         }
-        @media (prefers-reduced-motion: reduce) {
-          .ua-reels-marquee { animation: none; }
+        .ua-reels-marquee:hover {
+          animation-play-state: paused;
         }
       `}</style>
     </section>
