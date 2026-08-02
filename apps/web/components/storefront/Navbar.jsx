@@ -82,7 +82,7 @@ const Navbar = () => {
             : "bg-white border-b border-gray-100"
         }`}
       >
-        <div className="max-w-[1440px] mx-auto px-4 md:px-16 grid grid-cols-3 items-center h-14">
+        <div className="mx-auto grid h-14 w-full grid-cols-3 items-center px-2 md:px-4 lg:px-8">
           <div className="flex items-center justify-start">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}

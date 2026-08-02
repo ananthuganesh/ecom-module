@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser
+from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser, user_has_admin_access
 from app.documents import User
 from app.security import create_access_token, hash_password, verify_password
 from app.serializers import user_public
@@ -68,7 +68,28 @@ async def login(
         raise HTTPException(status_code=401, detail="Invalid email or password")
     await clear_failed_login(email)
     token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, scope="customer")
+    return _auth_payload(user, token)
+
+
+@router.post("/admin/login")
+async def admin_login(
+    body: LoginBody,
+    response: Response,
+    _: None = Depends(rate_limit_dependency("admin-login", limit=10)),
+):
+    """Staff login — sets `ua_admin_session` only (does not affect storefront)."""
+    email = body.email.lower().strip()
+    await assert_login_not_locked(email)
+    user = await User.find_one(User.email == email)
+    if not user or not user.password or not verify_password(body.password, user.password):
+        await record_failed_login(email)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    await clear_failed_login(email)
+    if not await user_has_admin_access(user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    token = create_access_token(user.id)
+    set_auth_cookie(response, token, scope="admin")
     return _auth_payload(user, token)
 
 
@@ -87,18 +108,29 @@ async def register(
     user.customerUrlId = await next_customer_url_id()
     await user.insert()
     token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, scope="customer")
     return _auth_payload(user, token)
 
 
 @router.post("/logout")
 async def logout(response: Response):
-    clear_auth_cookie(response)
+    clear_auth_cookie(response, scope="customer")
+    return {"ok": True}
+
+
+@router.post("/admin/logout")
+async def admin_logout(response: Response):
+    clear_auth_cookie(response, scope="admin")
     return {"ok": True}
 
 
 @router.get("/profile")
 async def get_profile(user: CurrentUser):
+    return user_public(user)
+
+
+@router.get("/admin/profile")
+async def get_admin_profile(user: AdminUser):
     return user_public(user)
 
 
@@ -116,7 +148,7 @@ async def update_profile(body: ProfileUpdate, user: CurrentUser, response: Respo
     user.updatedAt = datetime.utcnow()
     await user.save()
     token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, scope="customer")
     return _auth_payload(user, token)
 
 
@@ -250,7 +282,7 @@ async def checkout_email(
             return _checkout_continue_payload(email=user.email, requires_login=False)
 
     token = create_access_token(user.id, hours=48)
-    set_auth_cookie(response, token, hours=48)
+    set_auth_cookie(response, token, hours=48, scope="customer")
     data = _auth_payload(user, token)
     data["created"] = created
     data["requiresLogin"] = False
@@ -273,5 +305,5 @@ async def set_password(
     user.updatedAt = datetime.utcnow()
     await user.save()
     token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, scope="customer")
     return _auth_payload(user, token)

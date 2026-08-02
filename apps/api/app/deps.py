@@ -28,8 +28,9 @@ async def get_current_user(
     request: Request,
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> User:
+    """Storefront / customer session (`ua_session`)."""
     bearer = creds.credentials if creds and creds.scheme.lower() == "bearer" else None
-    token = token_from_request(request, bearer)
+    token = token_from_request(request, bearer, scope="customer")
     user = await _user_from_token(token)
     if not user:
         raise HTTPException(
@@ -44,12 +45,29 @@ async def get_optional_user(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> User | None:
     bearer = creds.credentials if creds and creds.scheme.lower() == "bearer" else None
-    token = token_from_request(request, bearer)
+    token = token_from_request(request, bearer, scope="customer")
     return await _user_from_token(token)
+
+
+async def get_staff_session_user(
+    request: Request,
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> User:
+    """Admin panel session (`ua_admin_session`)."""
+    bearer = creds.credentials if creds and creds.scheme.lower() == "bearer" else None
+    token = token_from_request(request, bearer, scope="admin")
+    user = await _user_from_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authorized, no token",
+        )
+    return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+StaffSessionUser = Annotated[User, Depends(get_staff_session_user)]
 
 
 async def _role_for(user: User) -> Role | None:
@@ -68,18 +86,23 @@ def _perm_match(granted: list[str], needed: str) -> bool:
     return bool(separator and f"{resource}.*" in granted)
 
 
-async def require_admin(user: CurrentUser) -> User:
-    """Admin panel access: owner Admin, wildcard (*), or staff admin.access."""
+async def user_has_admin_access(user: User) -> bool:
+    """Whether this account may use the admin panel."""
     if user.isAdmin:
-        return user
+        return True
     role = await _role_for(user)
     perms = list(role.permissions or []) if role else []
-    if "*" in perms or "admin.access" in perms:
+    return "*" in perms or "admin.access" in perms
+
+
+async def require_admin(user: StaffSessionUser) -> User:
+    """Admin panel access: owner Admin, wildcard (*), or staff admin.access."""
+    if await user_has_admin_access(user):
         return user
     raise HTTPException(status_code=403, detail="Admin access required")
 
 
-async def require_role_manager(user: CurrentUser) -> User:
+async def require_role_manager(user: StaffSessionUser) -> User:
     """Only Admin / wildcard owners may manage users and roles."""
     if user.isAdmin:
         return user
@@ -91,7 +114,7 @@ async def require_role_manager(user: CurrentUser) -> User:
 
 
 def require_permission(*perms: str):
-    async def _dep(user: CurrentUser) -> User:
+    async def _dep(user: StaffSessionUser) -> User:
         if user.isAdmin:
             return user
         role = await _role_for(user)

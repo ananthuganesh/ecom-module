@@ -6,13 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdminOrderSearch from "@/components/admin/AdminOrderSearch";
 import { NavUser } from "@/components/nav-user";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 
 export function SiteHeader() {
   const router = useRouter();
-  const userInfo = useAuthStore((s) => s.userInfo);
-  const logout = useAuthStore((s) => s.logout);
+  const userInfo = useAdminAuthStore((s) => s.userInfo);
+  const logout = useAdminAuthStore((s) => s.logout);
   const saveBar = useProductSaveBarStore();
 
   const handleLogout = () => {

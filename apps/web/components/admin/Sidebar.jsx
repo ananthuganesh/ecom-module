@@ -170,7 +170,7 @@ const menuItems = [
     href: "/admin/content",
     icon: Folder,
     subItems: [
-      { name: "Reels", href: "/admin/reels" },
+      { name: "Reels", href: "/admin/content/reels" },
     ],
   },
   { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },

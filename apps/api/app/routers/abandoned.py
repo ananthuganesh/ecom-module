@@ -107,7 +107,7 @@ async def _recover_payload(token: str, response: Response) -> dict:
         # passwordless shoppers only. Never auto-login passworded or staff accounts.
         if not user.password and not is_staff:
             token_jwt = create_access_token(user.id, hours=48)
-            set_auth_cookie(response, token_jwt, hours=48)
+            set_auth_cookie(response, token_jwt, hours=48, scope="customer")
             session = user_public(user, token_jwt)
 
     checkout.recoveredAt = datetime.utcnow()

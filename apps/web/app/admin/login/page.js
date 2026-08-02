@@ -2,22 +2,22 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { LoginForm } from "@/components/login-form";
 import { Spinner } from "@/components/ui/spinner";
 
 function AdminLoginInner() {
-  const userInfo = useAuthStore((state) => state.userInfo);
+  const userInfo = useAdminAuthStore((state) => state.userInfo);
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const mark = () => setHydrated(true);
-    if (useAuthStore.persist.hasHydrated()) {
+    if (useAdminAuthStore.persist.hasHydrated()) {
       mark();
       return;
     }
-    return useAuthStore.persist.onFinishHydration(mark);
+    return useAdminAuthStore.persist.onFinishHydration(mark);
   }, []);
 
   useEffect(() => {

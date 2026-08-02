@@ -61,11 +61,11 @@ export const adminProductService = {
     client.patch(e.bulkUpdate, data).then((res) => res.data),
 
   uploadImage: (file) => {
-    const maxBytes = 10 * 1024 * 1024;
+    const maxBytes = 25 * 1024 * 1024;
     if (file?.size > maxBytes) {
       return Promise.reject({
-        response: { data: { detail: "Image must be 10 MB or smaller" } },
-        message: "Image must be 10 MB or smaller",
+        response: { data: { detail: "Image must be 25 MB or smaller" } },
+        message: "Image must be 25 MB or smaller",
       });
     }
     const form = new FormData();

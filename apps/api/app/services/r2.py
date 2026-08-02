@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
@@ -17,6 +18,7 @@ ALLOWED_FOLDERS = {"products", "ai", "reels"}
 # Content library "All" excludes reels (managed under Content → Reels).
 LIBRARY_FOLDERS = {"products", "ai"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
+_STEM_SAFE = re.compile(r"[^\w\-]+", re.UNICODE)
 
 
 def is_configured() -> bool:
@@ -56,7 +58,12 @@ def _client():
         aws_access_key_id=settings.r2_access_key_id,
         aws_secret_access_key=settings.r2_secret_access_key,
         region_name="auto",
-        config=Config(signature_version="s3v4"),
+        config=Config(
+            signature_version="s3v4",
+            connect_timeout=30,
+            read_timeout=600,
+            retries={"max_attempts": 5, "mode": "standard"},
+        ),
     )
 
 
@@ -78,9 +85,25 @@ def _file_type(name: str) -> str:
     return "file"
 
 
-def _safe_name(filename: str | None, default_ext: str = ".jpg") -> str:
-    ext = Path(filename or f"file{default_ext}").suffix.lower() or default_ext
-    return f"{uuid4().hex}{ext}"
+def safe_storage_name(filename: str | None, default_ext: str = ".jpg") -> str:
+    """Keep the original stem; add a short suffix so collisions stay unique."""
+    path = Path(filename or f"file{default_ext}")
+    ext = path.suffix.lower() or default_ext
+    raw_stem = (path.stem or "file").strip()
+    stem = _STEM_SAFE.sub("-", raw_stem).strip("-_")[:80] or "file"
+    return f"{stem}-{uuid4().hex[:8]}{ext}"
+
+
+def _upload_result(*, folder: str, name: str, key: str, size: int, content_type: str) -> dict:
+    return {
+        "key": key,
+        "name": name,
+        "url": _public_url(key),
+        "size": size,
+        "type": _file_type(name),
+        "folder": folder,
+        "contentType": content_type,
+    }
 
 
 def upload_bytes(
@@ -95,7 +118,7 @@ def upload_bytes(
     if not is_configured():
         raise HTTPException(status_code=503, detail="R2 is not configured")
 
-    name = _safe_name(filename)
+    name = safe_storage_name(filename)
     key = _object_key(folder, name)
     ctype = content_type or mimetypes.guess_type(name)[0] or "application/octet-stream"
     settings = get_settings()
@@ -105,20 +128,67 @@ def upload_bytes(
             Key=key,
             Body=data,
             ContentType=ctype,
+            ContentLength=len(data),
         )
     except ClientError as exc:
         code = (exc.response or {}).get("Error", {}).get("Code") or "ClientError"
         raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({code})") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({exc})") from exc
 
-    return {
-        "key": key,
-        "name": name,
-        "url": _public_url(key),
-        "size": len(data),
-        "type": _file_type(name),
-        "folder": folder,
-        "contentType": ctype,
-    }
+    return _upload_result(
+        folder=folder, name=name, key=key, size=len(data), content_type=ctype
+    )
+
+
+def upload_file_path(
+    *,
+    folder: str,
+    path: str | Path,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> dict:
+    """Multipart-friendly upload from a local file path (videos / large assets)."""
+    if folder not in ALLOWED_FOLDERS:
+        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
+    if not is_configured():
+        raise HTTPException(status_code=503, detail="R2 is not configured")
+
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail="Upload temp file missing")
+
+    name = safe_storage_name(filename)
+    key = _object_key(folder, name)
+    ctype = content_type or mimetypes.guess_type(name)[0] or "application/octet-stream"
+    settings = get_settings()
+    size = file_path.stat().st_size
+
+    try:
+        from boto3.s3.transfer import TransferConfig
+
+        transfer = TransferConfig(
+            multipart_threshold=8 * 1024 * 1024,
+            multipart_chunksize=8 * 1024 * 1024,
+            max_concurrency=4,
+            use_threads=True,
+        )
+        _client().upload_file(
+            Filename=str(file_path),
+            Bucket=settings.r2_bucket,
+            Key=key,
+            ExtraArgs={"ContentType": ctype},
+            Config=transfer,
+        )
+    except ClientError as exc:
+        code = (exc.response or {}).get("Error", {}).get("Code") or "ClientError"
+        raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({code})") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({exc})") from exc
+
+    return _upload_result(
+        folder=folder, name=name, key=key, size=size, content_type=ctype
+    )
 
 
 def list_objects(folder: str = "all") -> list[dict]:

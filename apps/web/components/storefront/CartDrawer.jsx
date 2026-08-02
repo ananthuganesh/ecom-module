@@ -1,9 +1,7 @@
 "use client";
 
-import { Shield } from "lucide-react";
 import {
   BagIcon,
-  CardIcon,
   ChevronRightIcon,
   CloseIcon,
   DeleteIcon,
@@ -206,10 +204,6 @@ export default function CartDrawer() {
                     </span>
                   </div>
 
-                  <p className="text-xs text-gray-500">
-                    Shipping and taxes calculated at checkout
-                  </p>
-
                   <Link
                     href="/cart"
                     onClick={handleClose}
@@ -225,17 +219,6 @@ export default function CartDrawer() {
                     Proceed to Checkout
                     <ChevronRightIcon size={18} />
                   </button>
-
-                  <div className="flex justify-center gap-4 pt-2">
-                    <div className="flex items-center gap-1.5 text-gray-500">
-                      <Shield size={12} />
-                      <span className="text-[12px]">Secure Checkout</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-gray-500">
-                      <CardIcon size={12} />
-                      <span className="text-[12px]">Safe Payment</span>
-                    </div>
-                  </div>
                 </div>
               </div>
             )}

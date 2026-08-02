@@ -14,7 +14,7 @@ export const adminMediaService = {
       .get(MEDIA_BASE, { params: { folder: resolveFolder(folder) } })
       .then((res) => res.data),
 
-  upload: (file, folder = "products") => {
+  upload: (file, folder = "products", { onUploadProgress } = {}) => {
     const target = resolveFolder(folder);
     const form = new FormData();
     form.append("file", file);
@@ -22,6 +22,11 @@ export const adminMediaService = {
       .post(`${MEDIA_BASE}/upload`, form, {
         params: { folder: target },
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress,
+        // Large reels can take several minutes through the Next.js proxy → API → R2.
+        timeout: 10 * 60 * 1000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
       })
       .then((res) => res.data);
   },
@@ -29,6 +34,11 @@ export const adminMediaService = {
   updateAlt: ({ folder, name, altText }) =>
     client
       .patch(`${MEDIA_BASE}/alt`, { folder, name, altText })
+      .then((res) => res.data),
+
+  updateVisible: ({ folder, name, visible }) =>
+    client
+      .patch(`${MEDIA_BASE}/visible`, { folder, name, visible: Boolean(visible) })
       .then((res) => res.data),
 
   delete: ({ folder, name }) =>

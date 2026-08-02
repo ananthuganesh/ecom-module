@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 
 export const SETTINGS_NAV = [
   { name: "General", href: "/admin/settings/general" },
@@ -17,7 +17,7 @@ export const SETTINGS_NAV = [
 
 export default function SettingsShell({ children }) {
   const pathname = usePathname();
-  const isAdmin = useAuthStore((s) => Boolean(s.userInfo?.isAdmin));
+  const isAdmin = useAdminAuthStore((s) => Boolean(s.userInfo?.isAdmin));
   const nav = SETTINGS_NAV.filter((item) => !item.adminOnly || isAdmin);
 
   return (

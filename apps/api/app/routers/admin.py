@@ -429,7 +429,7 @@ async def upload_image(
             "optimized": True,
             "format": "webp",
         }
-    name = f"{uuid4().hex}.webp"
+    name = r2_svc.safe_storage_name(webp_name, default_ext=".webp")
     dest = UPLOAD_DIR / name
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(webp_bytes)
@@ -1802,18 +1802,21 @@ async def _save_upload_temp(upload: UploadFile, folder: Path) -> tuple[str, Path
     ext = Path(upload.filename or "img.jpg").suffix.lower() or ".jpg"
     if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
         raise HTTPException(status_code=400, detail="Invalid image type")
-    name = f"{uuid4().hex}{ext}"
-    dest = folder / name
     content = await upload.read()
-    dest.write_bytes(content)
     if r2_svc.is_configured():
         result = r2_svc.upload_bytes(
             folder=folder.name if folder.name in {"products", "ai"} else "ai",
             data=content,
-            filename=name,
+            filename=upload.filename,
             content_type=upload.content_type,
         )
+        name = result["name"]
+        dest = folder / name
+        dest.write_bytes(content)
         return result["url"], dest
+    name = r2_svc.safe_storage_name(upload.filename, default_ext=ext)
+    dest = folder / name
+    dest.write_bytes(content)
     rel = f"/uploads/{folder.name}/{name}"
     return rel, dest
 

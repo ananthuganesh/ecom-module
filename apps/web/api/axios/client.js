@@ -1,5 +1,9 @@
 import axios from "axios";
-import { AUTH_STORAGE_KEY, ensureStorageKey } from "@/lib/storageKeys";
+import {
+  ADMIN_AUTH_STORAGE_KEY,
+  AUTH_STORAGE_KEY,
+  ensureStorageKey,
+} from "@/lib/storageKeys";
 
 const getApiUrl = () => {
   // In the browser, always use relative path to allow Next.js proxying
@@ -31,23 +35,30 @@ const client = axios.create({
 
 // Session is HttpOnly cookie (`withCredentials`). Do not attach Bearer from localStorage.
 
-// Handle 401 Unauthorized globally
+// Handle 401 Unauthorized globally — clear the matching session only.
 client.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== "undefined") {
         const path = window.location.pathname;
-        const onAuthPage = path === "/login" || path === "/admin/login";
+        const onAdmin = path.startsWith("/admin");
+        const onAuthPage =
+          path === "/login" || path === "/admin/login";
         if (!onAuthPage) {
-          localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
-          // Best-effort cookie clear (avoid axios recursion on 401).
-          fetch(`${API_URL}/users/logout`, {
-            method: "POST",
-            credentials: "include",
-          }).catch(() => {});
-          if (path.startsWith("/admin")) {
+          if (onAdmin) {
+            localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+            fetch(`${API_URL}/users/admin/logout`, {
+              method: "POST",
+              credentials: "include",
+            }).catch(() => {});
             window.location.href = "/admin/login";
+          } else {
+            localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
+            fetch(`${API_URL}/users/logout`, {
+              method: "POST",
+              credentials: "include",
+            }).catch(() => {});
           }
         }
       }

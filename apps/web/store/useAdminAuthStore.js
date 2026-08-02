@@ -1,24 +1,22 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { AUTH_STORAGE_KEY, ensureStorageKey } from "@/lib/storageKeys";
+import { ADMIN_AUTH_STORAGE_KEY } from "@/lib/storageKeys";
 import { stripAuthToken } from "@/lib/persistAuth";
 import client from "@/api/axios/client";
 
-ensureStorageKey(AUTH_STORAGE_KEY);
-
-/** Storefront / customer session only. */
-export const useAuthStore = create(
+/** Admin panel session only — separate from storefront auth. */
+export const useAdminAuthStore = create(
   persist(
     (set) => ({
       userInfo: null,
       setUserInfo: (info) => set({ userInfo: info ? stripAuthToken(info) : null }),
       logout: () => {
-        client.post("users/logout").catch(() => {});
+        client.post("users/admin/logout").catch(() => {});
         set({ userInfo: null });
       },
     }),
     {
-      name: AUTH_STORAGE_KEY,
+      name: ADMIN_AUTH_STORAGE_KEY,
     }
   )
 );

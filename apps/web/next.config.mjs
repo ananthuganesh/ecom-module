@@ -58,11 +58,14 @@ const nextConfig = {
     ],
   },
   experimental: {
+    // Dev/proxy rewrites default to 10MB — reels allow up to 200MB videos.
+    proxyClientMaxBodySize: "210mb",
     serverActions: {
       // Use ALLOWED_ORIGINS from env, fallback to a safe default
       allowedOrigins: process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',')
         : ["localhost:3000", "localhost:4000"],
+      bodySizeLimit: "210mb",
     },
   },
   turbopack: {
@@ -89,6 +92,8 @@ const nextConfig = {
       { source: "/admin/warehouses", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/content/ai-media", destination: "/admin/content", permanent: false },
       { source: "/admin/content/ai-studio", destination: "/admin/content", permanent: false },
+      { source: "/admin/reels", destination: "/admin/content/reels", permanent: false },
+      { source: "/admin/reels/:path*", destination: "/admin/content/reels", permanent: false },
       { source: "/admin/integrations/aisensy", destination: "/admin/settings/integrations/aisensy", permanent: false },
       { source: "/admin/sales/invoices", destination: "/admin/orders", permanent: false },
       { source: "/admin/sales/returns", destination: "/admin/orders", permanent: false },

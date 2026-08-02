@@ -666,6 +666,7 @@ class MediaAsset(Document):
     folder: str
     name: str
     altText: str = ""
+    visible: bool = True
     url: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)

@@ -6,7 +6,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { authService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
-import { persistAuth } from "@/lib/persistAuth";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
+import { persistAuth, persistAdminAuth } from "@/lib/persistAuth";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +35,8 @@ export function LoginForm({ className, mode = "customer", ...props }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { setUserInfo } = useAuthStore();
+  const setCustomerInfo = useAuthStore((s) => s.setUserInfo);
+  const setAdminInfo = useAdminAuthStore((s) => s.setUserInfo);
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect");
@@ -44,41 +46,30 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     setLoading(true);
     setError("");
     try {
-      const data = await authService.login(email.trim().toLowerCase(), password);
-
       if (isAdmin) {
-        const canAccessAdmin = Boolean(data?.isAdmin || data?.roleId);
-        if (!canAccessAdmin) {
-          // Login always sets a session cookie — clear it for non-staff.
-          try {
-            await authService.logout();
-          } catch {
-            /* ignore */
-          }
-          useAuthStore.getState().logout();
-          setError("Access denied. Admin login required.");
-          return;
-        }
-        setUserInfo({
+        const data = await authService.adminLogin(
+          email.trim().toLowerCase(),
+          password
+        );
+        const profile = {
           _id: data._id,
           name: data.name,
           email: data.email,
           isAdmin: data.isAdmin,
           roleId: data.roleId || null,
-        });
-        persistAuth({
-          _id: data._id,
-          name: data.name,
-          email: data.email,
-          isAdmin: data.isAdmin,
-          roleId: data.roleId || null,
-        });
+        };
+        setAdminInfo(profile);
+        persistAdminAuth(profile);
         toast.success("Signed in");
         router.push("/admin/dashboard");
         return;
       }
 
-      setUserInfo(data);
+      const data = await authService.login(
+        email.trim().toLowerCase(),
+        password
+      );
+      setCustomerInfo(data);
       persistAuth(data);
       const path =
         redirectTo &&

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { authService } from "@/api";
 import AdminSidebar from "@/components/admin/Sidebar";
 import { SiteHeader } from "@/components/site-header";
@@ -27,9 +27,9 @@ function canAccessAdmin(user) {
 }
 
 export default function AdminShell({ children }) {
-  const userInfo = useAuthStore((s) => s.userInfo);
-  const setUserInfo = useAuthStore((s) => s.setUserInfo);
-  const logout = useAuthStore((s) => s.logout);
+  const userInfo = useAdminAuthStore((s) => s.userInfo);
+  const setUserInfo = useAdminAuthStore((s) => s.setUserInfo);
+  const logout = useAdminAuthStore((s) => s.logout);
   const router = useRouter();
   const pathname = usePathname();
   const [hydrated, setHydrated] = useState(false);
@@ -39,11 +39,11 @@ export default function AdminShell({ children }) {
 
   useEffect(() => {
     const mark = () => setHydrated(true);
-    if (useAuthStore.persist.hasHydrated()) {
+    if (useAdminAuthStore.persist.hasHydrated()) {
       mark();
       return;
     }
-    return useAuthStore.persist.onFinishHydration(mark);
+    return useAdminAuthStore.persist.onFinishHydration(mark);
   }, []);
 
   // Revalidate admin session against the API (localStorage is not authoritative).
@@ -58,7 +58,7 @@ export default function AdminShell({ children }) {
 
     (async () => {
       try {
-        const profile = await authService.getProfile();
+        const profile = await authService.getAdminProfile();
         if (cancelled) return;
         if (!canAccessAdmin(profile)) {
           logout();

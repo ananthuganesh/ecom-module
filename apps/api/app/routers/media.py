@@ -1,7 +1,10 @@
+import asyncio
 import mimetypes
+import os
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
@@ -13,8 +16,9 @@ from app.services import r2 as r2_svc
 router = APIRouter(prefix="/api/admin/media", tags=["admin"])
 public_router = APIRouter(prefix="/api/reels", tags=["reels"])
 
-_MAX_IMAGE_BYTES = 10 * 1024 * 1024
-_MAX_VIDEO_BYTES = 80 * 1024 * 1024
+_MAX_IMAGE_BYTES = 25 * 1024 * 1024
+_MAX_VIDEO_BYTES = 200 * 1024 * 1024
+_SPOOL_CHUNK = 1024 * 1024
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_FOLDERS = {
@@ -68,6 +72,7 @@ def _serialize_file(folder: str, path: Path) -> dict:
         "modifiedAt": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         "folder": folder,
         "altText": "",
+        "visible": True,
     }
 
 
@@ -86,19 +91,28 @@ def _resolve_file(folder: str, name: str) -> Path:
     return candidate
 
 
-async def _alt_map(keys: list[str]) -> dict[str, str]:
+async def _meta_map(keys: list[str]) -> dict[str, dict]:
     if not keys:
         return {}
     docs = await MediaAsset.find({"key": {"$in": keys}}).to_list()
-    return {d.key: (d.altText or "") for d in docs}
+    return {
+        d.key: {
+            "altText": d.altText or "",
+            "visible": True if d.visible is None else bool(d.visible),
+        }
+        for d in docs
+    }
 
 
-async def _attach_alt(files: list[dict]) -> list[dict]:
+async def _attach_meta(files: list[dict]) -> list[dict]:
     keys = [_asset_key(f["folder"], f["name"]) for f in files if f.get("folder") and f.get("name")]
-    alts = await _alt_map(keys)
+    meta = await _meta_map(keys)
     for f in files:
         key = _asset_key(f.get("folder") or "", f.get("name") or "")
-        f["altText"] = alts.get(key, f.get("altText") or "")
+        info = meta.get(key) or {}
+        f["altText"] = info.get("altText", f.get("altText") or "")
+        # Default visible when no metadata row exists
+        f["visible"] = info.get("visible", True) if key in meta else True
         f["key"] = key
     return files
 
@@ -117,7 +131,107 @@ async def _list_folder_files(folder: str) -> list[dict]:
                 if path.is_file()
             )
         files = sorted(files, key=lambda item: item["modifiedAt"], reverse=True)
-    return await _attach_alt(files)
+    return await _attach_meta(files)
+
+
+async def _ensure_file_exists(folder: str, name: str) -> str | None:
+    if r2_svc.is_configured():
+        listed = r2_svc.list_objects(folder)
+        match = next((f for f in listed if f.get("name") == name), None)
+        if not match:
+            raise HTTPException(status_code=404, detail="File not found")
+        return match.get("url")
+    path = _resolve_file(folder, name)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return f"/uploads/{folder}/{name}"
+
+
+async def _upsert_media_meta(
+    *,
+    folder: str,
+    name: str,
+    url: str | None = None,
+    alt_text: str | None = None,
+    visible: bool | None = None,
+) -> MediaAsset:
+    key = _asset_key(folder, name)
+    doc = await MediaAsset.find_one(MediaAsset.key == key)
+    now = datetime.utcnow()
+    if doc:
+        if alt_text is not None:
+            doc.altText = alt_text
+        if visible is not None:
+            doc.visible = bool(visible)
+        if url is not None:
+            doc.url = url
+        doc.updatedAt = now
+        await doc.save()
+        return doc
+    doc = MediaAsset(
+        key=key,
+        folder=folder,
+        name=name,
+        altText=alt_text or "",
+        visible=True if visible is None else bool(visible),
+        url=url,
+        createdAt=now,
+        updatedAt=now,
+    )
+    await doc.insert()
+    return doc
+
+
+async def _finish_reel_upload(
+    *,
+    folder: str,
+    name: str,
+    url: str,
+    size: int,
+    content_type: str,
+) -> dict:
+    try:
+        await _upsert_media_meta(folder=folder, name=name, url=url, visible=True)
+    except Exception:  # noqa: BLE001
+        # File is already stored — don't fail the upload if metadata write fails.
+        pass
+    return {
+        "url": url,
+        "name": name,
+        "folder": folder,
+        "size": size,
+        "contentType": content_type,
+        "type": "video",
+        "optimized": False,
+        "visible": True,
+        "altText": "",
+    }
+
+
+async def _spool_to_temp(upload: UploadFile, *, max_bytes: int) -> tuple[str, int]:
+    """Write upload to a temp file in chunks (avoids loading 200MB into RAM)."""
+    suffix = Path(upload.filename or "reel.mp4").suffix.lower() or ".mp4"
+    fd, path = tempfile.mkstemp(prefix="ua-reel-", suffix=suffix)
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = await upload.read(_SPOOL_CHUNK)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(
+                        status_code=400, detail="Video must be 200 MB or smaller"
+                    )
+                out.write(chunk)
+        return path, size
+    except Exception:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
 
 
 @router.post("/upload")
@@ -134,58 +248,62 @@ async def upload_media(
     if not upload:
         raise HTTPException(status_code=422, detail="file or image is required")
 
-    content = await upload.read()
     is_video = _is_video_upload(upload.filename, upload.content_type)
 
     if is_video:
         if folder != "reels":
             raise HTTPException(status_code=400, detail="Videos can only be uploaded to reels")
-        if len(content) > _MAX_VIDEO_BYTES:
-            raise HTTPException(status_code=400, detail="Video must be 80 MB or smaller")
         content_type = (
             upload.content_type
             or mimetypes.guess_type(upload.filename or "")[0]
             or "video/mp4"
         )
-        if r2_svc.is_configured():
-            result = r2_svc.upload_bytes(
+        temp_path, size = await _spool_to_temp(upload, max_bytes=_MAX_VIDEO_BYTES)
+        try:
+            if r2_svc.is_configured():
+                result = await asyncio.to_thread(
+                    r2_svc.upload_file_path,
+                    folder=folder,
+                    path=temp_path,
+                    filename=upload.filename,
+                    content_type=content_type,
+                )
+                return await _finish_reel_upload(
+                    folder=folder,
+                    name=result.get("name") or "",
+                    url=result["url"],
+                    size=result.get("size") or size,
+                    content_type=content_type,
+                )
+            ext = Path(upload.filename or "reel.mp4").suffix.lower() or ".mp4"
+            name = r2_svc.safe_storage_name(upload.filename, default_ext=ext)
+            dest_dir = UPLOAD_FOLDERS[folder]
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / name
+            await asyncio.to_thread(shutil.copyfile, temp_path, dest)
+            return await _finish_reel_upload(
                 folder=folder,
-                data=content,
-                filename=upload.filename,
+                name=name,
+                url=f"/uploads/{folder}/{name}",
+                size=size,
                 content_type=content_type,
             )
-            return {
-                "url": result["url"],
-                "name": result.get("name"),
-                "folder": folder,
-                "size": result.get("size") or len(content),
-                "contentType": content_type,
-                "type": "video",
-                "optimized": False,
-            }
-        ext = Path(upload.filename or "reel.mp4").suffix.lower() or ".mp4"
-        name = f"{uuid4().hex}{ext}"
-        dest_dir = UPLOAD_FOLDERS[folder]
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        (dest_dir / name).write_bytes(content)
-        return {
-            "url": f"/uploads/{folder}/{name}",
-            "name": name,
-            "folder": folder,
-            "size": len(content),
-            "contentType": content_type,
-            "type": "video",
-            "optimized": False,
-        }
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
+    content = await upload.read()
     if len(content) > _MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="File must be 10 MB or smaller")
+        raise HTTPException(status_code=400, detail="File must be 25 MB or smaller")
     webp_bytes, webp_name, content_type = img_opt.optimize_image_to_webp(
         content,
         filename=upload.filename,
     )
     if r2_svc.is_configured():
-        result = r2_svc.upload_bytes(
+        result = await asyncio.to_thread(
+            r2_svc.upload_bytes,
             folder=folder,
             data=webp_bytes,
             filename=webp_name,
@@ -201,7 +319,7 @@ async def upload_media(
             "optimized": True,
             "format": "webp",
         }
-    name = f"{uuid4().hex}.webp"
+    name = r2_svc.safe_storage_name(webp_name, default_ext=".webp")
     dest_dir = UPLOAD_FOLDERS[folder]
     dest_dir.mkdir(parents=True, exist_ok=True)
     (dest_dir / name).write_bytes(webp_bytes)
@@ -235,37 +353,46 @@ async def update_media_alt(body: dict, _: AdminUser):
     if not name or Path(name).name != name or ".." in Path(name).parts:
         raise HTTPException(status_code=400, detail="Invalid file name")
 
-    if r2_svc.is_configured():
-        listed = r2_svc.list_objects(folder)
-        if not any(f.get("name") == name for f in listed):
-            raise HTTPException(status_code=404, detail="File not found")
-        url = next((f.get("url") for f in listed if f.get("name") == name), None)
-    else:
-        path = _resolve_file(folder, name)
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail="File not found")
-        url = f"/uploads/{folder}/{name}"
+    url = await _ensure_file_exists(folder, name)
+    doc = await _upsert_media_meta(
+        folder=folder, name=name, url=url, alt_text=alt_text
+    )
+    return {
+        "ok": True,
+        "key": doc.key,
+        "folder": folder,
+        "name": name,
+        "altText": doc.altText or "",
+        "visible": True if doc.visible is None else bool(doc.visible),
+        "url": url,
+    }
 
-    key = _asset_key(folder, name)
-    doc = await MediaAsset.find_one(MediaAsset.key == key)
-    now = datetime.utcnow()
-    if doc:
-        doc.altText = alt_text
-        doc.url = url
-        doc.updatedAt = now
-        await doc.save()
-    else:
-        doc = MediaAsset(
-            key=key,
-            folder=folder,
-            name=name,
-            altText=alt_text,
-            url=url,
-            createdAt=now,
-            updatedAt=now,
-        )
-        await doc.insert()
-    return {"ok": True, "key": key, "folder": folder, "name": name, "altText": alt_text, "url": url}
+
+@router.patch("/visible")
+async def update_media_visible(body: dict, _: AdminUser):
+    folder = str(body.get("folder") or "").strip()
+    name = str(body.get("name") or "").strip()
+    if "visible" not in body:
+        raise HTTPException(status_code=400, detail="visible is required")
+    visible = bool(body.get("visible"))
+    if folder != "reels":
+        raise HTTPException(status_code=400, detail="Visibility is only supported for reels")
+    if not name or Path(name).name != name or ".." in Path(name).parts:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    url = await _ensure_file_exists(folder, name)
+    doc = await _upsert_media_meta(
+        folder=folder, name=name, url=url, visible=visible
+    )
+    return {
+        "ok": True,
+        "key": doc.key,
+        "folder": folder,
+        "name": name,
+        "altText": doc.altText or "",
+        "visible": bool(doc.visible),
+        "url": url,
+    }
 
 
 @router.delete("")
@@ -304,9 +431,15 @@ async def _delete_file(folder: str, name: str) -> dict:
 @public_router.get("")
 @public_router.get("/")
 async def list_public_reels():
-    """Storefront Street Reels — video URL + optional alt text."""
+    """Storefront Product Showcase — only visible reels."""
     files = await _list_folder_files("reels")
-    videos = [f for f in files if f.get("type") == "video" and f.get("url")]
+    videos = [
+        f
+        for f in files
+        if f.get("type") == "video"
+        and f.get("url")
+        and f.get("visible", True)
+    ]
     return [
         {
             "id": f.get("name") or f.get("key"),

@@ -1,5 +1,9 @@
 /** Persist auth profile without storing the JWT (HttpOnly cookie holds the session). */
-import { AUTH_STORAGE_KEY, ensureStorageKey } from "@/lib/storageKeys";
+import {
+  ADMIN_AUTH_STORAGE_KEY,
+  AUTH_STORAGE_KEY,
+  ensureStorageKey,
+} from "@/lib/storageKeys";
 
 export function stripAuthToken(userInfo) {
   if (!userInfo || typeof userInfo !== "object") return userInfo;
@@ -7,14 +11,21 @@ export function stripAuthToken(userInfo) {
   return { ...rest, authenticated: true };
 }
 
-export function persistAuth(userInfo) {
-  const key = ensureStorageKey(AUTH_STORAGE_KEY);
+function writePersisted(storageKey, userInfo) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(storageKey);
     const parsed = raw ? JSON.parse(raw) : { state: {} };
     parsed.state = { ...(parsed.state || {}), userInfo: stripAuthToken(userInfo) };
-    localStorage.setItem(key, JSON.stringify(parsed));
+    localStorage.setItem(storageKey, JSON.stringify(parsed));
   } catch {
     /* ignore */
   }
+}
+
+export function persistAuth(userInfo) {
+  writePersisted(ensureStorageKey(AUTH_STORAGE_KEY), userInfo);
+}
+
+export function persistAdminAuth(userInfo) {
+  writePersisted(ADMIN_AUTH_STORAGE_KEY, userInfo);
 }

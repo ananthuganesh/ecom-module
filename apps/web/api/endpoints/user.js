@@ -3,11 +3,14 @@
  */
 const users = {
   login: "users/login",
+  adminLogin: "users/admin/login",
   register: "users",
   profile: "users/profile",
+  adminProfile: "users/admin/profile",
   checkoutEmail: "users/checkout-email",
   setPassword: "users/set-password",
   logout: "users/logout",
+  adminLogout: "users/admin/logout",
 };
 
 const products = {

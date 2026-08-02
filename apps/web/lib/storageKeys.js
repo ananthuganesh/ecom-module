@@ -1,6 +1,7 @@
 /** Browser storage keys for Urban Aana. Migrates one-time from legacy brand keys. */
 
 export const AUTH_STORAGE_KEY = "urban-aana-auth";
+export const ADMIN_AUTH_STORAGE_KEY = "urban-aana-admin-auth";
 export const CART_STORAGE_KEY = "urban-aana-cart";
 export const WISHLIST_STORAGE_KEY = "urban-aana-wishlist";
 export const RECENTLY_VIEWED_STORAGE_KEY = "urban-aana-recently-viewed";
