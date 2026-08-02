@@ -26,7 +26,6 @@ from app.documents import (
     AiMediaJob,
     Brand,
     Category,
-    CollectionDoc,
     Coupon,
     Order,
     OrderItem,
@@ -853,6 +852,37 @@ def _empty_awb_clause() -> dict[str, Any]:
     }
 
 
+def _exclude_incomplete_checkout_clause() -> dict[str, Any]:
+    """Hide Razorpay checkouts that never paid (still 'Payment Pending').
+
+    These rows are created before payment for stock hold; they belong under
+    Abandoned carts (and Unpaid until marked abandoned), not the main Orders list.
+    """
+    return {
+        "$or": [
+            {
+                "paymentStatus": {
+                    "$in": [
+                        "paid",
+                        "Paid",
+                        "PAID",
+                        "pay_on_delivery",
+                        "partially_refunded",
+                        "refunded",
+                    ]
+                }
+            },
+            {
+                "shippingStatus": {
+                    "$not": {"$regex": r"^payment pending$", "$options": "i"},
+                }
+            },
+            {"shippingStatus": {"$in": [None, ""]}},
+            {"shippingStatus": {"$exists": False}},
+        ]
+    }
+
+
 def _apply_order_view_filters(
     query: dict[str, Any],
     *,
@@ -867,7 +897,7 @@ def _apply_order_view_filters(
         extras.append(
             {
                 "$or": [
-                    {"paymentStatus": {"$nin": ["paid", "Paid", "PAID"]}},
+                    {"paymentStatus": {"$nin": ["paid", "Paid", "PAID", "pay_on_delivery"]}},
                     {"paymentStatus": {"$exists": False}},
                     {"paymentStatus": None},
                     {"paymentStatus": ""},
@@ -889,6 +919,7 @@ def _apply_order_view_filters(
                 }
             }
         )
+        extras.append(_exclude_incomplete_checkout_clause())
     elif view_key == "archived":
         extras.append(
             {
@@ -920,6 +951,10 @@ def _apply_order_view_filters(
                 }
             }
         )
+        extras.append(_exclude_incomplete_checkout_clause())
+    else:
+        # Default "all" — still hide unpaid payment-exit rows from the main table.
+        extras.append(_exclude_incomplete_checkout_clause())
 
     if hide_archived and view_key != "archived":
         extras.append({"archived": {"$ne": True}})
@@ -967,7 +1002,26 @@ async def admin_orders(
     sk, lim, pg = parse_pagination(page=page, skip=skip, limit=limit)
     query: dict[str, Any] = {}
     if status == "abandoned":
-        query["status"] = "abandoned"
+        # Abandoned carts: explicit abandoned status + unpaid payment-exit rows
+        # that have not been marked yet (Payment Pending / pending).
+        query["$or"] = [
+            {"status": "abandoned"},
+            {
+                "status": {"$in": ["order placed", "draft"]},
+                "paymentStatus": {
+                    "$nin": [
+                        "paid",
+                        "Paid",
+                        "PAID",
+                        "pay_on_delivery",
+                        "refunded",
+                        "partially_refunded",
+                        "refund_pending",
+                    ]
+                },
+                "shippingStatus": {"$regex": r"^payment pending$", "$options": "i"},
+            },
+        ]
     else:
         query["status"] = {"$nin": ["draft", "abandoned"]}
         if status:
@@ -1540,46 +1594,6 @@ async def delete_brand(item_id: str, _: AdminUser):
     return {"message": "removed"}
 
 
-@router.get("/collections")
-async def list_collections(_: AdminUser):
-    return await _crud_list(CollectionDoc, _)
-
-
-@router.post("/collections", status_code=201)
-async def create_collection(body: dict, _: AdminUser):
-    doc = CollectionDoc(**body)
-    await doc.insert()
-    return doc_to_dict(doc)
-
-
-@router.get("/collections/{item_id}")
-async def get_collection(item_id: str, _: AdminUser):
-    doc = await CollectionDoc.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    return doc_to_dict(doc)
-
-
-@router.put("/collections/{item_id}")
-async def update_collection(item_id: str, body: dict, _: AdminUser):
-    doc = await CollectionDoc.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    for k, v in body.items():
-        setattr(doc, k, v)
-    await doc.save()
-    return doc_to_dict(doc)
-
-
-@router.delete("/collections/{item_id}")
-async def delete_collection(item_id: str, _: AdminUser):
-    doc = await CollectionDoc.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    await doc.delete()
-    return {"message": "removed"}
-
-
 _COUPON_UPDATE_FIELDS = frozenset({
     "name",
     "code",
@@ -1592,7 +1606,6 @@ _COUPON_UPDATE_FIELDS = frozenset({
     "expiryDate",
     "status",
     "productIds",
-    "collectionIds",
     "buyQuantity",
     "getQuantity",
     "getDiscountPercent",

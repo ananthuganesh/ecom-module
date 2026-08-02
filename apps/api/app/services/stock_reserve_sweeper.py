@@ -45,6 +45,17 @@ async def release_expired_stock_reservations(*, limit: int = 200) -> dict[str, A
         try:
             if await release_order_stock(order):
                 released += 1
+            # TTL exit without pay → abandoned cart (not an open order).
+            try:
+                from app.services.order_abandon import mark_order_abandoned
+
+                await mark_order_abandoned(
+                    order,
+                    reason="payment_reserve_ttl",
+                    release_stock=False,
+                )
+            except Exception as abandon_exc:
+                print(f"[Orders] Abandon after TTL release failed for {order.id}: {abandon_exc}")
         except Exception as exc:
             errors += 1
             print(f"[Stock] Reserve TTL release failed for {order.id}: {exc}")

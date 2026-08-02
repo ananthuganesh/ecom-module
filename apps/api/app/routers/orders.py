@@ -1,9 +1,11 @@
+import re
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.deps import AdminUser, CurrentUser, PaymentsWriter
 from app.documents import AbandonedCheckout, Order, OrderItem, Product, Setting
@@ -20,6 +22,24 @@ from app.services.variants import find_variant
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 
+async def _max_order_number_seq(prefix: str, suffix: str) -> int:
+    """Highest numeric sequence already used in orders (keeps counter in sync)."""
+    col = Order.get_pymongo_collection()
+    pattern = f"^{re.escape(prefix)}(\\d+){re.escape(suffix)}$"
+    cursor = col.find({"orderNumber": {"$regex": pattern}}, {"orderNumber": 1})
+    highest = 0
+    async for row in cursor:
+        raw = str(row.get("orderNumber") or "")
+        match = re.match(pattern, raw)
+        if not match:
+            continue
+        try:
+            highest = max(highest, int(match.group(1)))
+        except ValueError:
+            continue
+    return highest
+
+
 async def _next_order_number() -> str:
     profile = {}
     s = await Setting.find_one(Setting.key == "company_profile")
@@ -30,21 +50,17 @@ async def _next_order_number() -> str:
     suffix = str(profile.get("orderSuffix") or "")
 
     col = Setting.get_pymongo_collection()
-    # Ensure counter exists and never starts below 999 (so first incr → 1000)
+    floor = max(999, await _max_order_number_seq(prefix, suffix))
+
+    # Ensure counter exists and never lags behind existing order numbers.
     existing = await col.find_one({"key": "seq_order_number"})
-    if not existing:
+    cur = int(((existing or {}).get("value") or {}).get("seq") or 0)
+    if not existing or cur < floor:
         await col.update_one(
             {"key": "seq_order_number"},
-            {"$set": {"value": {"seq": 999}}},
+            {"$set": {"value": {"seq": floor}}},
             upsert=True,
         )
-    else:
-        cur = int((existing.get("value") or {}).get("seq") or 0)
-        if cur < 999:
-            await col.update_one(
-                {"key": "seq_order_number"},
-                {"$set": {"value.seq": 999}},
-            )
 
     doc = await col.find_one_and_update(
         {"key": "seq_order_number"},
@@ -52,7 +68,7 @@ async def _next_order_number() -> str:
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
-    n = int((doc.get("value") or {}).get("seq") or 1000)
+    n = int((doc.get("value") or {}).get("seq") or (floor + 1))
     return f"{prefix}{n}{suffix}"
 
 
@@ -217,7 +233,19 @@ async def create_order(
     from app.services.dtdc_est_cost import apply_dtdc_est_cost
 
     apply_dtdc_est_cost(order)
-    await order.insert()
+    # Retry if a stale counter races another insert on unique orderNumber.
+    for attempt in range(5):
+        try:
+            await order.insert()
+            break
+        except DuplicateKeyError:
+            if attempt >= 4:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Could not allocate order number. Please try again.",
+                )
+            order.orderNumber = await _next_order_number()
+            order.orderUrlId = await _next_order_url_id()
 
     try:
         await reserve_order_stock(order)
@@ -670,10 +698,17 @@ async def release_reservation(order_id: str, user: CurrentUser):
     pay = str(order.paymentStatus or "").lower()
     if pay in {"paid", "refunded", "partially_refunded", "pay_on_delivery"}:
         raise HTTPException(status_code=400, detail="Cannot release reservation for a paid order")
+    from app.services.order_abandon import mark_order_abandoned
     from app.services.stock import release_order_stock
 
     released = await release_order_stock(order)
-    return {"success": True, "released": bool(released)}
+    # Payment modal closed → this is an abandoned cart order, not an open order.
+    abandoned = await mark_order_abandoned(
+        order,
+        reason="payment_dismissed",
+        release_stock=False,
+    )
+    return {"success": True, "released": bool(released), "abandoned": bool(abandoned)}
 
 
 @router.put("/{order_id}/deliver")

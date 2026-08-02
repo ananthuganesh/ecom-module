@@ -92,20 +92,10 @@ async def mark_stale_unpaid_orders_abandoned(*, limit: int = 200) -> dict[str, A
         if created and created > cutoff:
             skipped += 1
             continue
-        order.status = "abandoned"
-        details = dict(order.transactionDetails or {})
-        details["abandonedAt"] = datetime.utcnow().isoformat()
-        details["abandonedReason"] = "payment_gateway_exit"
-        order.transactionDetails = details
-        order.updatedAt = datetime.utcnow()
-        await order.save()
-        try:
-            from app.services.stock import release_order_stock
-
-            await release_order_stock(order)
-        except Exception as exc:
-            print(f"[Orders] Stock release on abandon failed: {exc}")
-        marked += 1
+        if await mark_order_abandoned(order, reason="payment_gateway_exit"):
+            marked += 1
+        else:
+            skipped += 1
 
     return {
         "scanned": len(candidates),
@@ -113,6 +103,36 @@ async def mark_stale_unpaid_orders_abandoned(*, limit: int = 200) -> dict[str, A
         "skipped": skipped,
         "cutoffMinutes": minutes,
     }
+
+
+async def mark_order_abandoned(
+    order: Order,
+    *,
+    reason: str = "payment_gateway_exit",
+    release_stock: bool = True,
+) -> bool:
+    """Mark an unpaid gateway-exit order as abandoned (idempotent)."""
+    if (order.status or "").strip().lower() == "abandoned":
+        return False
+    if not is_unpaid_gateway_candidate(order):
+        return False
+
+    order.status = "abandoned"
+    details = dict(order.transactionDetails or {})
+    details["abandonedAt"] = datetime.utcnow().isoformat()
+    details["abandonedReason"] = reason
+    order.transactionDetails = details
+    order.updatedAt = datetime.utcnow()
+    await order.save()
+
+    if release_stock:
+        try:
+            from app.services.stock import release_order_stock
+
+            await release_order_stock(order)
+        except Exception as exc:
+            print(f"[Orders] Stock release on abandon failed: {exc}")
+    return True
 
 
 def revive_abandoned_on_payment(order: Order) -> None:
