@@ -585,9 +585,18 @@ export default function AdminOrderDetailPage() {
   const customerPublicId =
     customer.customerUrlId || customer._id || customer.id || null;
   const customerOrdersCount = Number(customer.ordersCount || 0);
+  const customerAbandonedCount = Number(customer.abandonedCount || 0);
   const customerOrdersHref = customerPublicId
     ? `/admin/orders?q=${encodeURIComponent(`customer_id:"${customerPublicId}"`)}`
     : null;
+  const abandonedSearch =
+    String(customer.email || "").trim() ||
+    String(customer.phone || "").trim() ||
+    displayCustomerName(order, "") ||
+    String(customerPublicId || "");
+  const customerAbandonedHref = abandonedSearch
+    ? `/admin/orders/abandoned?q=${encodeURIComponent(abandonedSearch)}`
+    : "/admin/orders/abandoned";
   const items = order.items || [];
   
   // Use order-specific shipping / billing addresses
@@ -840,6 +849,15 @@ export default function AdminOrderDetailPage() {
                     {customerOrdersCount === 1 ? "order" : "orders"}
                   </p>
                 )}
+                <Link
+                  href={customerAbandonedHref}
+                  className="mt-1 block admin-card-link hover:underline"
+                >
+                  {customerAbandonedCount}{" "}
+                  {customerAbandonedCount === 1
+                    ? "abandoned cart"
+                    : "abandoned carts"}
+                </Link>
               </div>
 
               <div>

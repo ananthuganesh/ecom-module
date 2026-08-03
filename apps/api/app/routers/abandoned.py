@@ -15,6 +15,18 @@ from app.services.rate_limit import rate_limit_dependency
 router = APIRouter(prefix="/api/abandoned-checkout", tags=["abandoned"])
 
 
+def _merge_customer_details(existing: dict | None, incoming: dict | None) -> dict:
+    """Keep prior non-empty fields; never wipe a name with blanks from an early upsert."""
+    base = dict(existing or {}) if isinstance(existing, dict) else {}
+    nxt = incoming if isinstance(incoming, dict) else {}
+    for key, value in nxt.items():
+        text = value if not isinstance(value, str) else value.strip()
+        if text in (None, ""):
+            continue
+        base[key] = text if isinstance(value, str) else value
+    return base
+
+
 class RecoverBody(BaseModel):
     token: str = Field(min_length=16, max_length=128)
 
@@ -44,17 +56,40 @@ async def upsert(
     if existing:
         existing.items = body.get("items") or existing.items
         existing.totalAmount = float(body.get("totalAmount") or existing.totalAmount)
-        existing.customerDetails = body.get("customerDetails") or existing.customerDetails
+        existing.customerDetails = _merge_customer_details(
+            existing.customerDetails, body.get("customerDetails")
+        )
+        # Prefer account profile when logged in and details still thin.
+        if user is not None:
+            existing.customerDetails = _merge_customer_details(
+                existing.customerDetails,
+                {
+                    "name": getattr(user, "name", None) or "",
+                    "email": getattr(user, "email", None) or "",
+                    "phone": getattr(user, "phone", None) or "",
+                },
+            )
         existing.lastActivityAt = datetime.utcnow()
         await cart_recovery.ensure_recovery_token(existing)
         await existing.save()
         return cart_recovery.public_checkout_dict(existing)
+
+    details = _merge_customer_details({}, body.get("customerDetails"))
+    if user is not None:
+        details = _merge_customer_details(
+            details,
+            {
+                "name": getattr(user, "name", None) or "",
+                "email": getattr(user, "email", None) or "",
+                "phone": getattr(user, "phone", None) or "",
+            },
+        )
     doc = AbandonedCheckout(
         userId=user_id,
         guestId=guest_id,
         items=body.get("items") or [],
         totalAmount=float(body.get("totalAmount") or 0),
-        customerDetails=body.get("customerDetails") or {},
+        customerDetails=details,
         status="abandoned",
     )
     await cart_recovery.ensure_recovery_token(doc)

@@ -154,6 +154,17 @@ function selectColumn() {
   };
 }
 
+function customerLabel(details) {
+  const d = details || {};
+  const name = String(d.name || "").trim();
+  if (name) return name;
+  const email = String(d.email || "").trim();
+  if (email) return email;
+  const phone = String(d.phone || "").trim();
+  if (phone) return phone;
+  return "Guest";
+}
+
 export function createAbandonedColumns() {
   return [
     selectColumn(),
@@ -197,11 +208,11 @@ export function createAbandonedColumns() {
     },
     {
       id: "customer",
-      accessorFn: (row) => row.customerDetails?.name || "Guest",
+      accessorFn: (row) => customerLabel(row.customerDetails),
       header: "Customer",
       cell: ({ row }) => (
         <span className="block truncate text-[13px] font-medium text-foreground">
-          {row.original.customerDetails?.name || "Guest"}
+          {customerLabel(row.original.customerDetails)}
         </span>
       ),
     },

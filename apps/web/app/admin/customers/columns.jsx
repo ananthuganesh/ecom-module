@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bell, BellOff } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
@@ -159,6 +160,37 @@ export function createCustomerColumns() {
           {Number(row.original.ordersCount || 0)}
         </CellText>
       ),
+    },
+    {
+      id: "abandoned",
+      size: 108,
+      meta: { className: "w-[108px] min-w-[108px] px-3" },
+      accessorFn: (row) => Number(row.abandonedCount || 0),
+      header: "Abandoned",
+      cell: ({ row }) => {
+        const count = Number(row.original.abandonedCount || 0);
+        const q =
+          String(row.original.email || "").trim() ||
+          customerPhone(row.original) ||
+          customerName(row.original) ||
+          String(row.original._id || "");
+        if (!count) {
+          return (
+            <CellText soft className="tabular-nums">
+              0
+            </CellText>
+          );
+        }
+        return (
+          <Link
+            href={`/admin/orders/abandoned?q=${encodeURIComponent(q)}`}
+            onClick={(e) => e.stopPropagation()}
+            className="block truncate text-[13px] font-medium tabular-nums text-[#005bd3] hover:underline"
+          >
+            {count}
+          </Link>
+        );
+      },
     },
     {
       id: "spent",

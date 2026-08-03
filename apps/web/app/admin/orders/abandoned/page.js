@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { abandonedCheckoutService, adminOrderService } from "@/api";
 import { Search, Download } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +22,17 @@ import {
   recoveryStatus,
   whatsappStatus,
 } from "./columns";
+
+function customerLabel(details) {
+  const d = details || {};
+  const name = String(d.name || "").trim();
+  if (name) return name;
+  const email = String(d.email || "").trim();
+  if (email) return email;
+  const phone = String(d.phone || "").trim();
+  if (phone) return phone;
+  return "Guest";
+}
 
 const PAGE_SIZE = 25;
 
@@ -99,17 +111,24 @@ function mapCheckoutToRow(checkout) {
 }
 
 export default function AbandonedCheckoutsPage() {
+  const searchParams = useSearchParams();
+  const qFromUrl = searchParams.get("q") || "";
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQ, setSearchQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
+  const [searchQ, setSearchQ] = useState(qFromUrl);
+  const [debouncedQ, setDebouncedQ] = useState(qFromUrl.trim());
   const [viewFilter, setViewFilter] = useState("abandoned");
   const [datePreset, setDatePreset] = useState("all");
   const [rowSelection, setRowSelection] = useState({});
   const fetchGen = useRef(0);
+
+  useEffect(() => {
+    setSearchQ(qFromUrl);
+    setDebouncedQ(qFromUrl.trim());
+  }, [qFromUrl]);
 
   const selectedIds = useMemo(
     () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
@@ -280,7 +299,7 @@ export default function AbandonedCheckoutsPage() {
               year: "numeric",
             })
           : "",
-        Customer: c.name || "Guest",
+        Customer: customerLabel(c),
         Email: c.email || "",
         Phone: c.phone || "",
         Recovery: recoveryStatus(item),

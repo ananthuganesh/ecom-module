@@ -51,6 +51,7 @@ def user_public(user: User, token: str | None = None, stats: dict | None = None)
         "updatedAt": getattr(user, "updatedAt", None),
         "ordersCount": int((stats or {}).get("ordersCount") or 0),
         "amountSpent": float((stats or {}).get("amountSpent") or 0),
+        "abandonedCount": int((stats or {}).get("abandonedCount") or 0),
     }
     if token is not None:
         data["token"] = token
@@ -215,9 +216,55 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                 stats_by_id[str(row.get("_id"))] = {
                     "ordersCount": int(row.get("ordersCount") or 0),
                     "amountSpent": float(row.get("amountSpent") or 0),
+                    "abandonedCount": 0,
                 }
         except Exception:
             stats_by_id = {}
+
+        abandoned_by_id: dict[str, int] = {}
+        try:
+            collection = Order.get_pymongo_collection()
+            ab_rows = await collection.aggregate(
+                [
+                    {
+                        "$match": {
+                            "customerId": {"$in": list(customer_ids)},
+                            "status": "abandoned",
+                        }
+                    },
+                    {"$group": {"_id": "$customerId", "count": {"$sum": 1}}},
+                ]
+            ).to_list(length=None)
+            for row in ab_rows:
+                abandoned_by_id[str(row.get("_id"))] = int(row.get("count") or 0)
+        except Exception:
+            pass
+        try:
+            from app.documents import AbandonedCheckout
+
+            ac_rows = await AbandonedCheckout.get_pymongo_collection().aggregate(
+                [
+                    {
+                        "$match": {
+                            "status": "abandoned",
+                            "userId": {"$in": list(customer_ids)},
+                        }
+                    },
+                    {"$group": {"_id": "$userId", "count": {"$sum": 1}}},
+                ]
+            ).to_list(length=None)
+            for row in ac_rows:
+                key = str(row.get("_id"))
+                abandoned_by_id[key] = abandoned_by_id.get(key, 0) + int(
+                    row.get("count") or 0
+                )
+        except Exception:
+            pass
+        for key, count in abandoned_by_id.items():
+            stats_by_id.setdefault(
+                key, {"ordersCount": 0, "amountSpent": 0.0, "abandonedCount": 0}
+            )
+            stats_by_id[key]["abandonedCount"] = int(count)
 
     result = []
     from app.services.dtdc_est_cost import ensure_dtdc_est_cost
@@ -241,6 +288,7 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                     "customerUrlId": customer.get("customerUrlId"),
                     "ordersCount": int(stats.get("ordersCount") or 0),
                     "amountSpent": float(stats.get("amountSpent") or 0),
+                    "abandonedCount": int(stats.get("abandonedCount") or 0),
                 }
         result.append(remapped)
     return result

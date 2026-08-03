@@ -213,6 +213,7 @@ async def admin_users(
                 stats_by_id[key] = {
                     "ordersCount": int(row.get("ordersCount") or 0),
                     "amountSpent": float(row.get("amountSpent") or 0),
+                    "abandonedCount": 0,
                 }
         except Exception:
             stats_by_id = {}
@@ -224,6 +225,50 @@ async def admin_users(
                     ship_by_id[str(row.get("_id"))] = ship
         except Exception:
             ship_by_id = {}
+
+        # Abandoned carts: unpaid abandoned orders + open AbandonedCheckout rows.
+        abandoned_by_id: dict[str, int] = {}
+        try:
+            ab_order_rows = await collection.aggregate(
+                [
+                    {
+                        "$match": {
+                            "customerId": {"$in": user_ids},
+                            "status": "abandoned",
+                        }
+                    },
+                    {"$group": {"_id": "$customerId", "count": {"$sum": 1}}},
+                ]
+            ).to_list(length=None)
+            for row in ab_order_rows:
+                abandoned_by_id[str(row.get("_id"))] = int(row.get("count") or 0)
+        except Exception:
+            pass
+        try:
+            ac_coll = AbandonedCheckout.get_pymongo_collection()
+            ac_rows = await ac_coll.aggregate(
+                [
+                    {
+                        "$match": {
+                            "status": "abandoned",
+                            "userId": {"$in": user_ids},
+                        }
+                    },
+                    {"$group": {"_id": "$userId", "count": {"$sum": 1}}},
+                ]
+            ).to_list(length=None)
+            for row in ac_rows:
+                key = str(row.get("_id"))
+                abandoned_by_id[key] = abandoned_by_id.get(key, 0) + int(
+                    row.get("count") or 0
+                )
+        except Exception:
+            pass
+        for key, count in abandoned_by_id.items():
+            stats_by_id.setdefault(
+                key, {"ordersCount": 0, "amountSpent": 0.0, "abandonedCount": 0}
+            )
+            stats_by_id[key]["abandonedCount"] = int(count)
 
     def _ship_field(ship: dict, *keys: str) -> str:
         for key in keys:
@@ -1678,13 +1723,36 @@ async def abandoned(
     needle = (q or "").strip()
     if needle:
         rx = {"$regex": re.escape(needle), "$options": "i"}
-        query["$or"] = [
+        or_clause: list[dict[str, Any]] = [
             {"customerDetails.name": rx},
             {"customerDetails.email": rx},
             {"customerDetails.phone": rx},
         ]
         if ObjectId.is_valid(needle):
-            query["$or"].append({"_id": ObjectId(needle)})
+            or_clause.append({"_id": ObjectId(needle)})
+            or_clause.append({"userId": ObjectId(needle)})
+        # Match logged-in customers by account name/email/phone even when
+        # customerDetails was wiped by an early empty upsert.
+        try:
+            matched_users = (
+                await User.find(
+                    {
+                        "$or": [
+                            {"name": rx},
+                            {"email": rx},
+                            {"phone": rx},
+                        ]
+                    }
+                )
+                .limit(100)
+                .to_list()
+            )
+            for u in matched_users:
+                or_clause.append({"userId": u.id})
+                or_clause.append({"userId": str(u.id)})
+        except Exception:
+            pass
+        query["$or"] = or_clause
 
     total = await AbandonedCheckout.find(query).count()
     rows = (
@@ -1704,8 +1772,42 @@ async def abandoned(
     except Exception:
         pass
 
+    # Enrich Customer column from User when checkout details are thin/empty.
+    user_oids: list[ObjectId] = []
+    for r in rows:
+        uid = getattr(r, "userId", None)
+        if uid is not None and ObjectId.is_valid(str(uid)):
+            user_oids.append(ObjectId(str(uid)))
+    user_map: dict[str, User] = {}
+    if user_oids:
+        try:
+            for u in await User.find({"_id": {"$in": user_oids}}).to_list():
+                user_map[str(u.id)] = u
+        except Exception:
+            user_map = {}
+
+    def _fill_details(details: dict, user: User | None) -> dict:
+        out_details = dict(details or {}) if isinstance(details, dict) else {}
+        if not user:
+            return out_details
+        for key, value in (
+            ("name", getattr(user, "name", None) or ""),
+            ("email", getattr(user, "email", None) or ""),
+            ("phone", getattr(user, "phone", None) or ""),
+        ):
+            if not str(out_details.get(key) or "").strip() and str(value or "").strip():
+                out_details[key] = str(value).strip()
+        return out_details
+
     # Fast list: do not mint/save recovery tokens here — only expose URL when token exists.
-    out = [cart_recovery.admin_checkout_dict(r, site=site) for r in rows]
+    out = []
+    for r in rows:
+        data = cart_recovery.admin_checkout_dict(r, site=site)
+        user = user_map.get(str(r.userId)) if getattr(r, "userId", None) else None
+        data["customerDetails"] = _fill_details(data.get("customerDetails"), user)
+        if user:
+            data["userId"] = str(user.id)
+        out.append(data)
     return page_payload(out, total=total, page=pg, limit=lim)
 
 
@@ -1758,7 +1860,23 @@ async def abandoned_checkout_detail(checkout_id: str, _: AdminUser):
         site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
     except Exception:
         pass
-    return cart_recovery.admin_checkout_dict(checkout, site=site)
+
+    data = cart_recovery.admin_checkout_dict(checkout, site=site)
+    details = dict(data.get("customerDetails") or {}) if isinstance(data.get("customerDetails"), dict) else {}
+    uid = getattr(checkout, "userId", None)
+    if uid is not None and ObjectId.is_valid(str(uid)):
+        user = await User.get(ObjectId(str(uid)))
+        if user:
+            for key, value in (
+                ("name", getattr(user, "name", None) or ""),
+                ("email", getattr(user, "email", None) or ""),
+                ("phone", getattr(user, "phone", None) or ""),
+            ):
+                if not str(details.get(key) or "").strip() and str(value or "").strip():
+                    details[key] = str(value).strip()
+            data["customerDetails"] = details
+            data["userId"] = str(user.id)
+    return data
 
 
 @router.get("/aisensy/settings")

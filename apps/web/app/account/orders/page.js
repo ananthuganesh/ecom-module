@@ -16,6 +16,7 @@ import SafeImage from "@/components/SafeImage";
 
 const STATUS_ICONS = {
   "order placed": { icon: Clock, tone: "text-black" },
+  abandoned: { icon: ErrorIcon, tone: "text-[#DF1721]" },
   shipped: { icon: TruckIcon, tone: "text-black" },
   "out for delivery": { icon: TruckIcon, tone: "text-black" },
   delivered: { icon: CheckBurstIcon, tone: "text-black" },
@@ -23,6 +24,23 @@ const STATUS_ICONS = {
   "return requested": { icon: Clock, tone: "text-[#DF1721]" },
   returned: { icon: Clock, tone: "text-gray-500" },
 };
+
+function orderDisplayStatus(order) {
+  const status = String(order.orderStatus || order.status || "order placed").toLowerCase();
+  const pay = String(order.paymentStatus || "").toLowerCase();
+  if (status === "abandoned") return "payment incomplete";
+  if (
+    ["order placed", "draft"].includes(status) &&
+    pay &&
+    !["paid", "refunded", "partially_refunded"].includes(pay)
+  ) {
+    const ship = String(order.shippingStatus || "").toLowerCase();
+    if (ship === "payment pending" || pay === "pending" || pay === "created") {
+      return "payment incomplete";
+    }
+  }
+  return status;
+}
 
 export default function MyOrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -78,11 +96,16 @@ export default function MyOrdersPage() {
       ) : (
         <div className="space-y-4">
           {orders.map((order) => {
-            const status = (order.orderStatus || order.status || "order placed").toLowerCase();
-            const config = STATUS_ICONS[status] || STATUS_ICONS["order placed"];
+            const status = orderDisplayStatus(order);
+            const config =
+              STATUS_ICONS[status] ||
+              (status === "payment incomplete"
+                ? STATUS_ICONS.abandoned
+                : STATUS_ICONS["order placed"]);
             const StatusIcon = config.icon;
             const items = order.orderItems || order.items || [];
             const price = order.totalPrice || order.finalPrice || 0;
+            const isIncomplete = status === "payment incomplete" || status === "abandoned";
 
             return (
               <article
@@ -98,6 +121,11 @@ export default function MyOrdersPage() {
                       {order.isGift ? (
                         <span className="border border-black px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.16em]">
                           Gift
+                        </span>
+                      ) : null}
+                      {isIncomplete ? (
+                        <span className="border border-[#DF1721] px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[#DF1721]">
+                          Incomplete payment
                         </span>
                       ) : null}
                       <span className="text-[12px] font-bold uppercase tracking-[0.16em] text-gray-500">
