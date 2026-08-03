@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 
 import SafeImage from "@/components/SafeImage";
+import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { useCartStore } from "@/store/useCartStore";
 import { resolveImageUrl } from "@/utils/imageResolver";
 
@@ -28,27 +29,30 @@ export default function CartPage() {
 
   if (!cartItems.length) {
     return (
-      <main className="min-h-screen bg-[#F9F9F5] px-4 py-24 sm:px-8">
-        <section className="mx-auto flex max-w-xl flex-col items-center border border-black bg-white px-6 py-16 text-center sm:px-12">
-          <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full border border-black">
-            <BagIcon size={32} strokeWidth={1.4} />
-          </div>
-          <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">Urban Aana</p>
-          <h1 className="font-vina text-5xl uppercase leading-none sm:text-6xl">Your bag is empty</h1>
-          <p className="mt-5 max-w-sm text-sm leading-relaxed text-gray-600">
-            The next drop is waiting. Find a piece that feels like you.
-          </p>
-          <Link href="/all-products" className="mt-9 inline-flex items-center gap-2 bg-black px-7 py-3 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]">
-            Shop the collection <ChevronRightIcon size={16} />
-          </Link>
-        </section>
+      <main className="min-h-screen bg-[#F9F9F5]">
+        <div className="px-4 py-24 sm:px-8">
+          <section className="mx-auto flex max-w-xl flex-col items-center border border-black bg-white px-6 py-16 text-center sm:px-12">
+            <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full border border-black">
+              <BagIcon size={32} strokeWidth={1.4} />
+            </div>
+            <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">Urban Aana</p>
+            <h1 className="font-vina text-5xl uppercase leading-none sm:text-6xl">Your bag is empty</h1>
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-gray-600">
+              The next drop is waiting. Find a piece that feels like you.
+            </p>
+            <Link href="/all-products" className="mt-9 inline-flex items-center gap-2 bg-black px-7 py-3 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]">
+              Shop the collection <ChevronRightIcon size={16} />
+            </Link>
+          </section>
+        </div>
+        <WhyUrbanAana />
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#F9F9F5] pb-20">
-      <div className="container-site py-10 md:py-16">
+    <main className="min-h-screen bg-[#F9F9F5]">
+      <div className="container-site py-10 pb-20 md:py-16">
         <Link href="/all-products" className="inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.16em] text-gray-500 transition-colors hover:text-[#DF1721]">
           <ChevronLeftIcon size={15} /> Continue shopping
         </Link>
@@ -120,6 +124,7 @@ export default function CartPage() {
           </aside>
         </div>
       </div>
+      <WhyUrbanAana />
     </main>
   );
 }

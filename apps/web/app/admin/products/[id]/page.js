@@ -87,7 +87,6 @@ import { PRODUCT_CARD_BADGE_OPTIONS } from "@/utils/urbanProductAdapter";
 const productSelectTriggerClass =
   "h-8 w-full border-[#e3e3e3] bg-white shadow-none ring-0 focus-visible:border-[#b5b5b5] focus-visible:ring-0";
 
-const PRIMARY_VARIANT_INDEX = 0;
 
 function SortableMediaTile({
   src,
@@ -238,7 +237,6 @@ export default function AdminProductDetailPage() {
   const [addMediaOpen, setAddMediaOpen] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const addMediaInputRef = useRef(null);
-  const primaryVariantIndex = PRIMARY_VARIANT_INDEX;
   const mediaSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -401,7 +399,35 @@ export default function AdminProductDetailPage() {
       },
     }));
 
-  const attachMediaUrls = (urls, variantIndex = PRIMARY_VARIANT_INDEX) => {
+  /** Product Media gallery — never auto-assigns to a variant. */
+  const attachProductMediaUrls = (urls) => {
+    const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
+    if (!nextUrls.length) return;
+    setForm((prev) => {
+      const variantUrls = new Set(
+        (prev.variants || []).flatMap((v) =>
+          Array.isArray(v.images) ? v.images.filter(Boolean) : []
+        )
+      );
+      const existing = Array.isArray(prev.thumbnails)
+        ? prev.thumbnails.filter(Boolean)
+        : [];
+      const imgs = [];
+      for (const url of nextUrls) {
+        // Keep variant uploads out of the product Media area.
+        if (variantUrls.has(url) || imgs.includes(url)) continue;
+        imgs.push(url);
+      }
+      for (const url of existing) {
+        if (variantUrls.has(url) || imgs.includes(url)) continue;
+        imgs.push(url);
+      }
+      return { ...prev, thumbnails: imgs };
+    });
+  };
+
+  /** Per-variant image upload — shows only on that variant row. */
+  const attachVariantMediaUrls = (urls, variantIndex) => {
     const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
     if (!nextUrls.length) return;
     setForm((prev) => {
@@ -411,49 +437,42 @@ export default function AdminProductDetailPage() {
         Math.max(0, Number(variantIndex) || 0),
         Math.max(0, list.length - 1)
       );
-      const imgs = [
-        ...(Array.isArray(list[idx]?.images)
-          ? list[idx].images.filter(Boolean)
-          : []),
-      ];
+      const existing = Array.isArray(list[idx]?.images)
+        ? list[idx].images.filter(Boolean)
+        : [];
+      const imgs = [];
       for (const url of nextUrls) {
+        if (!imgs.includes(url)) imgs.push(url);
+      }
+      for (const url of existing) {
         if (!imgs.includes(url)) imgs.push(url);
       }
       list[idx] = {
         ...list[idx],
         images: imgs,
       };
-      return { ...prev, variants: list };
+      // Also strip these URLs from product Media so they only show on the variant.
+      const variantOnly = new Set(imgs);
+      const thumbnails = (prev.thumbnails || []).filter(
+        (url) => !variantOnly.has(url)
+      );
+      return { ...prev, variants: list, thumbnails };
     });
   };
 
   const reorderMedia = (activeId, overId) => {
     if (!activeId || !overId || activeId === overId) return;
     setForm((prev) => {
-      const current = [
-        ...new Set(
-          (prev.variants || []).flatMap((v) =>
-            Array.isArray(v.images) ? v.images.filter(Boolean) : []
-          )
-        ),
-      ];
+      const current = (Array.isArray(prev.thumbnails) ? prev.thumbnails : []).filter(
+        Boolean
+      );
       const oldIndex = current.indexOf(activeId);
       const newIndex = current.indexOf(overId);
       if (oldIndex < 0 || newIndex < 0) return prev;
-      const nextOrder = arrayMove(current, oldIndex, newIndex);
-      const rank = new Map(nextOrder.map((url, i) => [url, i]));
-      const variants = (prev.variants || []).map((v, i) => {
-        if (i === PRIMARY_VARIANT_INDEX) {
-          return { ...v, images: nextOrder };
-        }
-        const imgs = (Array.isArray(v.images) ? v.images : []).filter(Boolean);
-        if (!imgs.length) return v;
-        const sorted = [...imgs].sort(
-          (a, b) => (rank.get(a) ?? 9999) - (rank.get(b) ?? 9999)
-        );
-        return { ...v, images: sorted };
-      });
-      return { ...prev, variants };
+      return {
+        ...prev,
+        thumbnails: arrayMove(current, oldIndex, newIndex),
+      };
     });
   };
 
@@ -471,7 +490,7 @@ export default function AdminProductDetailPage() {
     });
   };
 
-  const uploadImageFiles = async (fileList, variantIndex = PRIMARY_VARIANT_INDEX) => {
+  const uploadImageFiles = async (fileList, variantIndex = null) => {
     const files = Array.from(fileList || []).filter((f) =>
       String(f?.type || "").startsWith("image/")
     );
@@ -483,7 +502,8 @@ export default function AdminProductDetailPage() {
         const { url } = await adminProductService.uploadImage(file);
         if (url) urls.push(url);
       }
-      attachMediaUrls(urls, variantIndex);
+      if (variantIndex == null) attachProductMediaUrls(urls);
+      else attachVariantMediaUrls(urls, variantIndex);
       toast.success(
         urls.length === 1 ? "Image uploaded" : `${urls.length} images uploaded`
       );
@@ -652,9 +672,16 @@ export default function AdminProductDetailPage() {
     );
   }
 
-  const mediaImages = (form.variants || []).flatMap((v) =>
-    Array.isArray(v.images) ? v.images.filter(Boolean) : []
-  );
+  const variantMediaUrls = [
+    ...new Set(
+      (form.variants || []).flatMap((v) =>
+        Array.isArray(v.images) ? v.images.filter(Boolean) : []
+      )
+    ),
+  ];
+  const mediaImages = (Array.isArray(form.thumbnails) ? form.thumbnails : [])
+    .filter(Boolean)
+    .filter((url) => !variantMediaUrls.includes(url));
   const uniqueMedia = [...new Set(mediaImages)];
   const selectedMediaList = uniqueMedia.filter((src) => selectedMedia.has(src));
 
@@ -854,10 +881,7 @@ export default function AdminProductDetailPage() {
                       e.preventDefault();
                       e.stopPropagation();
                       if (uploadingMedia) return;
-                      void uploadImageFiles(
-                        e.dataTransfer?.files,
-                        primaryVariantIndex
-                      );
+                      void uploadImageFiles(e.dataTransfer?.files);
                     }}
                   >
                     <div className="flex flex-wrap items-center justify-center gap-3">
@@ -873,7 +897,7 @@ export default function AdminProductDetailPage() {
                             const files = e.target.files;
                             e.target.value = "";
                             if (!files?.length) return;
-                            void uploadImageFiles(files, primaryVariantIndex);
+                            void uploadImageFiles(files);
                           }}
                         />
                       </FieldLabel>
@@ -918,12 +942,9 @@ export default function AdminProductDetailPage() {
                             const remove = new Set(selectedMediaList);
                             setForm((prev) => ({
                               ...prev,
-                              variants: (prev.variants || []).map((v) => ({
-                                ...v,
-                                images: (v.images || []).filter(
-                                  (img) => !remove.has(img)
-                                ),
-                              })),
+                              thumbnails: (prev.thumbnails || []).filter(
+                                (img) => !remove.has(img)
+                              ),
                             }));
                             setSelectedMedia(new Set());
                           }}
@@ -1005,7 +1026,7 @@ export default function AdminProductDetailPage() {
                           const files = e.target.files;
                           e.target.value = "";
                           if (!files?.length) return;
-                          void uploadImageFiles(files, primaryVariantIndex);
+                          void uploadImageFiles(files);
                         }}
                       />
                     </div>
@@ -1339,8 +1360,8 @@ export default function AdminProductDetailPage() {
       <SelectExistingMediaDialog
         open={mediaPickerOpen}
         onOpenChange={setMediaPickerOpen}
-        excludeUrls={uniqueMedia}
-        onSelect={attachMediaUrls}
+        excludeUrls={[...uniqueMedia, ...variantMediaUrls]}
+        onSelect={attachProductMediaUrls}
       />
     </>
   );

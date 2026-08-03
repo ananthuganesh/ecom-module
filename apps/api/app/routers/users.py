@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser, user_has_admin_access
+from app.deps import AdminUser, CustomersReader, CurrentUser, user_has_admin_access
 from app.documents import User
 from app.security import create_access_token, hash_password, verify_password
 from app.serializers import user_public
@@ -232,7 +232,7 @@ def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
         "email": email,
         "created": False,
         "requiresLogin": requires_login,
-        "requiresExistingSession": not requires_login,
+        "requiresExistingSession": False,
         "continue": True,
     }
 
@@ -240,17 +240,14 @@ def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
 @router.post("/checkout-email")
 async def checkout_email(
     body: CheckoutEmailBody,
-    request: Request,
     response: Response,
-    current: OptionalUser,
     _: None = Depends(rate_limit_dependency("checkout-email", limit=20)),
 ):
     """Find or create a customer by email for checkout.
 
     First checkout (new email): mint a short-lived session — no OTP.
-    Existing passworded / staff: never mint a JWT from email alone.
-    Existing passwordless: only renew JWT if this browser already owns that session
-    (same device return). Cold re-entry on a new device does not get a token.
+    Existing passwordless guest: mint / renew session on any device (conversion-first).
+    Existing passworded / staff: never mint a JWT from email alone — require login.
     """
     email = body.email.lower().strip()
     user = await User.find_one(User.email == email)
@@ -275,11 +272,6 @@ async def checkout_email(
 
         if user.password:
             return _checkout_continue_payload(email=user.email, requires_login=True)
-
-        # Existing passwordless — only continue session if already authenticated as them.
-        same_session = bool(current and str(current.id) == str(user.id))
-        if not same_session:
-            return _checkout_continue_payload(email=user.email, requires_login=False)
 
     token = create_access_token(user.id, hours=48)
     set_auth_cookie(response, token, hours=48, scope="customer")

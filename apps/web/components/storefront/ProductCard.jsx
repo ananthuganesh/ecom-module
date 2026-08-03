@@ -1,11 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import {
-  CloseIcon,
-  MinusIcon,
-  PlusIcon,
-} from "@/components/icons/storeIcons";
+import { CloseIcon } from "@/components/icons/storeIcons";
 import React, { useState } from "react";
 import Link from "next/link";
 import SafeImage from "@/components/SafeImage";
@@ -28,7 +24,6 @@ export default function ProductCard({
 
   const [showPicker, setShowPicker] = useState(false);
   const [selectedSize, setSelectedSize] = useState("");
-  const [quantity, setQuantity] = useState(1);
   const [adding, setAdding] = useState(false);
   const [quickAddingSize, setQuickAddingSize] = useState("");
 
@@ -59,13 +54,11 @@ export default function ProductCard({
   const isOutOfStock = totalStock <= 0;
 
   const availableSizes = getProductSizeOptions(product);
-  const currentSizeData = availableSizes.find((s) => s.size === selectedSize);
-  const maxStock =
-    currentSizeData?.stock ?? currentSizeData?.quantity ?? totalStock;
 
   const addSizeToCart = (sizeLabel, qty = 1) => {
     const sizeData = availableSizes.find((s) => s.size === sizeLabel);
     const stock = sizeData?.stock ?? sizeData?.quantity ?? totalStock;
+    const sizeImage = (sizeData?.images || []).filter(Boolean)[0];
     addItem({
       ...product,
       _id: id,
@@ -74,6 +67,7 @@ export default function ProductCard({
       size: sizeLabel,
       color: "",
       price,
+      image: sizeImage || image,
       totalStock: stock || totalStock,
       variants,
     });
@@ -83,8 +77,10 @@ export default function ProductCard({
     e.preventDefault();
     e.stopPropagation();
     if (isOutOfStock) return;
-    setSelectedSize("");
-    setQuantity(1);
+    const firstAvailable = availableSizes.find(
+      (sizeObj) => (sizeObj.stock ?? sizeObj.quantity ?? totalStock) > 0
+    );
+    setSelectedSize(firstAvailable?.size || firstAvailable || "");
     setShowPicker(true);
   };
 
@@ -105,7 +101,7 @@ export default function ProductCard({
 
     setAdding(true);
     try {
-      addSizeToCart(selectedSize, quantity);
+      addSizeToCart(selectedSize, 1);
       setShowPicker(false);
     } finally {
       setAdding(false);
@@ -310,11 +306,6 @@ export default function ProductCard({
                       {discountPercent}% off
                     </span>
                   ) : null}
-                  {quantity > 1 && selectedSize ? (
-                    <span className="w-full text-[11px] text-[#8a8f93]">
-                      × {quantity} = ₹{formatInr(price * quantity)}
-                    </span>
-                  ) : null}
                 </div>
               </div>
 
@@ -351,37 +342,6 @@ export default function ProductCard({
                   })}
                 </div>
               </div>
-
-              {selectedSize ? (
-                <div>
-                  <p className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-[#8a8f93] uppercase">
-                    Quantity
-                  </p>
-                  <div className="inline-flex items-center overflow-hidden rounded-lg border border-[#e5e5e5]">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                      disabled={quantity <= 1}
-                      className="flex h-9 w-9 items-center justify-center transition-colors hover:bg-gray-50 disabled:opacity-40"
-                    >
-                      <MinusIcon size={14} className="text-gray-600" />
-                    </button>
-                    <span className="w-9 text-center text-sm font-semibold">
-                      {quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setQuantity((q) => Math.min(maxStock || 5, q + 1))
-                      }
-                      disabled={quantity >= Math.min(maxStock || 5, 5)}
-                      className="flex h-9 w-9 items-center justify-center transition-colors hover:bg-gray-50 disabled:opacity-40"
-                    >
-                      <PlusIcon size={14} className="text-gray-600" />
-                    </button>
-                  </div>
-                </div>
-              ) : null}
 
               <button
                 type="button"

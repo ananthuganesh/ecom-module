@@ -6,7 +6,7 @@ import {
   CloseIcon,
   DeleteIcon,
   MinusIcon,
-  PlusIcon
+  PlusIcon,
 } from "@/components/icons/storeIcons";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -64,7 +64,7 @@ export default function CartDrawer() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[150]"
+            className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm"
           />
 
           <motion.div
@@ -72,15 +72,13 @@ export default function CartDrawer() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
-            className="fixed inset-y-0 right-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[480px] flex-col overflow-hidden bg-white shadow-2xl"
+            className="fixed inset-y-0 right-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[420px] flex-col overflow-hidden bg-white shadow-2xl"
           >
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-6">
-              <div className="flex flex-col">
-                <h2 className="text-xl font-semibold text-gray-900">Shopping Cart</h2>
-                <p className="mt-0.5 text-sm text-gray-500">
-                  {cartCount} item{cartCount !== 1 ? "s" : ""} in your bag
-                </p>
-              </div>
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Shopping Cart{" "}
+                <span className="text-gray-500">({cartCount})</span>
+              </h2>
               <button
                 onClick={handleClose}
                 className="rounded-full p-2 transition-colors hover:bg-gray-100"
@@ -90,7 +88,7 @@ export default function CartDrawer() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-6 py-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
               {cartItems.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center space-y-4 py-20 text-center">
                   <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-100">
@@ -108,105 +106,130 @@ export default function CartDrawer() {
                   </button>
                 </div>
               ) : (
-                cartItems.map((item, index) => (
-                  <motion.div
-                    key={`${item._id}-${item.size}-${item.color}`}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="group flex gap-4"
-                  >
-                    <Link
-                      href={`/product/${item.slug || item._id}`}
-                      onClick={handleClose}
-                      className="flex-shrink-0"
-                    >
-                      <div className="relative h-32 w-24 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 transition-transform duration-300 group-hover:scale-105">
-                        <SafeImage
-                          src={resolveImageUrl(item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0])}
-                          alt={item.name || item.productName || "Product"}
-                          fill
-                          sizes="96px"
-                          className="object-cover"
-                        />
-                      </div>
-                    </Link>
+                <ul className="divide-y divide-gray-100">
+                  {cartItems.map((item, index) => {
+                    const qty = item.qty || 1;
+                    const unitPrice = Number(item.price) || 0;
+                    const name = item.name || item.productName || "Product";
 
-                    <div className="flex flex-1 flex-col justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <Link
-                            href={`/product/${item.slug || item._id}`}
-                            onClick={handleClose}
-                            className="flex-1"
-                          >
-                            <h3 className="text-sm font-semibold leading-tight text-gray-900 transition-colors hover:text-gray-600">
-                              {item.name || item.productName}
-                            </h3>
-                          </Link>
-                          <button
-                            onClick={() => removeItem(item._id, item.size, item.color)}
-                            className="mt-0.5 text-gray-400 transition-colors hover:text-red-500"
-                            aria-label="Remove item"
-                          >
-                            <DeleteIcon size={16} />
-                          </button>
-                        </div>
-
-                        {item.size ? (
-                          <div className="flex flex-wrap gap-2">
-                            <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600">
-                              {item.size}
-                            </span>
+                    return (
+                      <motion.li
+                        key={`${item._id}-${item.size}-${item.color}`}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.04 }}
+                        className="flex gap-3 py-4 first:pt-0 last:pb-0"
+                      >
+                        <Link
+                          href={`/product/${item.slug || item._id}`}
+                          onClick={handleClose}
+                          className="shrink-0"
+                        >
+                          <div className="relative h-24 w-20 overflow-hidden rounded-lg bg-gray-100">
+                            <SafeImage
+                              src={resolveImageUrl(
+                                item.image ||
+                                  item.thumbnails?.[0] ||
+                                  item.variants?.[0]?.images?.[0]
+                              )}
+                              alt={name}
+                              fill
+                              sizes="80px"
+                              className="object-cover"
+                            />
                           </div>
-                        ) : null}
-                      </div>
+                        </Link>
 
-                      <div className="mt-4 flex items-end justify-between">
-                        <div className="flex items-center overflow-hidden rounded-lg border border-gray-300">
-                          <button
-                            onClick={() => updateQuantity(item._id, item.size, item.color, (item.qty || 1) - 1)}
-                            className="p-1.5 transition-colors hover:bg-gray-100 disabled:opacity-40"
-                            disabled={(item.qty || 1) <= 1}
-                            aria-label="Decrease quantity"
-                          >
-                            <MinusIcon size={12} className="text-gray-600" />
-                          </button>
-                          <span className="w-8 text-center text-sm font-medium text-gray-900">
-                            {item.qty || 1}
-                          </span>
-                          <button
-                            onClick={() => updateQuantity(item._id, item.size, item.color, (item.qty || 1) + 1)}
-                            className="p-1.5 transition-colors hover:bg-gray-100"
-                            aria-label="Increase quantity"
-                          >
-                            <PlusIcon size={12} className="text-gray-600" />
-                          </button>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <div className="flex items-start justify-between gap-2">
+                            <Link
+                              href={`/product/${item.slug || item._id}`}
+                              onClick={handleClose}
+                              className="min-w-0"
+                            >
+                              <h3 className="truncate text-sm font-semibold text-gray-900">
+                                {name}
+                              </h3>
+                            </Link>
+                            <button
+                              onClick={() =>
+                                removeItem(item._id, item.size, item.color)
+                              }
+                              className="shrink-0 text-gray-400 transition-colors hover:text-red-500"
+                              aria-label="Remove item"
+                            >
+                              <DeleteIcon size={16} />
+                            </button>
+                          </div>
+
+                          {item.size ? (
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              Size: {item.size}
+                            </p>
+                          ) : null}
+
+                          <p className="mt-1 text-sm font-medium text-gray-900">
+                            {formatPrice(unitPrice)}
+                            <span className="text-gray-500"> × {qty}</span>
+                          </p>
+
+                          <div className="mt-3 flex items-center">
+                            <div className="inline-flex items-center overflow-hidden rounded-md border border-gray-300">
+                              <button
+                                onClick={() =>
+                                  updateQuantity(
+                                    item._id,
+                                    item.size,
+                                    item.color,
+                                    qty - 1
+                                  )
+                                }
+                                className="px-2.5 py-1.5 transition-colors hover:bg-gray-100 disabled:opacity-40"
+                                disabled={qty <= 1}
+                                aria-label="Decrease quantity"
+                              >
+                                <MinusIcon size={12} className="text-gray-600" />
+                              </button>
+                              <span className="min-w-[1.75rem] text-center text-sm font-medium text-gray-900">
+                                {qty}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  updateQuantity(
+                                    item._id,
+                                    item.size,
+                                    item.color,
+                                    qty + 1
+                                  )
+                                }
+                                className="px-2.5 py-1.5 transition-colors hover:bg-gray-100"
+                                aria-label="Increase quantity"
+                              >
+                                <PlusIcon size={12} className="text-gray-600" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
-
-                        <p className="text-lg font-semibold text-gray-900">
-                          {formatPrice((Number(item.price) || 0) * (item.qty || 1))}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))
+                      </motion.li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
 
             {cartItems.length > 0 && (
-              <div className="shrink-0 border-t border-gray-200 bg-white pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-                <div className="space-y-4 px-6 pt-6">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span className="text-2xl font-bold text-gray-900">
+              <div className="shrink-0 border-t border-gray-200 bg-white pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+                <div className="space-y-4 px-5 pt-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-medium text-gray-900">Total</span>
+                    <span className="text-xl font-bold text-gray-900">
                       {formatPrice(cartTotal)}
                     </span>
                   </div>
 
                   <button
                     onClick={handleCheckout}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3.5 font-medium text-white transition-all duration-200 hover:bg-gray-800"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3.5 text-sm font-medium text-white transition-all duration-200 hover:bg-gray-800"
                   >
                     Proceed to Checkout
                     <ChevronRightIcon size={18} />

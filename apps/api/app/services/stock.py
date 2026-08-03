@@ -873,6 +873,36 @@ async def apply_order_commitments(order) -> bool:
         else:
             changed = True
 
+    # Units sold for PDP — once per order, independent of stock claim (covers legacy paid orders).
+    sold_claim = await col.find_one_and_update(
+        {
+            "_id": order.id,
+            "$or": [
+                {"transactionDetails.soldCounted": {"$exists": False}},
+                {"transactionDetails.soldCounted": False},
+                {"transactionDetails.soldCounted": None},
+            ],
+        },
+        {"$set": {"transactionDetails.soldCounted": True, "updatedAt": now}},
+    )
+    if sold_claim is not None:
+        try:
+            from app.services.product_sales import record_order_sold_counts
+
+            await record_order_sold_counts(order)
+            changed = True
+        except Exception as sold_exc:
+            await col.update_one(
+                {"_id": order.id},
+                {
+                    "$set": {
+                        "transactionDetails.soldCounted": False,
+                        "updatedAt": datetime.utcnow(),
+                    }
+                },
+            )
+            print(f"[Sales] soldCount increment failed for {order.id}: {sold_exc}")
+
     if changed:
         refreshed = await Order.get(order.id)
         if refreshed:

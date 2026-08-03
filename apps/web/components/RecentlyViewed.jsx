@@ -1,62 +1,96 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRecentlyViewedStore } from "@/store/useRecentlyViewedStore";
-import Link from "next/link";
-import SafeImage from "./SafeImage";
-import { motion } from "framer-motion";
-import { resolveImageUrl } from "@/utils/imageResolver";
+import ProductCard from "@/components/storefront/ProductCard";
+import { productService } from "@/api";
 
-export default function RecentlyViewed() {
+export default function RecentlyViewed({ excludeId } = {}) {
   const { recentlyViewed } = useRecentlyViewedStore();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  if (recentlyViewed.length === 0) return null;
+  const history = recentlyViewed.filter(
+    (item) => !excludeId || String(item._id) !== String(excludeId)
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (!history.length) {
+        setProducts([]);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const results = await Promise.all(
+          history.map(async (item) => {
+            try {
+              const isObjectId = /^[0-9a-fA-F]{24}$/.test(String(item._id));
+              if (isObjectId) {
+                try {
+                  return await productService.getById(item._id);
+                } catch {
+                  if (item.slug) return await productService.getBySlug(item.slug);
+                }
+              }
+              if (item.slug) return await productService.getBySlug(item.slug);
+              return await productService.getById(item._id);
+            } catch {
+              return null;
+            }
+          })
+        );
+        if (cancelled) return;
+        setProducts(results.filter(Boolean));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run when history ids change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.map((item) => item._id).join("|"), excludeId]);
+
+  if (!history.length) return null;
+  if (!loading && products.length === 0) return null;
 
   return (
-    <section className="border-t border-gray-100 bg-[#F9F9F5] py-16 sm:py-20">
-      <div className="container-site">
-        <div className="mb-10 flex items-end justify-between gap-4 border-b-2 border-black pb-5">
-          <div>
-            <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-brand-red">Keep exploring</p>
-            <h2 className="mt-2 font-vina text-4xl uppercase leading-none sm:text-5xl">Recently viewed</h2>
-          </div>
-          <Link
-            href="/all-products"
-            className="border-b-2 border-black pb-1 text-[12px] font-extrabold uppercase tracking-widest"
-          >
-            All Products
-          </Link>
-        </div>
+    <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">
+      <div className="w-full px-2 md:px-4 lg:px-8">
+        <header className="mb-3 w-full text-center md:mb-6">
+          <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+            Recently <span className="title-knewave-accent">Viewed</span>
+          </h2>
+        </header>
 
-        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-          {recentlyViewed.map((product, i) => (
-            <motion.div
-              key={product._id}
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className="min-w-[180px] sm:min-w-[200px]"
-            >
-              <Link href={`/product/${product.slug || product._id}`} className="block group">
-                <div className="relative mb-3 aspect-[2/3] overflow-hidden bg-gray-100">
-                  <SafeImage
-                    src={resolveImageUrl(
-                      product.thumbnails?.[0] || product.variants?.[0]?.images?.[0]
-                    )}
-                    fill
-                    sizes="200px"
-                    className="object-cover transition-transform duration-700 group-hover:scale-105"
-                  />
-                </div>
-                <h3 className="truncate text-[12px] font-bold uppercase tracking-tight text-black">
-                  {product.productName || product.name}
-                </h3>
-                <p className="mt-1 text-sm font-black text-black">
-                  ₹{Number(product.pricing?.sellingPrice ?? 0).toLocaleString("en-IN")}
-                </p>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
+        {loading && products.length === 0 ? (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
+            {history.slice(0, 4).map((item) => (
+              <div
+                key={item._id}
+                className="aspect-[2/3] animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
+            {products.map((product) => (
+              <ProductCard
+                key={product._id}
+                product={product}
+                listName="Recently viewed"
+                listId="recently-viewed"
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

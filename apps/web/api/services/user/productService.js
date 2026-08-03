@@ -13,17 +13,13 @@ export const productService = {
       searchParams.append("product", params.product);
     if (params.category && params.category !== "All")
       searchParams.append("category", params.category);
-    
-    if (params.brand) {
-      const b = Array.isArray(params.brand) ? params.brand.join(',') : params.brand;
-      searchParams.append("brand", b);
-    }
-    
-    if (params.color) {
-      const c = Array.isArray(params.color) ? params.color.join(',') : params.color;
-      searchParams.append("color", c);
-    }
-    
+
+    ["brand", "color", "size", "fit", "fabric", "badge"].forEach((key) => {
+      if (!params[key]) return;
+      const value = Array.isArray(params[key]) ? params[key].join(",") : params[key];
+      searchParams.append(key, value);
+    });
+
     if (params.priceRange) searchParams.append("priceRange", params.priceRange);
     if (params.keyword) searchParams.append("keyword", params.keyword);
     if (params.sort) searchParams.append("sort", params.sort);
@@ -36,6 +32,8 @@ export const productService = {
 
   getFeatured: () =>
     client.get(e.featured).then((res) => res.data),
+  getFilters: () =>
+    client.get(`${e.base}/filters`).then((res) => res.data),
   getBrands: () =>
     client.get(`${e.base}/brands`).then((res) => res.data),
   getColors: () =>

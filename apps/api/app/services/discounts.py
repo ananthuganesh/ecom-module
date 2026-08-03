@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
-from bson import ObjectId
-
-from app.documents import CollectionDoc, Coupon
+from app.documents import Coupon
 
 
 def _norm_items(items: list[dict] | None) -> list[dict]:
@@ -24,23 +21,6 @@ def _norm_items(items: list[dict] | None) -> list[dict]:
     return out
 
 
-async def _product_ids_in_collections(collection_ids: list[str]) -> set[str]:
-    ids: set[str] = set()
-    for cid in collection_ids or []:
-        if not cid or not ObjectId.is_valid(str(cid)):
-            continue
-        col = await CollectionDoc.get(ObjectId(str(cid)))
-        if not col:
-            continue
-        for p in col.products or []:
-            if isinstance(p, dict):
-                pid = p.get("_id") or p.get("id") or p.get("productId")
-            else:
-                pid = p
-            if pid:
-                ids.add(str(pid))
-    return ids
-
 
 async def eligible_product_ids(coupon: Coupon) -> set[str] | None:
     """None means all products (order-level). Empty set means nothing eligible."""
@@ -48,13 +28,9 @@ async def eligible_product_ids(coupon: Coupon) -> set[str] | None:
     if kind == "order":
         return None
     if kind == "products":
-        ids = {str(x) for x in (coupon.productIds or []) if x}
-        ids |= await _product_ids_in_collections(coupon.collectionIds or [])
-        return ids
+        return {str(x) for x in (coupon.productIds or []) if x}
     if kind == "bxgy":
-        buy = {str(x) for x in (coupon.buyProductIds or coupon.productIds or []) if x}
-        buy |= await _product_ids_in_collections(coupon.collectionIds or [])
-        return buy
+        return {str(x) for x in (coupon.buyProductIds or coupon.productIds or []) if x}
     return None
 
 
@@ -91,7 +67,6 @@ async def compute_discount(coupon: Coupon, *, items: list[dict] | None = None, s
 
     if kind == "bxgy":
         buy_ids = {str(x) for x in (coupon.buyProductIds or coupon.productIds or []) if x}
-        buy_ids |= await _product_ids_in_collections(coupon.collectionIds or [])
         get_ids = {str(x) for x in (coupon.getProductIds or []) if x} or set(buy_ids)
         if not buy_ids or not lines:
             return 0.0

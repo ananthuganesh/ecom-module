@@ -36,6 +36,7 @@ export default function AdminShell({ children }) {
   const [verified, setVerified] = useState(false);
 
   const isAdminLoginPage = pathname === "/admin/login";
+  const hasStaffSession = canAccessAdmin(userInfo);
 
   useEffect(() => {
     const mark = () => setHydrated(true);
@@ -50,6 +51,13 @@ export default function AdminShell({ children }) {
   useEffect(() => {
     if (!hydrated || isAdminLoginPage) {
       setVerified(true);
+      return;
+    }
+
+    // No cached staff session — skip the profile call (avoids noisy 401s).
+    if (!hasStaffSession) {
+      setVerified(true);
+      router.replace("/admin/login");
       return;
     }
 
@@ -83,7 +91,7 @@ export default function AdminShell({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, isAdminLoginPage, logout, router, setUserInfo]);
+  }, [hydrated, isAdminLoginPage, hasStaffSession, logout, router, setUserInfo]);
 
   useEffect(() => {
     if (!hydrated || isAdminLoginPage || !verified) return;

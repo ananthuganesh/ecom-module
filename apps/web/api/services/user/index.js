@@ -4,5 +4,4 @@ export { orderService } from "./orderService.js";
 export { paymentService } from "./paymentService.js";
 export { shippingService } from "./shippingService.js";
 export { couponService } from "./couponService.js";
-export { collectionService } from "./collectionService.js";
 export { reelsService } from "./reelsService.js";

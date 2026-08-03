@@ -4,14 +4,11 @@ import {
   ArrowIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  PackageIcon,
-  ReturnIcon,
-  SecureIcon,
-  TruckIcon,
 } from "@/components/icons/storeIcons";
 import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -86,33 +83,6 @@ function ImageCarousel() {
   );
 }
 
-const trustItems = [
-  {
-    num: "1",
-    Icon: PackageIcon,
-    title: "Premium fabric",
-    text: "High-grade heavy GSM cotton built to last.",
-  },
-  {
-    num: "2",
-    Icon: TruckIcon,
-    title: "Fast delivery",
-    text: "Express shipping across India.",
-  },
-  {
-    num: "3",
-    Icon: ReturnIcon,
-    title: "Easy exchange",
-    text: "Hassle-free returns when you need them.",
-  },
-  {
-    num: "4",
-    Icon: SecureIcon,
-    title: "Secure pay",
-    text: "100% safe checkout every time.",
-  },
-];
-
 const AboutSection = () => {
   return (
     <section className="w-full bg-white py-6 md:py-10 font-sans overflow-hidden">
@@ -153,43 +123,8 @@ const AboutSection = () => {
         </div>
       </div>
 
-      {/* Trust / studies-style band */}
-      <div className="w-full mt-4 bg-[#F9F9F5] text-[#222222]">
-        <div className="max-w-7xl mx-auto px-6 py-14 md:py-20 flex flex-col items-center">
-          <h2 className="trust-title text-center text-[22pt] md:text-[40pt] leading-none max-w-4xl mx-auto normal-case">
-            Why Urban Aana
-          </h2>
-
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-10 mt-14">
-            {trustItems.map((item) => {
-              const Icon = item.Icon;
-              return (
-              <div key={item.num} className="w-full text-center flex flex-row xl:flex-col items-center">
-                <div className="flex justify-center items-center mb-0 xl:mb-6 shrink-0">
-                  <div className="relative flex h-16 w-16 rotate-[-3deg] items-center justify-center bg-[#DF1721] 2xl:h-20 2xl:w-20">
-                    <Icon size={28} className="text-white" style={{ color: "#ffffff" }} />
-                    <span className="trust-num absolute -bottom-8 -left-4 2xl:-left-6 text-[28pt] md:text-[48pt] leading-none font-black italic">
-                      {item.num}
-                    </span>
-                  </div>
-                </div>
-                <p className="ml-5 mt-0 text-left xl:ml-0 xl:mt-8 xl:text-center leading-snug">
-                  <span className="block text-[13pt] md:text-[15pt] font-bold text-[#222222]">{item.title}</span>
-                  <span className="mt-1 block text-[11px] md:text-[13px] font-medium text-gray-500">{item.text}</span>
-                </p>
-              </div>
-              );
-            })}
-          </div>
-
-          <Link
-            href="/all-products"
-            className="group mt-14 inline-flex items-center gap-2 rotate-[-2deg] bg-[#222222] border-2 border-[#222222] px-5 py-2 text-[14pt] md:text-[18pt] font-bold text-[#F9F9F5] transition-colors hover:bg-brand-red hover:border-brand-red"
-          >
-            Shop the drops
-            <ArrowIcon size={18} className="transition-transform group-hover:translate-x-1" />
-          </Link>
-        </div>
+      <div className="mt-4">
+        <WhyUrbanAana />
       </div>
     </section>
   );

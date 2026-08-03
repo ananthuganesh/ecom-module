@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, collections, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
+from app.routers import abandoned, admin, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
 
 
 def _init_sentry() -> None:
@@ -114,7 +114,6 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(payments.router)
     app.include_router(shipping.router)
     app.include_router(coupons.router)
-    app.include_router(collections.router)
     app.include_router(admin.router)
     app.include_router(media.router)
     app.include_router(media.public_router)

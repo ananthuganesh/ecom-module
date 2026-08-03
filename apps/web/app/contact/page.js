@@ -1,107 +1,190 @@
 "use client";
 
-import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react";
+import Image from "next/image";
+import { useState } from "react";
 import {
   STORE_EMAIL,
   STORE_PHONE,
   STORE_PHONE_TEL,
 } from "@/lib/storeContact";
 
+const CONTACT_IMAGE = "/images/44.jpg";
+
+const fieldClass =
+  "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-3 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black";
+
 export default function ContactPage() {
-  const mailto = `mailto:${STORE_EMAIL}?subject=${encodeURIComponent("Urban Aana inquiry")}`;
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const subject = encodeURIComponent(
+      name.trim() ? `Urban Aana inquiry from ${name.trim()}` : "Urban Aana inquiry"
+    );
+    const body = encodeURIComponent(
+      [
+        `Name: ${name.trim() || "—"}`,
+        `Email: ${email.trim() || "—"}`,
+        `Phone: ${phone.trim() || "—"}`,
+        "",
+        message.trim() || "—",
+      ].join("\n")
+    );
+    window.location.href = `mailto:${STORE_EMAIL}?subject=${subject}&body=${body}`;
+    setSent(true);
+  }
 
   return (
-    <main className="min-h-screen bg-white">
-      <section className="container-site py-12 md:py-20">
-        <div className="mb-12 border-b-2 border-black pb-6">
-          <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-brand-red">Get in touch</p>
-          <h1 className="mt-2 font-vina text-5xl uppercase leading-none sm:text-7xl">Contact</h1>
-          <p className="mt-3 max-w-xl text-sm text-gray-500">
-            Questions about orders, drops, or fit — write to the Urban Aana team.
-          </p>
+    <main className="min-h-screen bg-white text-black">
+      <section className="grid min-h-[calc(100vh-5rem)] lg:grid-cols-2">
+        {/* Left — image */}
+        <div className="relative min-h-[42vh] overflow-hidden bg-gray-100 lg:min-h-full lg:sticky lg:top-0 lg:h-[calc(100vh-5rem)]">
+          <Image
+            src={CONTACT_IMAGE}
+            alt="Urban Aana"
+            fill
+            priority
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent lg:bg-gradient-to-r lg:from-transparent lg:via-transparent lg:to-black/10" />
+          <div className="absolute bottom-6 left-6 right-6 text-white lg:bottom-10 lg:left-10">
+            <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
+              Urban Aana
+            </p>
+            <p className="mt-2 max-w-xs text-lg font-medium leading-snug">
+              Crafted in India. Built for Kerala.
+            </p>
+          </div>
         </div>
 
-        <div className="grid gap-10 lg:grid-cols-2">
-          <div className="space-y-6">
-            <div className="flex gap-4 border border-black bg-[#F9F9F5] p-5">
-              <div className="mt-0.5">
-                <MapPin className="h-5 w-5 text-brand-red" />
-              </div>
-              <div>
-                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Location</p>
-                <p className="mt-1 text-sm font-medium text-black">Crafted in India</p>
-              </div>
-            </div>
+        {/* Right — title + form */}
+        <div className="flex items-center px-5 py-12 sm:px-10 md:px-14 lg:px-16 lg:py-16">
+          <div className="mx-auto w-full max-w-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">
+              Get in touch
+            </p>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">
+              Contact
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-gray-500">
+              Questions about orders, fit, or shipping — send a message and
+              we’ll reply as soon as we can.
+            </p>
 
-            <div className="flex gap-4 border border-black bg-[#F9F9F5] p-5">
-              <div className="mt-0.5">
-                <Mail className="h-5 w-5 text-brand-red" />
-              </div>
+            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
               <div>
-                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Email</p>
+                <label
+                  htmlFor="contact-name"
+                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                >
+                  Name
+                </label>
+                <input
+                  id="contact-name"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={fieldClass}
+                  placeholder="Your name"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="contact-email"
+                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                >
+                  Email
+                </label>
+                <input
+                  id="contact-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={fieldClass}
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="contact-phone"
+                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                >
+                  Phone
+                </label>
+                <input
+                  id="contact-phone"
+                  type="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className={fieldClass}
+                  placeholder="+91"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="contact-message"
+                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                >
+                  Message
+                </label>
+                <textarea
+                  id="contact-message"
+                  required
+                  rows={5}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className={`${fieldClass} resize-y min-h-[120px]`}
+                  placeholder="Order number, question, or feedback…"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-black px-5 py-3.5 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#DF1721]"
+              >
+                Send message
+              </button>
+
+              {sent ? (
+                <p className="text-sm text-gray-500" role="status">
+                  Opening your email app to send to {STORE_EMAIL}…
+                </p>
+              ) : null}
+            </form>
+
+            <div className="mt-10 space-y-2 border-t border-gray-200 pt-6 text-sm text-gray-500">
+              <p>
+                Or email{" "}
                 <a
-                  href={mailto}
-                  className="mt-1 block text-sm font-medium text-black hover:text-brand-red"
+                  href={`mailto:${STORE_EMAIL}`}
+                  className="font-medium text-black hover:text-[#DF1721]"
                 >
                   {STORE_EMAIL}
                 </a>
-              </div>
-            </div>
-
-            <div className="flex gap-4 border border-black bg-[#F9F9F5] p-5">
-              <div className="mt-0.5">
-                <Phone className="h-5 w-5 text-brand-red" />
-              </div>
-              <div>
-                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Phone</p>
+              </p>
+              <p>
+                Call{" "}
                 <a
                   href={`tel:${STORE_PHONE_TEL}`}
-                  className="mt-1 block text-sm font-medium text-black hover:text-brand-red"
+                  className="font-medium text-black hover:text-[#DF1721]"
                 >
                   {STORE_PHONE}
                 </a>
-              </div>
+              </p>
             </div>
-
-            <div className="flex gap-3 pt-2">
-              <a
-                href="https://www.instagram.com/urbanaana.in"
-                target="_blank"
-                rel="noreferrer"
-                className="grid h-10 w-10 place-items-center border border-black text-black transition-colors hover:bg-brand-red hover:text-white hover:border-brand-red"
-                aria-label="Instagram"
-              >
-                <Instagram size={16} />
-              </a>
-              <a
-                href="https://www.facebook.com/share/18vF3ZB3BJ/"
-                target="_blank"
-                rel="noreferrer"
-                className="grid h-10 w-10 place-items-center border border-black text-black transition-colors hover:bg-brand-red hover:text-white hover:border-brand-red"
-                aria-label="Facebook"
-              >
-                <Facebook size={16} />
-              </a>
-            </div>
-          </div>
-
-          <div className="border-2 border-black bg-white p-6 sm:p-8 flex flex-col justify-center">
-            <h2 className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Email us</h2>
-            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
-              Prefer email? Reach us directly and we’ll reply as soon as we can.
-            </p>
-            <a
-              href={mailto}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 bg-black py-3.5 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-brand-red"
-            >
-              <Mail size={14} /> Write to {STORE_EMAIL}
-            </a>
-            <a
-              href={`tel:${STORE_PHONE_TEL}`}
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 border border-black py-3.5 text-xs font-bold uppercase tracking-[0.16em] text-black transition-colors hover:bg-black hover:text-white"
-            >
-              <Phone size={14} /> Call {STORE_PHONE}
-            </a>
           </div>
         </div>
       </section>

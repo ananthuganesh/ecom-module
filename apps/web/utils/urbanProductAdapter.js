@@ -23,9 +23,9 @@ function firstVariantImages(product) {
 
 function collectCardImages(product) {
   const ordered = [
+    ...(Array.isArray(product?.thumbnails) ? product.thumbnails : []),
     ...firstVariantImages(product),
     ...(Array.isArray(product?.images) ? product.images : []),
-    ...(Array.isArray(product?.thumbnails) ? product.thumbnails : []),
   ]
     .filter(Boolean)
     .map(String);

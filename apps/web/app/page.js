@@ -2,7 +2,8 @@ import HeroBanner from "@/components/storefront/HeroBanner";
 import ProductGrid from "@/components/storefront/ProductGrid";
 import InstagramReels from "@/components/storefront/InstagramReels";
 import TwoColumnImages from "@/components/storefront/TwoColumnImages";
-import AboutSection from "@/components/storefront/AboutSection";
+import TwoColumnVideos from "@/components/storefront/TwoColumnVideos";
+import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 
 export default function Home() {
   return (
@@ -23,7 +24,8 @@ export default function Home() {
 
       <InstagramReels />
       <TwoColumnImages />
-      <AboutSection />
+      <TwoColumnVideos />
+      <WhyUrbanAana />
     </div>
   );
 }

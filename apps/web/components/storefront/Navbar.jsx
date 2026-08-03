@@ -4,7 +4,8 @@ import {
   AccountIcon,
   BagIcon,
   CartIcon,
-  HeartBagIcon,
+  CloseIcon,
+  InfoIcon,
   LocationIcon,
   LogOutIcon,
   MenuIcon,
@@ -22,6 +23,19 @@ import CartDrawer from "./CartDrawer";
 import { motion, AnimatePresence } from "framer-motion";
 
 const NAVBAR_HEIGHT = 56;
+
+function MenuLink({ href, onClick, icon: Icon, children }) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-800 transition-colors hover:bg-gray-100"
+    >
+      <Icon size={18} className="shrink-0 text-gray-500" />
+      <span>{children}</span>
+    </Link>
+  );
+}
 
 const Navbar = () => {
   const pathname = usePathname();
@@ -105,10 +119,10 @@ const Navbar = () => {
               <Image
                 src={transparent ? "/brand/logo-dark.png" : "/brand/logo.png"}
                 alt="URBAN AANA"
-                width={100}
-                height={36}
+                width={96}
+                height={34}
                 priority
-                className="object-contain py-1"
+                className="h-8 w-auto object-contain"
               />
             </Link>
           </div>
@@ -145,18 +159,20 @@ const Navbar = () => {
               }`}
               aria-label={`Cart, ${cartCount} items`}
             >
-              <CartIcon size={18} />
+              <span className="relative inline-flex">
+                <CartIcon size={18} />
+                {cartCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#DF1721] px-0.5 text-[9px] font-bold leading-none text-white ring-1 ring-white"
+                  >
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </motion.span>
+                )}
+              </span>
               <span>Cart</span>
-              {cartCount > 0 && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  className="absolute -top-0.5 right-0 bg-brand-red text-white text-[10px] font-bold h-4 min-w-4 px-0.5 flex items-center justify-center rounded-full"
-                >
-                  {cartCount}
-                </motion.span>
-              )}
             </button>
           </div>
         </div>
@@ -174,119 +190,149 @@ const Navbar = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={closeMenu}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[98]"
-              style={{ top: NAVBAR_HEIGHT }}
+              className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm"
             />
             <motion.aside
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
-              transition={{ type: "tween", duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed left-0 bottom-0 w-[280px] bg-white z-[99] flex flex-col shadow-2xl"
-              style={{ top: NAVBAR_HEIGHT }}
+              transition={{ type: "tween", duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-[#f7f7f5] shadow-2xl"
             >
-              <div className="p-5 bg-gradient-to-br from-gray-900 to-black text-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center">
-                    <AccountIcon size={22} className="text-white" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">
-                      {isAuthenticated ? userName?.split(" ")[0] || "User" : "Guest User"}
-                    </p>
-                    <p className="text-xs text-white/60">
-                      {isAuthenticated ? userInfo?.email || userInfo?.phone : "Sign in to your account"}
-                    </p>
-                  </div>
-                </div>
-                {!isAuthenticated && (
-                  <Link
-                    href="/login"
-                    onClick={closeMenu}
-                    className="block mt-4 text-center py-2 bg-white/10 rounded-lg text-xs font-medium hover:bg-white/20 transition-colors"
-                  >
-                    Sign In
-                  </Link>
-                )}
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3.5">
+                <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
+                <button
+                  onClick={closeMenu}
+                  className="rounded-full p-2 transition-colors hover:bg-gray-100"
+                  aria-label="Close menu"
+                >
+                  <CloseIcon size={20} className="text-gray-600" />
+                </button>
               </div>
 
-              <nav className="flex-1 py-3 overflow-y-auto">
-                <Link
-                  href="/"
-                  onClick={closeMenu}
-                  className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <StoreIcon size={18} />
-                  <span className="text-sm">Home</span>
-                </Link>
-
-                <Link
-                  href="/all-products"
-                  onClick={closeMenu}
-                  className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <BagIcon size={18} />
-                  <span className="text-sm">All Products</span>
-                </Link>
-
-                {isAuthenticated ? (
-                  <>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
+                <div className="rounded-xl bg-gray-900 p-4 text-white">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
+                      <AccountIcon size={20} className="text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        {isAuthenticated
+                          ? userName?.split(" ")[0] || "User"
+                          : "Guest User"}
+                      </p>
+                      <p className="truncate text-xs text-white/55">
+                        {isAuthenticated
+                          ? userInfo?.email || userInfo?.phone || "Your account"
+                          : "Sign in to your account"}
+                      </p>
+                    </div>
+                  </div>
+                  {!isAuthenticated ? (
                     <Link
-                      href="/profile?tab=orders"
+                      href="/login"
                       onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="mt-3.5 block rounded-lg bg-white/10 py-2.5 text-center text-xs font-semibold tracking-wide transition-colors hover:bg-white/20"
                     >
-                      <OrdersIcon size={18} />
-                      <span className="text-sm">My Orders</span>
+                      Sign In
                     </Link>
-
+                  ) : (
                     <Link
                       href="/profile?tab=profile"
                       onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
+                      className="mt-3.5 block rounded-lg bg-white/10 py-2.5 text-center text-xs font-semibold tracking-wide transition-colors hover:bg-white/20"
                     >
-                      <AccountIcon size={18} />
-                      <span className="text-sm">Profile</span>
+                      View Account
                     </Link>
+                  )}
+                </div>
 
-                    <Link
+                <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5">
+                  <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold tracking-[0.14em] text-gray-400 uppercase">
+                    Shop
+                  </p>
+                  <MenuLink href="/" onClick={closeMenu} icon={StoreIcon}>
+                    Home
+                  </MenuLink>
+                  <MenuLink
+                    href="/all-products"
+                    onClick={closeMenu}
+                    icon={BagIcon}
+                  >
+                    All Products
+                  </MenuLink>
+                </div>
+
+                {isAuthenticated ? (
+                  <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5">
+                    <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold tracking-[0.14em] text-gray-400 uppercase">
+                      Account
+                    </p>
+                    <MenuLink
+                      href="/profile?tab=orders"
+                      onClick={closeMenu}
+                      icon={OrdersIcon}
+                    >
+                      My Orders
+                    </MenuLink>
+                    <MenuLink
+                      href="/profile?tab=profile"
+                      onClick={closeMenu}
+                      icon={AccountIcon}
+                    >
+                      Profile
+                    </MenuLink>
+                    <MenuLink
                       href="/profile?tab=addresses"
                       onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
+                      icon={LocationIcon}
                     >
-                      <LocationIcon size={18} />
-                      <span className="text-sm">Addresses</span>
-                    </Link>
-
-                    <Link
-                      href="/wishlist"
-                      onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <HeartBagIcon size={18} />
-                      <span className="text-sm">Wishlist</span>
-                    </Link>
-
-                    <div className="border-t border-gray-100 my-2 mx-5" />
-
+                      Addresses
+                    </MenuLink>
                     <button
                       onClick={() => {
                         logout();
                         closeMenu();
                       }}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-brand-red hover:bg-red-50 transition-colors text-left"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-brand-red transition-colors hover:bg-red-50"
                     >
-                      <LogOutIcon size={18} />
-                      <span className="text-sm">Sign Out</span>
+                      <LogOutIcon size={18} className="shrink-0" />
+                      <span>Sign Out</span>
                     </button>
-                  </>
+                  </div>
                 ) : null}
-              </nav>
 
-              <div className="p-4 border-t border-gray-100 bg-gray-50">
-                <p className="text-[12px] text-gray-400 text-center">
-                  © 2026 Urban Aana. All rights reserved.
-                </p>
+                <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5">
+                  <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold tracking-[0.14em] text-gray-400 uppercase">
+                    Help
+                  </p>
+                  <MenuLink href="/about" onClick={closeMenu} icon={InfoIcon}>
+                    Our Story
+                  </MenuLink>
+                  <MenuLink
+                    href="/contact"
+                    onClick={closeMenu}
+                    icon={LocationIcon}
+                  >
+                    Contact Us
+                  </MenuLink>
+                </div>
+              </div>
+
+              <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <div className="flex flex-col items-center gap-2">
+                  <Image
+                    src="/brand/logo.png"
+                    alt="URBAN AANA"
+                    width={88}
+                    height={28}
+                    className="h-6 w-auto object-contain opacity-80"
+                  />
+                  <p className="text-center text-[11px] text-gray-400">
+                    © 2026 Urban Aana. All rights reserved.
+                  </p>
+                </div>
               </div>
             </motion.aside>
           </>

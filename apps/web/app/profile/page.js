@@ -5,12 +5,10 @@ import {
   BagIcon,
   CheckBurstIcon,
   ChevronRightIcon,
-  HeartBagIcon
 } from "@/components/icons/storeIcons";
 import { useState, useEffect } from "react";
 import { orderService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useWishlistStore } from "@/store/useWishlistStore";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 
 import Link from "next/link";
@@ -19,7 +17,6 @@ import SafeImage from "@/components/SafeImage";
 
 export default function DashboardOverview() {
     const { userInfo } = useAuthStore();
-    const wishlistCount = useWishlistStore((s) => s.wishlistItems.length);
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -41,18 +38,16 @@ export default function DashboardOverview() {
         totalOrders: orders.length,
         pendingOrders: orders.filter(o => !o.isPaid && o.orderStatus !== "Cancelled").length,
         completedOrders: orders.filter(o => o.orderStatus === "Delivered").length,
-        wishlistCount,
     };
 
     return (
         <DashboardLayout title={`Welcome back, ${userInfo?.name?.split(' ')[0]}`}>
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
                 {[
                     { label: "Total Orders", value: stats.totalOrders, icon: BagIcon, color: "text-blue-500", bg: "bg-blue-50" },
                     { label: "Pending Orders", value: stats.pendingOrders, icon: Clock, color: "text-amber-500", bg: "bg-amber-50" },
                     { label: "Completed", value: stats.completedOrders, icon: CheckBurstIcon, color: "text-emerald-500", bg: "bg-emerald-50" },
-                    { label: "Wishlist", value: stats.wishlistCount, icon: HeartBagIcon, color: "text-rose-500", bg: "bg-rose-50" },
                 ].map((stat, idx) => (
                     <motion.div
                         key={stat.label}

@@ -42,7 +42,6 @@ class User(Document):
     password: Optional[str] = None
     addresses: list[Address] = Field(default_factory=list)
     cartId: Optional[Any] = None
-    wishlistId: Optional[Any] = None
     isAdmin: bool = False
     roleId: Optional[str] = None
     gstin: Optional[str] = None
@@ -123,6 +122,8 @@ class Product(Document):
     variants: list[Variant] = Field(default_factory=list)
     thumbnails: list[str] = Field(default_factory=list)
     totalStock: int = 0
+    # Units sold across paid / confirmed orders (denormalized for PDP)
+    soldCount: int = 0
     status: str = "active"
     # Storefront card badge: new_arrival | trending | best_seller
     badge: Optional[str] = None
@@ -293,23 +294,6 @@ class Brand(Document):
         name = "brands"
 
 
-class CollectionDoc(Document):
-    title: str
-    summary: Optional[str] = None
-    image: Optional[str] = None
-    products: list[Any] = Field(default_factory=list)
-    category: Optional[str] = None
-    slug: Optional[str] = None
-
-    @field_validator("category", "slug", mode="before")
-    @classmethod
-    def coerce_id_fields(cls, value: Any) -> str | None:
-        return _as_optional_str(value)
-
-    class Settings:
-        name = "collections"
-
-
 class Coupon(Document):
     name: Optional[str] = None
     code: Indexed(str, unique=True)  # type: ignore[valid-type]
@@ -324,9 +308,8 @@ class Coupon(Document):
     usedCount: int = 0
     expiryDate: Optional[datetime] = None
     status: str = "active"
-    # Amount off products — target products and/or collections
+    # Amount off products — target specific products
     productIds: list[str] = Field(default_factory=list)
-    collectionIds: list[str] = Field(default_factory=list)
     # Buy X get Y
     buyQuantity: int = 1
     getQuantity: int = 1
@@ -682,7 +665,6 @@ ALL_DOCUMENTS = [
     Order,
     Category,
     Brand,
-    CollectionDoc,
     Coupon,
     Warehouse,
     StockBalance,

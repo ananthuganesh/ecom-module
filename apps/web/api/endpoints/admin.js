@@ -45,11 +45,6 @@ const ga4 = {
   report: "/admin/ga4/report",
 };
 
-const collections = {
-  base: "/admin/collections",
-  byId: (id) => `/admin/collections/${id}`,
-};
-
 const taxClasses = {
   base: "/admin/tax-classes",
   byId: (id) => `/admin/tax-classes/${id}`,
@@ -75,7 +70,6 @@ export const adminEndpoints = {
   productColors,
   aisensy,
   ga4,
-  collections,
   taxClasses,
   companyProfile,
   stock,

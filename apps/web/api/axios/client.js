@@ -35,32 +35,66 @@ const client = axios.create({
 
 // Session is HttpOnly cookie (`withCredentials`). Do not attach Bearer from localStorage.
 
+function requestPath(error) {
+  const raw = String(error?.config?.url || "");
+  // axios may give "users/profile" or "/api/users/profile"
+  try {
+    if (raw.startsWith("http")) return new URL(raw).pathname;
+  } catch {
+    /* ignore */
+  }
+  return raw;
+}
+
+function normalizeApiPath(path) {
+  return String(path || "")
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/api\//, "")
+    .replace(/^\//, "")
+    .split("?")[0];
+}
+
+function isAdminAuthRequest(path) {
+  const p = normalizeApiPath(path);
+  return p === "users/admin/profile" || p.startsWith("admin/");
+}
+
+function isCustomerAuthRequest(path) {
+  const p = normalizeApiPath(path);
+  return (
+    p === "users/profile" ||
+    p === "orders/myorders" ||
+    p === "orders" ||
+    p.startsWith("payments/")
+  );
+}
+
 // Handle 401 Unauthorized globally — clear the matching session only.
+// Key off the request URL (not the current page) so a late admin 401 after
+// navigating to the storefront does not wipe the customer session.
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
-        const path = window.location.pathname;
-        const onAdmin = path.startsWith("/admin");
-        const onAuthPage =
-          path === "/login" || path === "/admin/login";
-        if (!onAuthPage) {
-          if (onAdmin) {
-            localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
-            fetch(`${API_URL}/users/admin/logout`, {
-              method: "POST",
-              credentials: "include",
-            }).catch(() => {});
-            window.location.href = "/admin/login";
-          } else {
-            localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
-            fetch(`${API_URL}/users/logout`, {
-              method: "POST",
-              credentials: "include",
-            }).catch(() => {});
-          }
+    if (error.response?.status === 401 && typeof window !== "undefined") {
+      const path = requestPath(error);
+      const pagePath = window.location.pathname;
+      const onAuthPage = pagePath === "/login" || pagePath === "/admin/login";
+
+      if (!onAuthPage && isAdminAuthRequest(path)) {
+        localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+        fetch(`${API_URL}/users/admin/logout`, {
+          method: "POST",
+          credentials: "include",
+        }).catch(() => {});
+        if (pagePath.startsWith("/admin")) {
+          window.location.href = "/admin/login";
         }
+      } else if (!onAuthPage && isCustomerAuthRequest(path)) {
+        localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
+        fetch(`${API_URL}/users/logout`, {
+          method: "POST",
+          credentials: "include",
+        }).catch(() => {});
       }
     }
     return Promise.reject(error);

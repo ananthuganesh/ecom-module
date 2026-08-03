@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import SafeImage from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
@@ -83,11 +84,10 @@ function rebuildVariants({
         quantity: Number(match?.quantity) || 0,
         images: Array.isArray(match?.images) ? [...match.images] : [],
         sku:
-          trim(match?.sku) ||
+          trim(match?.sku)?.replace(/-\d{2}$/, "") ||
           generateSku(
             productId,
-            [size, customValue].filter(Boolean).join("-"),
-            idx
+            [size, customValue].filter(Boolean).join("-")
           ),
         barcode: match?.barcode || "",
       });
@@ -625,26 +625,51 @@ export default function ProductVariantsCard({
                             </td>
                             <td className="px-2 py-2 align-middle">
                               <div className="flex items-center gap-2.5">
-                                <button
-                                  type="button"
-                                  className={cn(
-                                    "relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#ccc] bg-[#fafafa]",
-                                    thumb && "border-solid border-[#e3e3e3]"
-                                  )}
-                                  onClick={() => onUploadImage?.(i)}
-                                  title="Upload image"
-                                >
+                                <div className="group/thumb relative shrink-0">
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#ccc] bg-[#fafafa]",
+                                      thumb && "border-solid border-[#e3e3e3]"
+                                    )}
+                                    onClick={() => onUploadImage?.(i)}
+                                    title={thumb ? "Change image" : "Upload image"}
+                                  >
+                                    {thumb ? (
+                                      <SafeImage
+                                        src={thumb}
+                                        alt=""
+                                        fill
+                                        className="object-cover"
+                                      />
+                                    ) : (
+                                      <ImagePlus className="h-4 w-4 text-[#005bd3]" />
+                                    )}
+                                  </button>
                                   {thumb ? (
-                                    <SafeImage
-                                      src={thumb}
-                                      alt=""
-                                      fill
-                                      className="object-cover"
-                                    />
-                                  ) : (
-                                    <ImagePlus className="h-4 w-4 text-[#005bd3]" />
-                                  )}
-                                </button>
+                                    <button
+                                      type="button"
+                                      className="absolute -top-1.5 -right-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-[#303030] text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100 group-focus-within/thumb:opacity-100 hover:bg-[#c70a24]"
+                                      title="Remove image"
+                                      aria-label={`Remove image for ${variantLabel(v)}`}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setForm((prev) => ({
+                                          ...prev,
+                                          variants: (prev.variants || []).map(
+                                            (row, idx) =>
+                                              idx === i
+                                                ? { ...row, images: [] }
+                                                : row
+                                          ),
+                                        }));
+                                      }}
+                                    >
+                                      <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+                                    </button>
+                                  ) : null}
+                                </div>
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <span className="truncate text-[13px] font-medium text-[#303030]">

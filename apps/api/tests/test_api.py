@@ -77,7 +77,7 @@ async def test_checkout_email_creates_passwordless_customer(client):
     assert data["created"] is True
     assert data["token"]
 
-    # Cold re-entry (no session): no JWT — first checkout stays OTP-free, ATO blocked
+    # Cold re-entry on another device: passwordless guests still get a session
     r2 = await client.post(
         "/api/users/checkout-email",
         json={"email": "new@example.com"},
@@ -85,9 +85,9 @@ async def test_checkout_email_creates_passwordless_customer(client):
     assert r2.status_code == 200
     data2 = r2.json()
     assert data2["created"] is False
-    assert data2.get("requiresExistingSession") is True
     assert data2.get("requiresLogin") is False
-    assert "token" not in data2 or data2.get("token") in (None, "")
+    assert data2.get("requiresExistingSession") is False
+    assert data2.get("token")
 
     # Same browser / existing session can renew
     r3 = await client.post(

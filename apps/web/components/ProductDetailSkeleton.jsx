@@ -4,11 +4,11 @@ import { motion } from "framer-motion";
 
 export default function ProductDetailSkeleton() {
     return (
-        <div className="container mx-auto px-4 sm:px-6 max-w-5xl animate-pulse">
+        <div className="container mx-auto w-full px-2 md:px-4 lg:px-8 animate-pulse">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
                 {/* Left: Image Skeleton */}
-                <div className="space-y-3 lg:max-w-md">
-                    <div className="relative aspect-[3/4] max-h-[420px] lg:max-h-[520px] bg-gray-100 rounded-lg overflow-hidden">
+                <div className="space-y-3">
+                    <div className="relative aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden">
                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
                     </div>
                     {/* Thumbnails Skeleton */}

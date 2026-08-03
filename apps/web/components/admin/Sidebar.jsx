@@ -160,7 +160,6 @@ const menuItems = [
     icon: Package,
     subItems: [
       { name: "Inventory", href: "/admin/products/inventory" },
-      { name: "Collections", href: "/admin/collections" },
     ],
   },
   { name: "Customers", href: "/admin/customers", icon: Users },

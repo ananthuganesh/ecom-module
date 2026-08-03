@@ -142,7 +142,14 @@ export function slugify(text) {
     .slice(0, 80);
 }
 
-export function generateSku(productId, parts, index) {
+/** Strip legacy trailing variant index (`-01`, `-02`, …) from SKUs. */
+export function stripSkuIndex(sku) {
+  return String(sku || "")
+    .trim()
+    .replace(/-\d{2}$/, "");
+}
+
+export function generateSku(productId, parts, _index) {
   const baseId = String(productId || "")
     .replace(/[^A-Z0-9]/gi, "")
     .slice(0, 6)
@@ -152,8 +159,7 @@ export function generateSku(productId, parts, index) {
     .replace(/[^A-Z0-9]/gi, "")
     .slice(0, 4)
     .toUpperCase();
-  const idx = String((index ?? 0) + 1).padStart(2, "0");
-  return `${baseId}-${part || "VAR"}-${idx}`;
+  return `${baseId}-${part || "VAR"}`;
 }
 
 /** Digits only, optional single `.`, max 2 decimal places. */
@@ -214,6 +220,7 @@ export function defaultForm() {
       sellingPrice: "0.00",
     },
     variants: [emptyVariant()],
+    thumbnails: [],
     status: "draft",
     badge: "auto",
     hsnCode: "",
@@ -229,6 +236,32 @@ export function defaultForm() {
 export function productToForm(product) {
   if (!product) return defaultForm();
   const name = product.productName || product.name || "";
+  const variants =
+    Array.isArray(product.variants) && product.variants.length
+      ? product.variants.map((v) => ({
+          color: "",
+          size: v.size || "",
+          customName: v.customName || "",
+          customValue: v.customValue || "",
+          quantity: Number(v.quantity) || 0,
+          images: Array.isArray(v.images) ? v.images.filter(Boolean).map(String) : [],
+          sku: stripSkuIndex(v.sku),
+          barcode: v.barcode || "",
+        }))
+      : [emptyVariant()];
+
+  // Product Media and variant images stay separate. Drop any URLs that already
+  // belong to a variant so they only show in the variant image area.
+  const variantImageSet = new Set(
+    variants.flatMap((v) => (Array.isArray(v.images) ? v.images : []))
+  );
+  const thumbnails = (
+    Array.isArray(product.thumbnails) ? product.thumbnails : []
+  )
+    .filter(Boolean)
+    .map(String)
+    .filter((url) => !variantImageSet.has(url));
+
   return {
     productId: product.productId || generateProductId(),
     product: product.product || "",
@@ -248,19 +281,8 @@ export function productToForm(product) {
         product.pricing?.sellingPrice ?? product.price ?? 0
       ),
     },
-    variants:
-      Array.isArray(product.variants) && product.variants.length
-        ? product.variants.map((v) => ({
-            color: "",
-            size: v.size || "",
-            customName: v.customName || "",
-            customValue: v.customValue || "",
-            quantity: Number(v.quantity) || 0,
-            images: Array.isArray(v.images) ? [...v.images] : [],
-            sku: v.sku || "",
-            barcode: v.barcode || "",
-          }))
-        : [emptyVariant()],
+    variants,
+    thumbnails,
     status:
       product.status === "active"
         ? "active"
@@ -353,7 +375,7 @@ export function buildProductPayload(formData) {
       const customValue = (v.customValue || "").trim();
       const quantity = Math.max(0, Number(v.quantity) || 0);
       const images = Array.isArray(v.images) ? v.images.filter(Boolean) : [];
-      const existingSku = v.sku != null ? String(v.sku).trim() : "";
+      const existingSku = stripSkuIndex(v.sku);
       const sku =
         existingSku ||
         generateSku(
@@ -373,9 +395,17 @@ export function buildProductPayload(formData) {
         barcode: barcode || undefined,
       };
     }),
-    thumbnails: (formData.variants || []).flatMap((v) =>
-      (Array.isArray(v.images) ? v.images.filter(Boolean) : []).slice(0, 1)
-    ),
+    // Product Media only — never copy variant uploads into thumbnails.
+    thumbnails: (() => {
+      const variantImageSet = new Set(
+        (formData.variants || []).flatMap((v) =>
+          Array.isArray(v.images) ? v.images.filter(Boolean) : []
+        )
+      );
+      return (formData.thumbnails || [])
+        .filter(Boolean)
+        .filter((url) => !variantImageSet.has(url));
+    })(),
     totalStock: variantsForPayload.reduce(
       (sum, v) => sum + Math.max(0, Number(v.quantity) || 0),
       0
@@ -445,7 +475,7 @@ export function createDraftPayload() {
         customValue: "",
         quantity: 0,
         images: [],
-        sku: generateSku(productId, "VAR", 0),
+        sku: generateSku(productId, "VAR"),
       },
     ],
     thumbnails: [],

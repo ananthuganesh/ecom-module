@@ -18,20 +18,19 @@ import {
 import {
   adminCouponService,
   adminProductService,
-  adminCollectionService,
 } from "@/api";
 
 const KINDS = [
   {
     id: "products",
     title: "Amount off products",
-    description: "Discount specific products or collections of products",
+    description: "Discount specific products",
     icon: Package,
   },
   {
     id: "bxgy",
     title: "Buy X get Y",
-    description: "Discount specific products or collections of products",
+    description: "Discount specific products",
     icon: Gift,
   },
   {
@@ -54,7 +53,6 @@ const emptyForm = (kind = "order") => ({
   expiryDate: "",
   status: "active",
   productIds: [],
-  collectionIds: [],
   buyQuantity: "1",
   getQuantity: "1",
   getDiscountPercent: "100",
@@ -82,7 +80,6 @@ function summaryOf(c) {
 export default function AdminDiscountsPage() {
   const [coupons, setCoupons] = useState([]);
   const [products, setProducts] = useState([]);
-  const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("list"); // list | pick | form
   const [editingId, setEditingId] = useState(null);
@@ -94,14 +91,12 @@ export default function AdminDiscountsPage() {
 
   const load = async () => {
     try {
-      const [c, p, col] = await Promise.all([
+      const [c, p] = await Promise.all([
         adminCouponService.getAll(),
         adminProductService.getAllProducts().catch(() => []),
-        adminCollectionService.getCollections().catch(() => []),
       ]);
       setCoupons(Array.isArray(c) ? c : []);
       setProducts(Array.isArray(p) ? p : []);
-      setCollections(Array.isArray(col) ? col : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -150,7 +145,6 @@ export default function AdminDiscountsPage() {
       expiryDate: c.expiryDate ? String(c.expiryDate).slice(0, 10) : "",
       status: c.status || "active",
       productIds: c.productIds || [],
-      collectionIds: c.collectionIds || [],
       buyQuantity: String(c.buyQuantity ?? 1),
       getQuantity: String(c.getQuantity ?? 1),
       getDiscountPercent: String(c.getDiscountPercent ?? 100),
@@ -193,13 +187,13 @@ export default function AdminDiscountsPage() {
       }
     }
 
-    if (form.kind === "products" && !form.productIds.length && !form.collectionIds.length) {
-      setError("Select at least one product or collection.");
+    if (form.kind === "products" && !form.productIds.length) {
+      setError("Select at least one product.");
       return;
     }
 
-    if (form.kind === "bxgy" && !(form.buyProductIds.length || form.productIds.length || form.collectionIds.length)) {
-      setError("Select buy products or collections for Buy X get Y.");
+    if (form.kind === "bxgy" && !(form.buyProductIds.length || form.productIds.length)) {
+      setError("Select buy products for Buy X get Y.");
       return;
     }
 
@@ -215,7 +209,6 @@ export default function AdminDiscountsPage() {
       expiryDate: form.expiryDate,
       status: form.status,
       productIds: form.kind === "products" ? form.productIds : [],
-      collectionIds: form.collectionIds || [],
       buyQuantity: Number(form.buyQuantity || 1),
       getQuantity: Number(form.getQuantity || 1),
       getDiscountPercent: Number(form.getDiscountPercent || 100),
@@ -495,32 +488,6 @@ export default function AdminDiscountsPage() {
               <h3 className="text-sm font-medium text-foreground">
                 {form.kind === "bxgy" ? "Customer buys" : "Applies to"}
               </h3>
-
-              {collections.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[13px] font-medium text-muted-foreground">Collections</p>
-                  <div className="flex flex-wrap gap-2">
-                    {collections.map((col) => {
-                      const id = String(col._id || col.id);
-                      const on = (form.collectionIds || []).includes(id);
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => toggleId("collectionIds", id)}
-                          className={`px-3 py-1.5 rounded-lg text-[13px] font-medium border ${
-                            on
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-card text-muted-foreground border-border"
-                          }`}
-                        >
-                          {col.title || col.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="space-y-2">
                 <p className="text-[13px] font-medium text-muted-foreground">Products</p>

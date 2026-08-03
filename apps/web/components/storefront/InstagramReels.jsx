@@ -72,21 +72,27 @@ function ReelCard({ videoUrl, altText }) {
   );
 }
 
-/** Repeat items until the track is wide enough for a seamless loop. */
-function buildTrackItems(reels, minCount = 10) {
+/** Repeat items until one half of the strip is wide enough for a seamless loop. */
+function buildTrackItems(reels, minCount = 12) {
   if (!reels.length) return [];
+  const target = Math.max(minCount, reels.length);
   const items = [];
   let i = 0;
-  while (items.length < minCount) {
-    items.push(reels[i % reels.length]);
+  while (items.length < target) {
+    const reel = reels[i % reels.length];
+    if (reel?.videoUrl) items.push(reel);
     i += 1;
+    if (i > reels.length * 50) break;
   }
   return items;
 }
 
-function MarqueeTrack({ items, copy }) {
+function MarqueeHalf({ items, copy }) {
   return (
-    <div className="ua-reels-marquee flex shrink-0 gap-2 pr-2 md:gap-3 md:pr-3 lg:gap-4 lg:pr-4">
+    <div
+      className="flex shrink-0 gap-2 pr-2 md:gap-3 md:pr-3 lg:gap-4 lg:pr-4"
+      aria-hidden={copy > 0 ? true : undefined}
+    >
       {items.map((reel, index) => (
         <ReelCard
           key={`${copy}-${reel.id}-${index}`}
@@ -122,7 +128,7 @@ export default function InstagramReels() {
     };
   }, []);
 
-  const trackItems = useMemo(() => buildTrackItems(reels, 10), [reels]);
+  const trackItems = useMemo(() => buildTrackItems(reels, 12), [reels]);
 
   if (!loaded && reels.length === 0) {
     return (
@@ -155,24 +161,27 @@ export default function InstagramReels() {
         </h2>
       </header>
 
-      <div className="relative w-full overflow-hidden px-2 md:px-4 lg:px-8">
-        <div className="flex w-max">
-          <MarqueeTrack items={trackItems} copy={0} />
-          <MarqueeTrack items={trackItems} copy={1} />
+      <div className="ua-reels-strip relative w-full overflow-hidden px-2 md:px-4 lg:px-8">
+        <div className="ua-reels-marquee flex w-max">
+          <MarqueeHalf items={trackItems} copy={0} />
+          <MarqueeHalf items={trackItems} copy={1} />
         </div>
       </div>
 
       <style>{`
         @keyframes ua-reels-marquee {
           from { transform: translate3d(0, 0, 0); }
-          to { transform: translate3d(-100%, 0, 0); }
+          to { transform: translate3d(-50%, 0, 0); }
         }
         .ua-reels-marquee {
           animation: ua-reels-marquee 35s linear infinite;
           will-change: transform;
         }
-        .ua-reels-marquee:hover {
+        .ua-reels-strip:hover .ua-reels-marquee {
           animation-play-state: paused;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ua-reels-marquee { animation: none; }
         }
       `}</style>
     </section>

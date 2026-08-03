@@ -5,7 +5,6 @@ import {
   AccountIcon,
   BagIcon,
   CloseIcon,
-  HeartBagIcon,
   StoreIcon
 } from "@/components/icons/storeIcons";
 import { useState } from "react";
@@ -17,7 +16,6 @@ import { useAuthStore } from "@/store/useAuthStore";
 const SIDEBAR_LINKS = [
     { name: "Overview", href: "/profile", icon: StoreIcon },
     { name: "My Orders", href: "/profile/orders", icon: BagIcon },
-    { name: "Wishlist", href: "/profile/wishlist", icon: HeartBagIcon },
     { name: "Saved Addresses", href: "/profile/addresses", icon: MapPin },
     { name: "Account Settings", href: "/profile/settings", icon: Settings },
     { name: "Security", href: "/profile/security", icon: ShieldCheck },

@@ -6,7 +6,6 @@ export {
   paymentService,
   shippingService,
   couponService,
-  collectionService,
   reelsService,
 } from "./user/index.js";
 
@@ -21,7 +20,6 @@ export {
   adminAisensyService,
   adminGa4Service,
   abandonedCheckoutService,
-  adminCollectionService,
   adminCouponService,
   adminTaxClassService,
   adminCompanyProfileService,

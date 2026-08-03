@@ -5,10 +5,11 @@ import {
   CheckIcon,
   InfoIcon
 } from "@/components/icons/storeIcons";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useCartStore } from "@/store/useCartStore";
+import { useBuyNowStore } from "@/store/useBuyNowStore";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import Image from "next/image";
 import SafeImage from "@/components/SafeImage";
@@ -44,6 +45,23 @@ function splitName(full = "") {
 }
 
 export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="grid min-h-screen place-items-center bg-white">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        </main>
+      }
+    >
+      <CheckoutPageContent />
+    </Suspense>
+  );
+}
+
+function CheckoutPageContent() {
+  const searchParams = useSearchParams();
+  const isBuyNow = searchParams.get("buyNow") === "1";
+
   const {
     cartItems,
     shippingAddress,
@@ -53,6 +71,9 @@ export default function CheckoutPage() {
     removeItems,
     syncStock,
   } = useCartStore();
+  const buyNowItems = useBuyNowStore((state) => state.items);
+  const clearBuyNow = useBuyNowStore((state) => state.clearBuyNow);
+  const syncBuyNowStock = useBuyNowStore((state) => state.syncStock);
   const { userInfo, setUserInfo } = useAuthStore();
   const router = useRouter();
 
@@ -65,9 +86,8 @@ export default function CheckoutPage() {
   const [resolvedEmail, setResolvedEmail] = useState("");
   const [isResolvingEmail, setIsResolvingEmail] = useState(false);
   const afterAccountRef = useRef(null);
-  const [cartHydrated, setCartHydrated] = useState(() =>
-    typeof window === "undefined" ? false : useCartStore.persist.hasHydrated()
-  );
+  // Always false on first paint (server + client) to avoid hydration mismatch.
+  const [cartHydrated, setCartHydrated] = useState(false);
 
   const [isPincodeLoading, setIsPincodeLoading] = useState(false);
   const [couponInput, setCouponInput] = useState("");
@@ -79,6 +99,8 @@ export default function CheckoutPage() {
   const [paymentError, setPaymentError] = useState("");
   const [emailOffers, setEmailOffers] = useState(true);
   const [saveInfo, setSaveInfo] = useState(true);
+
+  const checkoutItems = isBuyNow ? buyNowItems : cartItems;
 
   const nameParts = splitName(shippingAddress?.name || "");
 
@@ -97,15 +119,17 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
-    if (useCartStore.persist.hasHydrated()) {
+    const store = isBuyNow ? useBuyNowStore : useCartStore;
+    if (store.persist.hasHydrated()) {
       setCartHydrated(true);
       return;
     }
-    return useCartStore.persist.onFinishHydration(() => setCartHydrated(true));
-  }, []);
+    return store.persist.onFinishHydration(() => setCartHydrated(true));
+  }, [isBuyNow]);
 
   useEffect(() => {
-    syncStock(productService);
+    if (isBuyNow) syncBuyNowStock(productService);
+    else syncStock(productService);
     paymentService
       .getConfig()
       .then((cfg) => {
@@ -113,16 +137,18 @@ export default function CheckoutPage() {
       })
       .catch(() => setRazorpayConfigured(false));
     couponService.getAll().then(setAvailableCoupons).catch(() => {});
-  }, []);
+  }, [isBuyNow, syncBuyNowStock, syncStock]);
 
   useEffect(() => {
-    if (cartItems.length > 0) trackBeginCheckout(cartItems);
+    if (checkoutItems.length > 0) trackBeginCheckout(checkoutItems);
   }, []);
 
   useEffect(() => {
     if (!cartHydrated) return;
-    if (cartItems.length === 0 && !loading) router.replace("/cart");
-  }, [cartHydrated, router, cartItems.length, loading]);
+    if (checkoutItems.length === 0 && !loading) {
+      router.replace(isBuyNow ? "/all-products" : "/cart");
+    }
+  }, [cartHydrated, router, checkoutItems.length, loading, isBuyNow]);
 
   useEffect(() => {
     if (!userInfo) return;
@@ -149,10 +175,10 @@ export default function CheckoutPage() {
     document.body.appendChild(script);
   }, []);
 
-  const availableItems = cartItems.filter(
+  const availableItems = checkoutItems.filter(
     (item) => (item.countInStock ?? 1) >= (item.qty || 1) && item.countInStock > 0
   );
-  const unavailableItems = cartItems.filter(
+  const unavailableItems = checkoutItems.filter(
     (item) => (item.countInStock ?? 1) < (item.qty || 1) || item.countInStock === 0
   );
 
@@ -183,6 +209,7 @@ export default function CheckoutPage() {
     if (key === "email") {
       setShowLoginPrompt(false);
       setLoginPromptSkipped(false);
+      setPaymentError("");
       const normalized = String(value).trim().toLowerCase();
       if (normalized !== resolvedEmail) setResolvedEmail("");
     }
@@ -197,7 +224,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     const trackCheckout = async () => {
-      if (cartItems.length === 0) return;
+      if (checkoutItems.length === 0) return;
       let guestId = localStorage.getItem("abandoned_guest_id");
       if (!guestId) {
         guestId = `guest_${Math.random().toString(36).substring(2, 11)}_${Date.now()}`;
@@ -233,7 +260,7 @@ export default function CheckoutPage() {
     };
     const timeoutId = setTimeout(trackCheckout, 2000);
     return () => clearTimeout(timeoutId);
-  }, [cartItems, formData, userInfo, totalPrice]);
+  }, [checkoutItems, formData, userInfo, totalPrice, availableItems]);
 
   const fetchPincodeDetails = async (code) => {
     const pincode = code || formData.postalCode;
@@ -381,19 +408,16 @@ export default function CheckoutPage() {
     try {
       const data = await authService.checkoutEmail(email, name);
       data.authMethod = "checkout";
-      if (data?.token || data?._id || data?.authenticated) {
+      const hasSession = Boolean(data?.token || (data?._id && !data?.requiresLogin));
+      if (hasSession) {
         setUserInfo(data);
         persistAuth(data);
         applyUserToForm(data);
       } else {
-        setUserInfo({ ...data, token: null });
+        // Do not keep a stale local profile when the API did not mint a session.
+        setUserInfo(null);
       }
       setResolvedEmail(email);
-      if (data?.requiresExistingSession) {
-        setPaymentError(
-          "This email was used before on another device. Use the same browser, create a password from your last order email, or enter a different email."
-        );
-      }
       return data;
     } catch (err) {
       const msg =
@@ -428,11 +452,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    if ((userInfo?.token || userInfo?.authenticated || userInfo?._id) && userInfo?.email?.toLowerCase() === email) {
-      onReady(userInfo);
-      return;
-    }
-
+    // Always re-resolve with the API. localStorage `authenticated` / `_id` is not
+    // proof of an HttpOnly cookie session — trusting it caused 401 on order create.
     afterAccountRef.current = onReady;
     const data = await resolveCheckoutEmail(email);
     if (!data) {
@@ -440,22 +461,22 @@ export default function CheckoutPage() {
       return;
     }
 
-    if ((data.requiresLogin || data.hasPassword) && !(data.token || data._id || data.authenticated)) {
+    const hasSession = Boolean(data.token || (data._id && !data.requiresLogin));
+
+    if ((data.requiresLogin || data.hasPassword) && !hasSession) {
       setShowLoginPrompt(true);
       setPaymentError("Please log in to continue with this email.");
       return;
     }
 
-    if (data.requiresExistingSession && !(data.token || data._id || data.authenticated)) {
-      setPaymentError(
-        "This email was used before on another device. Use the same browser, create a password from your last order email, or enter a different email."
-      );
-      afterAccountRef.current = null;
+    if ((data.requiresLogin || data.hasPassword) && data.authMethod === "checkout" && !loginPromptSkipped) {
+      setShowLoginPrompt(true);
       return;
     }
 
-    if ((data.requiresLogin || data.hasPassword) && data.authMethod === "checkout" && !loginPromptSkipped) {
-      setShowLoginPrompt(true);
+    if (!hasSession) {
+      setPaymentError("Could not start checkout session. Please try again.");
+      afterAccountRef.current = null;
       return;
     }
 
@@ -484,7 +505,8 @@ export default function CheckoutPage() {
             razorpaySignature: response.razorpay_signature,
             localOrderId,
           });
-          removeItems(availableItems);
+          if (isBuyNow) clearBuyNow();
+          else removeItems(availableItems);
           stashPurchaseEvent({
             transactionId: localOrderId,
             value: totalPrice,
@@ -523,7 +545,11 @@ export default function CheckoutPage() {
 
   const executePlaceOrder = async () => {
     if (availableItems.length === 0) {
-      setPaymentError("Your order has no available items. Please return to cart and check stock.");
+      setPaymentError(
+        isBuyNow
+          ? "Your order has no available items. Please go back and check stock."
+          : "Your order has no available items. Please return to cart and check stock."
+      );
       setLoading(false);
       return;
     }
@@ -575,12 +601,19 @@ export default function CheckoutPage() {
       openRazorpayCheckout({ paymentData, localOrderId });
     } catch (error) {
       console.error("Error placing order:", error);
-      const errorMessage =
+      const status = error.response?.status;
+      const detail =
         error.response?.data?.detail ||
         error.response?.data?.message ||
         error.message ||
         "Something went wrong.";
-      setPaymentError(typeof errorMessage === "string" ? errorMessage : "Something went wrong.");
+      if (status === 401) {
+        setUserInfo(null);
+        setPendingOrderId(null);
+        setPaymentError("Your session expired. Confirm your email and try again.");
+      } else {
+        setPaymentError(typeof detail === "string" ? detail : "Something went wrong.");
+      }
       setLoading(false);
     }
   };
@@ -752,8 +785,11 @@ export default function CheckoutPage() {
               className="h-8 w-auto object-contain"
             />
           </Link>
-          <Link href="/cart" className="text-[13px] text-[#1773b0] hover:underline">
-            Return to cart
+          <Link
+            href={isBuyNow ? "/all-products" : "/cart"}
+            className="text-[13px] text-[#1773b0] hover:underline"
+          >
+            {isBuyNow ? "Back to shopping" : "Return to cart"}
           </Link>
         </div>
       </header>
@@ -802,7 +838,7 @@ export default function CheckoutPage() {
                         setFormData((prev) => ({ ...prev, email: "" }));
                         setUserInfo(null);
                         afterAccountRef.current = null;
-                        setPaymentError("Enter a different email to continue as guest.");
+                        setPaymentError("");
                       }}
                     />
                   )}

@@ -39,7 +39,6 @@ export default async function sitemap() {
     "/all-products",
     "/about",
     "/contact",
-    "/wishlist",
     "/cart",
   ].map((path) => ({
     url: absoluteUrl(path || "/"),
