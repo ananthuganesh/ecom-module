@@ -8,7 +8,17 @@ import { BASE_URL, EXPLICIT_BACKEND_URL } from "@/api/axios/client";
  * Renders image only when src exists. Uses unoptimized for external URLs
  * to avoid Next.js upstream 404 errors. Shows placeholder on load error.
  */
-export default function SafeImage({ src, alt = "", className, fill, ...props }) {
+export default function SafeImage({
+  src,
+  alt = "",
+  className,
+  fill,
+  priority = false,
+  fetchPriority,
+  loading,
+  sizes,
+  ...props
+}) {
   const [error, setError] = useState(false);
 
   if (!src || typeof src !== "string" || !src.trim()) {
@@ -55,6 +65,8 @@ export default function SafeImage({ src, alt = "", className, fill, ...props }) 
   }
 
   const isExternal = normalizedSrc.startsWith("http://") || normalizedSrc.startsWith("https://");
+  const resolvedFetchPriority = fetchPriority ?? (priority ? "high" : undefined);
+  const resolvedLoading = loading ?? (priority ? "eager" : undefined);
 
   const imageElement = (
     <Image
@@ -64,7 +76,10 @@ export default function SafeImage({ src, alt = "", className, fill, ...props }) 
       className={className}
       unoptimized={isExternal}
       onError={() => setError(true)}
-      sizes={props.sizes || (fill ? "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" : undefined)}
+      priority={priority}
+      fetchPriority={resolvedFetchPriority}
+      loading={resolvedLoading}
+      sizes={sizes || (fill ? "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" : undefined)}
       {...props}
     />
   );

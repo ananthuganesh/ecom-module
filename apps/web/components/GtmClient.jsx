@@ -7,10 +7,29 @@ function isAdminPath(pathname) {
   return String(pathname || "").startsWith("/admin");
 }
 
+function injectGtm(id) {
+  if (typeof window === "undefined") return;
+  if (document.querySelector(`script[data-gtm="${id}"]`)) return;
+  if (
+    document.getElementById("gtm-base") ||
+    document.querySelector(`script[src*="gtm.js?id=${id}"]`)
+  ) {
+    return;
+  }
+
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtm.js?id=${id}`;
+  script.dataset.gtm = id;
+  document.head.insertBefore(script, document.head.firstChild);
+}
+
 /**
  * Storefront GTM on all public pages including /checkout and /checkout/success.
- * Skips /admin only. Needed so begin_checkout / add_payment_info / purchase tags fire
- * even on direct land or hard refresh.
+ * Skips /admin only. Idle-deferred so it competes less with LCP.
  */
 export default function GtmClient({ gtmId }) {
   const pathname = usePathname();
@@ -23,23 +42,24 @@ export default function GtmClient({ gtmId }) {
       .toUpperCase()
       .replace(/[^A-Z0-9-]/g, "");
     if (!id.startsWith("GTM-")) return;
-    if (typeof window === "undefined") return;
-    if (document.querySelector(`script[data-gtm="${id}"]`)) return;
-    if (
-      document.getElementById("gtm-base") ||
-      document.querySelector(`script[src*="gtm.js?id=${id}"]`)
-    ) {
-      return;
+
+    let idleId;
+    let timeoutId;
+
+    const run = () => injectGtm(id);
+
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(run, { timeout: 2500 });
+    } else {
+      timeoutId = window.setTimeout(run, 2000);
     }
 
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
-
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtm.js?id=${id}`;
-    script.dataset.gtm = id;
-    document.head.insertBefore(script, document.head.firstChild);
+    return () => {
+      if (idleId != null && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+    };
   }, [gtmId, pathname]);
 
   return null;

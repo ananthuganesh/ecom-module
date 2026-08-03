@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import ProductDetailClient from "./ProductDetailClient";
 import {
   absoluteUrl,
@@ -51,6 +52,31 @@ export async function generateMetadata({ params }) {
   };
 }
 
-export default function ProductPage() {
-  return <ProductDetailClient />;
+export default async function ProductPage({ params }) {
+  const { id } = await params;
+  const product = await fetchProductForSeo(id);
+  if (!product) notFound();
+
+  const lcpImage = productOgImage(product);
+  const preloadLcp =
+    lcpImage &&
+    !lcpImage.includes("/urban/about-1") &&
+    (lcpImage.startsWith("http://") || lcpImage.startsWith("https://"));
+
+  return (
+    <>
+      {preloadLcp ? (
+        <link
+          rel="preload"
+          as="image"
+          href={lcpImage}
+          fetchPriority="high"
+        />
+      ) : null}
+      <ProductDetailClient
+        key={product._id || product.id || id}
+        initialProduct={product}
+      />
+    </>
+  );
 }

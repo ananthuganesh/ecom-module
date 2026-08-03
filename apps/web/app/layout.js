@@ -87,6 +87,10 @@ export default function RootLayout({ children }) {
     >
       <head>
         <link rel="icon" href="/urban/favicon.png" />
+        <link rel="preconnect" href="https://images.urbanaana.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://images.urbanaana.com" />
+        <link rel="preconnect" href="https://www.googletagmanager.com" />
+        <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
       </head>
       <body className="font-sans" suppressHydrationWarning>
         <GtmClient gtmId={gtmId} />

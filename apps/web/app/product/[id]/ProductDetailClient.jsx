@@ -10,7 +10,7 @@ import {
   PlusIcon,
   RulerIcon,
 } from "@/components/icons/storeIcons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
@@ -92,15 +92,15 @@ function estimateDeliveryWindow(from = new Date()) {
   return `${fmt(start)}–${fmt(end)}`;
 }
 
-export default function ProductDetailPage() {
+export default function ProductDetailPage({ initialProduct = null }) {
   const params = useParams();
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
   const cartItems = useCartStore((state) => state.cartItems);
   const addRecentlyViewed = useRecentlyViewedStore((state) => state.addProduct);
-  const [product, setProduct] = useState(null);
+  const [product, setProduct] = useState(initialProduct);
   const [similarProducts, setSimilarProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialProduct);
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [lightboxIndex, setLightboxIndex] = useState(null);
@@ -112,11 +112,22 @@ export default function ProductDetailPage() {
   const [pinError, setPinError] = useState("");
   const [deliveryLabel, setDeliveryLabel] = useState("");
   const [ctaPending, setCtaPending] = useState(null);
+  const trackedViewIdRef = useRef(null);
+
+  useEffect(() => {
+    if (!initialProduct?._id) return;
+    if (trackedViewIdRef.current === initialProduct._id) return;
+    trackedViewIdRef.current = initialProduct._id;
+    addRecentlyViewed(initialProduct);
+    trackViewItem(initialProduct);
+  }, [initialProduct, addRecentlyViewed]);
 
   useEffect(() => {
     const fetchProduct = async () => {
       if (!params?.id) return;
-      setLoading(true);
+      const hadInitial = Boolean(initialProduct);
+      // Keep SSR paint visible; only show skeleton when we have no product yet.
+      if (!hadInitial) setLoading(true);
       try {
         const isObjectId = /^[0-9a-fA-F]{24}$/.test(params.id);
         let data;
@@ -129,10 +140,16 @@ export default function ProductDetailPage() {
         } else {
           data = await productService.getBySlug(params.id);
         }
-        if (!data) return;
+        if (!data) {
+          if (!hadInitial) setProduct(null);
+          return;
+        }
         setProduct(data);
         addRecentlyViewed(data);
-        trackViewItem(data);
+        if (trackedViewIdRef.current !== data._id) {
+          trackedViewIdRef.current = data._id;
+          trackViewItem(data);
+        }
 
         const currentId = data._id;
         const categoryValue =
@@ -189,7 +206,7 @@ export default function ProductDetailPage() {
       }
     };
     fetchProduct();
-  }, [params?.id, addRecentlyViewed]);
+  }, [params?.id, addRecentlyViewed, initialProduct]);
 
   const sizes = useMemo(() => getProductSizeOptions(product), [product]);
 
@@ -349,7 +366,7 @@ export default function ProductDetailPage() {
     router.push("/checkout?buyNow=1");
   };
 
-  if (loading) return <main className="min-h-screen bg-white py-8"><ProductDetailSkeleton /></main>;
+  if (loading && !product) return <main className="min-h-screen bg-white py-8"><ProductDetailSkeleton /></main>;
   if (!product) return <p className="min-h-screen bg-white py-24 text-center text-sm text-gray-400">Product not found</p>;
 
   const formatSpec = (value) => {
@@ -422,6 +439,8 @@ export default function ProductDetailPage() {
                     alt={`${title} ${index + 1}`}
                     fill
                     priority={index === 0}
+                    fetchPriority={index === 0 ? "high" : undefined}
+                    loading={index === 0 ? "eager" : undefined}
                     sizes="(max-width: 1024px) 50vw, 35vw"
                     className="object-cover transition duration-500 group-hover:scale-[1.03]"
                   />
