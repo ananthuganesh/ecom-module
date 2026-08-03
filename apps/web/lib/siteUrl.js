@@ -64,7 +64,7 @@ export function productOgImage(product) {
     product?.images?.[0] ||
     product?.variants?.[0]?.images?.[0] ||
     "";
-  if (!img) return absoluteUrl("/banner.webp");
+  if (!img) return absoluteUrl("/urban/about-1.jpg");
   if (String(img).startsWith("http")) return String(img);
   return absoluteUrl(img.startsWith("/") ? img : `/${img}`);
 }

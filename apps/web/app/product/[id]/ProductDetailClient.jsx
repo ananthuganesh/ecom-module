@@ -23,6 +23,7 @@ import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import {
   SIZE_GUIDE_COLUMNS,
+  SIZE_GUIDE_NOTE,
   SIZE_GUIDE_ROWS,
   formatSizeGuideValue,
 } from "@/lib/sizeGuide";
@@ -855,30 +856,33 @@ export default function ProductDetailPage() {
             onClick={() => setShowSizeGuide(false)}
             aria-label="Close size guide"
           />
-          <div className="relative w-full max-w-2xl rounded-xl bg-white p-5 shadow-2xl sm:p-6">
+          <div className="relative w-full max-w-3xl border border-black bg-white p-5 shadow-2xl sm:p-7">
             <button
               type="button"
               onClick={() => setShowSizeGuide(false)}
-              className="absolute right-3 top-3 rounded-full p-2 hover:bg-gray-100"
+              className="absolute right-3 top-3 p-2 text-black transition-colors hover:text-[#DF1721]"
               aria-label="Close size guide"
             >
               <CloseIcon className="h-4 w-4" />
             </button>
+
             <div className="flex flex-wrap items-end justify-between gap-3 pr-8">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">Find my size</h2>
-                <p className="mt-1 text-[13px] leading-relaxed text-gray-600">
-                  Garment measurements. Compare with a tee you already own.
+                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">
+                  Urban Aana
                 </p>
+                <h2 className="mt-1 text-lg font-bold uppercase tracking-tight sm:text-xl">
+                  Size chart
+                </h2>
               </div>
-              <div className="inline-flex overflow-hidden rounded-md border border-gray-200 text-[12px] font-medium">
+              <div className="inline-flex overflow-hidden border border-black text-[12px] font-bold uppercase tracking-[0.12em]">
                 <button
                   type="button"
                   onClick={() => setSizeGuideUnit("in")}
                   className={`px-3 py-1.5 transition-colors ${
                     sizeGuideUnit === "in"
                       ? "bg-black text-white"
-                      : "bg-white text-gray-600 hover:bg-gray-50"
+                      : "bg-white text-gray-600 hover:bg-[#F9F9F5]"
                   }`}
                 >
                   Inches
@@ -889,7 +893,7 @@ export default function ProductDetailPage() {
                   className={`px-3 py-1.5 transition-colors ${
                     sizeGuideUnit === "cm"
                       ? "bg-black text-white"
-                      : "bg-white text-gray-600 hover:bg-gray-50"
+                      : "bg-white text-gray-600 hover:bg-[#F9F9F5]"
                   }`}
                 >
                   Cm
@@ -897,24 +901,34 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full min-w-[520px] text-left text-[13px]">
-                <thead className="bg-gray-50 text-[12px] font-medium text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2.5">Size</th>
+            <div className="mt-5 overflow-x-auto border border-gray-300">
+              <table className="w-full min-w-[640px] border-collapse text-center text-[13px]">
+                <thead>
+                  <tr className="bg-[#DF1721] text-white">
+                    <th className="border border-[#c4141d] px-3 py-3 text-[12px] font-bold">
+                      Size
+                    </th>
                     {SIZE_GUIDE_COLUMNS.map((column) => (
-                      <th key={column.key} className="px-3 py-2.5">
-                        {toSentenceCase(column.label)}
+                      <th
+                        key={column.key}
+                        className="border border-[#c4141d] px-3 py-3 text-[12px] font-bold leading-snug"
+                      >
+                        {column.label} ({sizeGuideUnit === "cm" ? "cm" : "in"})
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {SIZE_GUIDE_ROWS.map((row) => (
-                    <tr key={row.size} className="border-t border-gray-100">
-                      <td className="px-3 py-2.5 font-semibold">{row.size}</td>
+                    <tr key={row.size} className="border-t border-gray-200 bg-white">
+                      <td className="border border-gray-200 px-3 py-2.5 font-bold text-black">
+                        {row.size}
+                      </td>
                       {SIZE_GUIDE_COLUMNS.map((column) => (
-                        <td key={column.key} className="px-3 py-2.5 text-gray-600">
+                        <td
+                          key={column.key}
+                          className="border border-gray-200 px-3 py-2.5 text-black"
+                        >
                           {formatSizeGuideValue(row[column.key], sizeGuideUnit)}
                         </td>
                       ))}
@@ -923,6 +937,12 @@ export default function ProductDetailPage() {
                 </tbody>
               </table>
             </div>
+
+            <p className="mt-4 text-center text-[12px] italic leading-relaxed text-gray-600">
+              {sizeGuideUnit === "cm"
+                ? "All measurements converted from inches. Slight variation of about 1–2.5 cm may occur due to manual measurement."
+                : SIZE_GUIDE_NOTE}
+            </p>
           </div>
         </div>
       ) : null}

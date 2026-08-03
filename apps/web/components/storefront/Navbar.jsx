@@ -104,13 +104,13 @@ const Navbar = () => {
           <div className="flex items-center justify-start">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+              className={`inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
                 transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
               }`}
               aria-label="Menu"
             >
               <MenuIcon size={18} />
-              <span>Menu</span>
+              <span className="hidden md:inline">Menu</span>
             </button>
           </div>
 
@@ -131,30 +131,32 @@ const Navbar = () => {
             {isAuthenticated ? (
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+                className={`inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
                   transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
                 }`}
+                aria-label={userName?.split(" ")[0] || "Account"}
               >
                 <AccountIcon size={18} />
-                <span className="max-w-[5.5rem] truncate">
+                <span className="hidden max-w-[5.5rem] truncate md:inline">
                   {userName?.split(" ")[0] || "Account"}
                 </span>
               </button>
             ) : (
               <Link
                 href="/login"
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+                className={`inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
                   transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
                 }`}
+                aria-label="Account"
               >
                 <AccountIcon size={18} />
-                <span>Account</span>
+                <span className="hidden md:inline">Account</span>
               </Link>
             )}
 
             <button
               onClick={() => setDrawerOpen(true)}
-              className={`relative inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${iconTone} ${
+              className={`relative inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
                 transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
               }`}
               aria-label={`Cart, ${cartCount} items`}
@@ -172,7 +174,7 @@ const Navbar = () => {
                   </motion.span>
                 )}
               </span>
-              <span>Cart</span>
+              <span className="hidden md:inline">Cart</span>
             </button>
           </div>
         </div>

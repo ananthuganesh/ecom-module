@@ -56,13 +56,13 @@ export const metadata = {
     siteName: "Urban Aana",
     title: "URBAN AANA | Premium Streetwear",
     description: "Official online store for the URBAN AANA tribe.",
-    images: [{ url: "/banner.webp" }],
+    images: [{ url: "/urban/about-1.jpg", width: 1200, height: 630, alt: "Urban Aana" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "URBAN AANA | Premium Streetwear",
     description: "Official online store for the URBAN AANA tribe.",
-    images: ["/banner.webp"],
+    images: ["/urban/about-1.jpg"],
   },
 };
 
@@ -86,13 +86,7 @@ export default function RootLayout({ children }) {
       className={`${inter.variable} ${geistHeading.variable} ${lato.variable} ${archivoBlack.variable} ${notoMalayalam.variable}`}
     >
       <head>
-        <link rel="preload" href="/banner.webp" as="image" />
-        <link
-          rel="preload"
-          href="/banner-mobile.webp"
-          as="image"
-          media="(max-width: 767px)"
-        />
+        <link rel="icon" href="/urban/favicon.png" />
       </head>
       <body className="font-sans" suppressHydrationWarning>
         <GtmClient gtmId={gtmId} />

@@ -1,21 +1,22 @@
-/** Oversized tee garment measurements (inches). */
+/** Urban Aana oversized tee size chart (inches). */
 export const SIZE_GUIDE_ROWS = [
-  { size: "XS", chest: 36, length: 26, shoulder: 16, sleeve: 7.5 },
-  { size: "S", chest: 38, length: 26.5, shoulder: 17, sleeve: 7.75 },
-  { size: "M", chest: 40, length: 27.5, shoulder: 18, sleeve: 8 },
-  { size: "L", chest: 42, length: 28.25, shoulder: 19, sleeve: 8.25 },
-  { size: "XL", chest: 44, length: 29, shoulder: 20, sleeve: 8.5 },
-  { size: "XXL", chest: 46, length: 29.5, shoulder: 21, sleeve: 8.5 },
-  { size: "3XL", chest: 48, length: 30, shoulder: 22, sleeve: 8.75 },
-  { size: "4XL", chest: 50, length: 32, shoulder: 23, sleeve: 8.75 },
+  { size: "S", fitChest: 38, chest: 42, length: 26, shoulder: 21 },
+  { size: "M", fitChest: 40, chest: 44, length: 27, shoulder: 22 },
+  { size: "L", fitChest: 42, chest: 46, length: 28, shoulder: 23 },
+  { size: "XL", fitChest: 44, chest: 48, length: 28.5, shoulder: 24 },
+  { size: "XXL", fitChest: 46, chest: 50, length: 29, shoulder: 25 },
+  { size: "XXXL", fitChest: 48, chest: 52, length: 29.5, shoulder: 26 },
 ];
 
 export const SIZE_GUIDE_COLUMNS = [
-  { key: "chest", label: "Garment Chest" },
+  { key: "fitChest", label: "To Fit Your Chest Size" },
+  { key: "chest", label: "Garment Chest Size" },
   { key: "length", label: "Length" },
   { key: "shoulder", label: "Shoulder" },
-  { key: "sleeve", label: "Sleeve" },
 ];
+
+export const SIZE_GUIDE_NOTE =
+  "All measurements are in inches. Slight variation of 0.5–1 inch may occur due to manual measurement.";
 
 function inchesToCm(value) {
   return Math.round(Number(value) * 2.54 * 10) / 10;
