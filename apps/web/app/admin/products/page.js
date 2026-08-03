@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { adminProductHref } from "@/utils/formatProductUrl";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
+import { bustStorefrontCatalogCache } from "@/lib/bustStorefrontCatalogCache";
 import {
   createProductColumns,
   productStatus,
@@ -215,6 +216,7 @@ export default function AdminProductsPage() {
       }
       await fetchProducts();
       setRowSelection({});
+      await bustStorefrontCatalogCache();
       if (failed) {
         toast.error(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}`);
       } else {
@@ -235,6 +237,7 @@ export default function AdminProductsPage() {
       });
       await fetchProducts();
       setRowSelection({});
+      await bustStorefrontCatalogCache();
       const label =
         STATUS_OPTIONS.find((o) => o.value === status)?.label || status;
       toast.success(`Updated status to ${label}`);

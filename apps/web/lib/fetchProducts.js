@@ -31,7 +31,7 @@ export async function fetchStoreProducts(params = {}, options = {}) {
   const url = `${base}/api/products${buildQuery(params)}`;
   try {
     const res = await fetch(url, {
-      next: { revalidate },
+      next: { revalidate, tags: ["store-catalog"] },
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return [];
@@ -49,7 +49,7 @@ export async function fetchStoreFilters(options = {}) {
   const base = getInternalApiBase();
   try {
     const res = await fetch(`${base}/api/products/filters`, {
-      next: { revalidate },
+      next: { revalidate, tags: ["store-filters"] },
       headers: { Accept: "application/json" },
     });
     if (!res.ok) {

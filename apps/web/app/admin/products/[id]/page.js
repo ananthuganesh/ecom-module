@@ -38,6 +38,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { bustStorefrontCatalogCache } from "@/lib/bustStorefrontCatalogCache";
 import {
   Popover,
   PopoverContent,
@@ -542,6 +543,7 @@ export default function AdminProductDetailPage() {
       if (isNew) {
         const created = await adminProductService.create(payload);
         toast.success("Product saved");
+        await bustStorefrontCatalogCache();
         router.replace(adminProductHref(created));
         return;
       }
@@ -552,6 +554,7 @@ export default function AdminProductDetailPage() {
       setForm(nextForm);
       setSnapshot(cloneForm(nextForm));
       toast.success("Product saved");
+      await bustStorefrontCatalogCache();
       const key = productUrlKey(updated);
       if (key && key !== String(productRef)) {
         router.replace(adminProductHref(updated));
