@@ -105,7 +105,7 @@ const Footer = () => {
             </p>
             <ul className="flex flex-col gap-3">
               <li>
-                <Link href="/profile" className={FOOTER_LINK}>
+                <Link href="/account" className={FOOTER_LINK}>
                   My Account
                 </Link>
               </li>

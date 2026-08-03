@@ -74,6 +74,9 @@ const nextConfig = {
   async redirects() {
     return [
       { source: "/admin", destination: "/admin/login", permanent: false },
+      // Customer account (legacy /profile → /account)
+      { source: "/profile", destination: "/account", permanent: true },
+      { source: "/profile/:path*", destination: "/account/:path*", permanent: true },
       // Deleted settings / wallet / payment UI
       { source: "/admin/wallet", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/settings/payments", destination: "/admin/settings/general", permanent: false },

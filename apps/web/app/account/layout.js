@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 
-export default function ProfileLayout({ children }) {
+export default function AccountLayout({ children }) {
     const { userInfo } = useAuthStore();
     const router = useRouter();
     const [isChecking, setIsChecking] = useState(true);
@@ -16,13 +16,10 @@ export default function ProfileLayout({ children }) {
     }, []);
 
     useEffect(() => {
-        console.log("ProfileLayout: Checking auth status...", { hasUserInfo: !!userInfo, mounted });
         if (mounted) {
             if (!userInfo) {
-                console.log("ProfileLayout: No user info, redirecting to login...");
-                router.push("/login?redirect=/profile");
+                router.push("/login?redirect=/account");
             } else {
-                console.log("ProfileLayout: User authorized, showing content.");
                 setIsChecking(false);
             }
         }

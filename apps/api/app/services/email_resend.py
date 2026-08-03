@@ -90,8 +90,8 @@ def _order_ref(order) -> str:
 def _order_url(order) -> str:
     order_id = str(getattr(order, "id", "") or "")
     if order_id:
-        return f"{tpl.site_url()}/profile/orders/{order_id}"
-    return f"{tpl.site_url()}/profile/orders"
+        return f"{tpl.site_url()}/account/orders/{order_id}"
+    return f"{tpl.site_url()}/account/orders"
 
 
 def _admin_order_url(order) -> str:

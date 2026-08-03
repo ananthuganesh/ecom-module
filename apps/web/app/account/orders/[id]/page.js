@@ -80,7 +80,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
             Order not found.
           </p>
           <Link
-            href="/profile/orders"
+            href="/account/orders"
             className="inline-flex bg-black px-6 py-3 text-[11px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]"
           >
             Back to orders
@@ -110,7 +110,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
     >
       <div className="mb-6 no-print">
         <Link
-          href="/profile/orders"
+          href="/account/orders"
           className="inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.16em] text-gray-500 transition-colors hover:text-[#DF1721]"
         >
           <ChevronLeftIcon className="h-4 w-4" />

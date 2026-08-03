@@ -12,15 +12,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 
 const SIDEBAR_LINKS = [
-  { name: "Overview", href: "/profile", icon: StoreIcon },
-  { name: "My Orders", href: "/profile/orders", icon: BagIcon },
-  { name: "Saved Addresses", href: "/profile/addresses", icon: MapPin },
-  { name: "Account Settings", href: "/profile/settings", icon: Settings },
-  { name: "Security", href: "/profile/security", icon: ShieldCheck },
+  { name: "Overview", href: "/account", icon: StoreIcon },
+  { name: "My Orders", href: "/account/orders", icon: BagIcon },
+  { name: "Saved Addresses", href: "/account/addresses", icon: MapPin },
+  { name: "Account Settings", href: "/account/settings", icon: Settings },
+  { name: "Security", href: "/account/security", icon: ShieldCheck },
 ];
 
 function isLinkActive(pathname, href) {
-  if (href === "/profile") return pathname === "/profile";
+  if (href === "/account") return pathname === "/account";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

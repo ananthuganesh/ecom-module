@@ -139,7 +139,7 @@ export default function MyOrdersPage() {
                         </span>
                       </div>
                       <Link
-                        href={`/profile/orders/${order._id}`}
+                        href={`/account/orders/${order._id}`}
                         className="border-b border-[#DF1721] pb-0.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#DF1721] transition-colors hover:border-black hover:text-black"
                       >
                         View details

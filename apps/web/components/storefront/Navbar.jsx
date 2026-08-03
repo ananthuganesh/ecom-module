@@ -267,7 +267,7 @@ const Navbar = () => {
                     </Link>
                   ) : (
                     <Link
-                      href="/profile?tab=profile"
+                      href="/account"
                       onClick={closeMenu}
                       className="mt-3.5 block rounded-lg bg-white/10 py-2.5 text-center text-xs font-semibold tracking-wide transition-colors hover:bg-white/20"
                     >
@@ -301,21 +301,21 @@ const Navbar = () => {
                       Account
                     </p>
                     <MenuLink
-                      href="/profile?tab=orders"
+                      href="/account/orders"
                       onClick={closeMenu}
                       icon={OrdersIcon}
                     >
                       My Orders
                     </MenuLink>
                     <MenuLink
-                      href="/profile?tab=profile"
+                      href="/account"
                       onClick={closeMenu}
                       icon={AccountIcon}
                     >
-                      Profile
+                      Account
                     </MenuLink>
                     <MenuLink
-                      href="/profile?tab=addresses"
+                      href="/account/addresses"
                       onClick={closeMenu}
                       icon={LocationIcon}
                     >
