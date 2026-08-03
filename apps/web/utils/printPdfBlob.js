@@ -1,8 +1,7 @@
 /**
  * Open the system print dialog for a PDF blob (no forced download).
- * Uses a hidden iframe when possible; falls back to a same-origin blob tab
- * because Chrome’s PDF viewer inside an iframe is cross-origin and blocks print().
- * `filename` is used as the print job / Save as PDF suggested name when the browser supports it.
+ * Uses a hidden iframe when possible; falls back to a same-origin HTML tab
+ * (Chrome’s PDF iframe viewer blocks print()). That tab closes on afterprint.
  */
 export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
   return new Promise((resolve, reject) => {
@@ -33,8 +32,6 @@ export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
-      URL.revokeObjectURL(url);
-      iframe.remove();
       if (popup && !popup.closed) {
         try {
           popup.close();
@@ -42,11 +39,9 @@ export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
           /* ignore */
         }
       }
-    };
-
-    const scheduleCleanup = () => {
-      window.setTimeout(cleanup, 120_000);
-      window.addEventListener("focus", cleanup, { once: true });
+      popup = null;
+      URL.revokeObjectURL(url);
+      iframe.remove();
     };
 
     const tryPrint = (win) => {
@@ -55,34 +50,95 @@ export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
     };
 
     const printViaPopup = () => {
-      popup = window.open(url, "_blank");
+      // HTML shell (not raw PDF URL) so afterprint can close the tab.
+      popup = window.open("", "_blank");
       if (!popup) {
         cleanup();
         reject(new Error("Allow pop-ups to print the PDF"));
         return;
       }
-      window.setTimeout(() => {
+
+      const title = (safeName.replace(/\.pdf$/i, "") || "document").replace(/[<>&"]/g, "");
+      const doc = popup.document;
+      doc.open();
+      doc.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${title}</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
+    embed { display: block; width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <embed type="application/pdf" src="${url}" />
+  <script>
+    (function () {
+      var closed = false;
+      function closeSelf() {
+        if (closed) return;
+        closed = true;
+        try { window.close(); } catch (e) {}
+      }
+      function armCloseAfterPrint() {
+        window.addEventListener("afterprint", closeSelf);
         try {
-          tryPrint(popup);
-        } catch {
-          /* PDF is open — user can print manually */
-        }
-        resolve();
-        scheduleCleanup();
-      }, 400);
+          var mql = window.matchMedia("print");
+          mql.addEventListener("change", function (e) {
+            if (!e.matches) setTimeout(closeSelf, 200);
+          });
+        } catch (e) {}
+        // Dialog closed / cancelled → focus returns here.
+        window.addEventListener("focus", function onFocus() {
+          setTimeout(closeSelf, 300);
+        });
+        setTimeout(closeSelf, 120000);
+      }
+      setTimeout(function () {
+        try {
+          window.focus();
+          window.print();
+        } catch (e) {}
+        armCloseAfterPrint();
+      }, 500);
+    })();
+  <\/script>
+</body>
+</html>`);
+      doc.close();
+
+      // Parent also closes leftover tab when user returns to admin.
+      window.setTimeout(() => {
+        window.addEventListener(
+          "focus",
+          () => {
+            window.setTimeout(cleanup, 200);
+          },
+          { once: true }
+        );
+      }, 800);
+      window.setTimeout(cleanup, 120_000);
+      resolve();
     };
 
     iframe.onload = () => {
-      // Give the PDF viewer a moment to render before print().
       window.setTimeout(() => {
         try {
           const win = iframe.contentWindow;
           if (!win) throw new Error("Print window unavailable");
           tryPrint(win);
+          try {
+            win.addEventListener("afterprint", cleanup, { once: true });
+          } catch {
+            /* ignore */
+          }
+          window.setTimeout(() => {
+            window.addEventListener("focus", cleanup, { once: true });
+          }, 800);
+          window.setTimeout(cleanup, 120_000);
           resolve();
-          scheduleCleanup();
         } catch {
-          // Chrome: PDF plugin frame is cross-origin — open blob in a tab (same origin).
           printViaPopup();
         }
       }, 300);

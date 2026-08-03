@@ -22,6 +22,7 @@ async def list_stock(
 ):
     await stock_service.ensure_default_warehouse()
     await stock_service.backfill_opening_from_products()
+    await stock_service.cleanup_duplicate_inventory_rows()
 
     query: dict = {}
     if warehouseId:
@@ -30,6 +31,19 @@ async def list_stock(
         query["productId"] = productId
 
     balances = await StockBalance.find(query).to_list() if query else await StockBalance.find_all().to_list()
+
+    # Defense in depth: hide blank-SKU rows when the product already has variant balances.
+    variant_keys = {
+        (b.productId, b.warehouseId)
+        for b in balances
+        if (b.variantSku or "").strip()
+    }
+    balances = [
+        b
+        for b in balances
+        if (b.variantSku or "").strip()
+        or (b.productId, b.warehouseId) not in variant_keys
+    ]
 
     product_ids = list({b.productId for b in balances if ObjectId.is_valid(b.productId)})
     products = {}

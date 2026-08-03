@@ -125,3 +125,61 @@ async def test_release_reserved_restores_sellable(product_wh):
     assert bal.reserved == 0
     refreshed = await Product.get(product.id)
     assert refreshed.totalStock == 5
+
+
+@pytest.mark.asyncio
+async def test_cleanup_drops_blank_sku_orphans_when_variants_exist(db):
+    from app.documents import Variant
+
+    wh = Warehouse(name="Main", code="MAIN", isDefault=True, isActive=True)
+    await wh.insert()
+    product = Product(
+        productName="Keralathinayi",
+        pricing=Pricing(sellingPrice=100, offerPrice=100),
+        totalStock=0,
+        variants=[
+            Variant(size="S", sku="KER-S", quantity=12),
+            Variant(size="L", sku="KER-L", quantity=28),
+        ],
+    )
+    await product.insert()
+    pid = str(product.id)
+    wid = str(wh.id)
+
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="", quantity=107, reserved=0).insert()
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="KER-S", quantity=12, reserved=0).insert()
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="KER-L", quantity=28, reserved=0).insert()
+
+    result = await stock_svc.cleanup_duplicate_inventory_rows()
+    assert result["removedOrphans"] == 1
+
+    rows = await StockBalance.find(StockBalance.productId == pid).to_list()
+    skus = sorted((r.variantSku or "") for r in rows)
+    assert skus == ["KER-L", "KER-S"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_merges_duplicate_balance_keys(db):
+    wh = Warehouse(name="Main", code="MAIN", isDefault=True, isActive=True)
+    await wh.insert()
+    product = Product(
+        productName="Simple Tee",
+        pricing=Pricing(sellingPrice=100, offerPrice=100),
+        totalStock=0,
+    )
+    await product.insert()
+    pid = str(product.id)
+    wid = str(wh.id)
+
+    # Same SKU with whitespace variance → one logical key after strip.
+    await StockBalance(productId=pid, warehouseId=wid, variantSku=" TEE-M", quantity=50, reserved=0).insert()
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="TEE-M", quantity=57, reserved=1).insert()
+
+    result = await stock_svc.cleanup_duplicate_inventory_rows()
+    assert result["merged"] == 1
+
+    rows = await StockBalance.find(StockBalance.productId == pid).to_list()
+    assert len(rows) == 1
+    assert (rows[0].variantSku or "") == "TEE-M"
+    assert int(rows[0].quantity or 0) == 107
+    assert int(rows[0].reserved or 0) == 1

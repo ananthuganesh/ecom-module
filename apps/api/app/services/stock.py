@@ -84,7 +84,11 @@ async def ensure_balance_seeded_from_product(
             if (v.sku or "").strip() == sku:
                 seed = int(v.quantity or 0)
                 break
-    if seed <= 0:
+    if seed <= 0 and not sku:
+        # Variant products must not seed a blank-SKU product-level balance.
+        has_variant_skus = any((v.sku or "").strip() for v in (product.variants or []))
+        if has_variant_skus:
+            return bal
         seed = int(product.totalStock or 0)
         if seed <= 0 and product.variants:
             seed = sum(int(v.quantity or 0) for v in product.variants)
@@ -956,3 +960,72 @@ async def backfill_opening_from_products() -> int:
             )
             created += 1
     return created
+
+
+async def cleanup_duplicate_inventory_rows() -> dict[str, int]:
+    """Merge duplicate balance keys and drop blank-SKU orphans for variant products.
+
+    Inventory lists one row per StockBalance. Historical seeding often left a
+    product-level (empty variantSku) row beside real size SKUs, which looks like
+    duplicate products in admin.
+    """
+    from collections import defaultdict
+
+    rows = await StockBalance.find_all().to_list()
+    groups: dict[tuple[str, str, str], list] = defaultdict(list)
+    for row in rows:
+        key = (
+            str(row.productId or ""),
+            str(row.warehouseId or ""),
+            (row.variantSku or "").strip(),
+        )
+        groups[key].append(row)
+
+    merged = 0
+    for (product_id, warehouse_id, sku), items in groups.items():
+        if len(items) <= 1:
+            continue
+        keep = items[0]
+        for extra in items[1:]:
+            keep.quantity = int(keep.quantity or 0) + int(extra.quantity or 0)
+            keep.reserved = int(keep.reserved or 0) + int(extra.reserved or 0)
+            await extra.delete()
+            merged += 1
+        keep.productId = product_id
+        keep.warehouseId = warehouse_id
+        keep.variantSku = sku
+        keep.updatedAt = datetime.utcnow()
+        await keep.save()
+
+    rows = await StockBalance.find_all().to_list()
+    by_product_wh: dict[tuple[str, str], list] = defaultdict(list)
+    for row in rows:
+        by_product_wh[(str(row.productId or ""), str(row.warehouseId or ""))].append(row)
+
+    removed_orphans = 0
+    touched_products: set[str] = set()
+    product_cache: dict[str, Product | None] = {}
+
+    for (product_id, _warehouse_id), items in by_product_wh.items():
+        has_variant_balance = any((b.variantSku or "").strip() for b in items)
+        if product_id not in product_cache:
+            product_cache[product_id] = (
+                await Product.get(ObjectId(product_id)) if ObjectId.is_valid(product_id) else None
+            )
+        product = product_cache[product_id]
+        has_variant_skus = bool(
+            product and any((v.sku or "").strip() for v in (product.variants or []))
+        )
+        if not (has_variant_balance or has_variant_skus):
+            continue
+        for bal in items:
+            if (bal.variantSku or "").strip():
+                continue
+            await bal.delete()
+            removed_orphans += 1
+            touched_products.add(product_id)
+
+    for product_id in touched_products:
+        await sync_product_stock(product_id)
+
+    return {"merged": merged, "removedOrphans": removed_orphans}
