@@ -128,7 +128,7 @@ async def test_release_reserved_restores_sellable(product_wh):
 
 
 @pytest.mark.asyncio
-async def test_cleanup_drops_blank_sku_orphans_when_variants_exist(db):
+async def test_cleanup_drops_only_zero_blank_sku_orphans(db):
     from app.documents import Variant
 
     wh = Warehouse(name="Main", code="MAIN", isDefault=True, isActive=True)
@@ -146,7 +146,7 @@ async def test_cleanup_drops_blank_sku_orphans_when_variants_exist(db):
     pid = str(product.id)
     wid = str(wh.id)
 
-    await StockBalance(productId=pid, warehouseId=wid, variantSku="", quantity=107, reserved=0).insert()
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="", quantity=0, reserved=0).insert()
     await StockBalance(productId=pid, warehouseId=wid, variantSku="KER-S", quantity=12, reserved=0).insert()
     await StockBalance(productId=pid, warehouseId=wid, variantSku="KER-L", quantity=28, reserved=0).insert()
 
@@ -156,6 +156,64 @@ async def test_cleanup_drops_blank_sku_orphans_when_variants_exist(db):
     rows = await StockBalance.find(StockBalance.productId == pid).to_list()
     skus = sorted((r.variantSku or "") for r in rows)
     assert skus == ["KER-L", "KER-S"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_keeps_stocked_blank_sku_beside_variants(db):
+    from app.documents import Variant
+
+    wh = Warehouse(name="Main", code="MAIN", isDefault=True, isActive=True)
+    await wh.insert()
+    product = Product(
+        productName="Indian Elephant",
+        pricing=Pricing(sellingPrice=100, offerPrice=100),
+        totalStock=0,
+        variants=[Variant(size="XXXL", sku="EHYOG1-XXXL", quantity=3)],
+    )
+    await product.insert()
+    pid = str(product.id)
+    wid = str(wh.id)
+
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="", quantity=3, reserved=0).insert()
+    await StockBalance(productId=pid, warehouseId=wid, variantSku="EHYOG1-XXXL", quantity=3, reserved=0).insert()
+
+    result = await stock_svc.cleanup_duplicate_inventory_rows()
+    assert result["removedOrphans"] == 0
+    rows = await StockBalance.find(StockBalance.productId == pid).to_list()
+    assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_ensure_inventory_creates_missing_product_rows(db):
+    from app.documents import Variant
+
+    wh = Warehouse(name="Main", code="MAIN", isDefault=True, isActive=True)
+    await wh.insert()
+    with_sku = Product(
+        productName="With SKU",
+        pricing=Pricing(sellingPrice=100, offerPrice=100),
+        variants=[Variant(size="M", sku="WS-M", quantity=5)],
+    )
+    no_sku = Product(
+        productName="No SKU",
+        pricing=Pricing(sellingPrice=100, offerPrice=100),
+        totalStock=2,
+    )
+    await with_sku.insert()
+    await no_sku.insert()
+
+    created = await stock_svc.ensure_inventory_balances_for_catalog(seed_from_product=True)
+    assert created >= 2
+
+    sku_rows = await StockBalance.find(StockBalance.productId == str(with_sku.id)).to_list()
+    assert len(sku_rows) == 1
+    assert sku_rows[0].variantSku == "WS-M"
+    assert int(sku_rows[0].quantity or 0) == 5
+
+    plain = await StockBalance.find(StockBalance.productId == str(no_sku.id)).to_list()
+    assert len(plain) == 1
+    assert (plain[0].variantSku or "") == ""
+    assert int(plain[0].quantity or 0) == 2
 
 
 @pytest.mark.asyncio

@@ -21,7 +21,7 @@ async def list_stock(
     threshold: int = Query(10, ge=0),
 ):
     await stock_service.ensure_default_warehouse()
-    await stock_service.backfill_opening_from_products()
+    await stock_service.ensure_inventory_balances_for_catalog(seed_from_product=True)
     await stock_service.cleanup_duplicate_inventory_rows()
 
     query: dict = {}
@@ -32,7 +32,7 @@ async def list_stock(
 
     balances = await StockBalance.find(query).to_list() if query else await StockBalance.find_all().to_list()
 
-    # Defense in depth: hide blank-SKU rows when the product already has variant balances.
+    # Hide empty blank-SKU rows when variant balances exist (non-zero blanks kept).
     variant_keys = {
         (b.productId, b.warehouseId)
         for b in balances
@@ -43,6 +43,8 @@ async def list_stock(
         for b in balances
         if (b.variantSku or "").strip()
         or (b.productId, b.warehouseId) not in variant_keys
+        or int(b.quantity or 0) != 0
+        or int(b.reserved or 0) != 0
     ]
 
     product_ids = list({b.productId for b in balances if ObjectId.is_valid(b.productId)})
@@ -176,6 +178,7 @@ async def adjust_stock(body: dict, admin: StockWriter):
 
 @router.post("/stock/backfill")
 async def backfill_stock(_: StockWriter):
-    # Force backfill even if balances exist for products without balances — only fills empty ledger
-    count = await stock_service.backfill_opening_from_products()
-    return {"created": count}
+    # Create missing ledger rows for products/variants that have none yet.
+    count = await stock_service.ensure_inventory_balances_for_catalog(seed_from_product=True)
+    cleaned = await stock_service.cleanup_duplicate_inventory_rows()
+    return {"created": count, **cleaned}

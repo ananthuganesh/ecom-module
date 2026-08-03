@@ -923,51 +923,97 @@ async def backfill_opening_from_products() -> int:
     existing = await StockBalance.find_all().limit(1).to_list()
     if existing:
         return 0
+    return await ensure_inventory_balances_for_catalog(seed_from_product=True)
+
+
+async def ensure_inventory_balances_for_catalog(*, seed_from_product: bool = True) -> int:
+    """Ensure every product/variant has a stock balance row in the default warehouse.
+
+    Inventory UI lists StockBalance docs only — products with no ledger row are invisible.
+    Creates missing rows; does not overwrite quantities on existing balances.
+    """
     wh = await ensure_default_warehouse()
+    wh_id = str(wh.id)
     products = await Product.find_all().to_list()
     created = 0
-    for p in products:
-        pid = str(p.id)
-        variants = p.variants or []
+
+    for product in products:
+        pid = str(product.id)
+        variants = product.variants or []
         sku_variants = [v for v in variants if (v.sku or "").strip()]
+
         if sku_variants:
-            for v in sku_variants:
-                qty = int(v.quantity or 0)
-                if qty <= 0:
-                    continue
-                await apply_stock_change(
-                    product_id=pid,
-                    warehouse_id=str(wh.id),
-                    quantity_delta=qty,
-                    movement_type="opening",
-                    variant_sku=(v.sku or "").strip(),
-                    reason="Opening balance from product",
-                    allow_negative=False,
+            for variant in sku_variants:
+                sku = (variant.sku or "").strip()
+                existing = await StockBalance.find_one(
+                    StockBalance.productId == pid,
+                    StockBalance.warehouseId == wh_id,
+                    StockBalance.variantSku == sku,
                 )
+                if existing:
+                    continue
+                qty = int(variant.quantity or 0) if seed_from_product else 0
+                if qty > 0:
+                    await apply_stock_change(
+                        product_id=pid,
+                        warehouse_id=wh_id,
+                        quantity_delta=qty,
+                        movement_type="opening",
+                        variant_sku=sku,
+                        reason="Ensure inventory row from product",
+                        allow_negative=False,
+                    )
+                else:
+                    await StockBalance(
+                        productId=pid,
+                        warehouseId=wh_id,
+                        variantSku=sku,
+                        quantity=0,
+                        reserved=0,
+                    ).insert()
                 created += 1
-        else:
-            qty = int(p.totalStock or 0)
+            continue
+
+        existing = await StockBalance.find_one(
+            StockBalance.productId == pid,
+            StockBalance.warehouseId == wh_id,
+            StockBalance.variantSku == "",
+        )
+        if existing:
+            continue
+        qty = 0
+        if seed_from_product:
+            qty = int(product.totalStock or 0)
             if qty <= 0 and variants:
                 qty = sum(int(v.quantity or 0) for v in variants)
-            if qty <= 0:
-                continue
+        if qty > 0:
             await apply_stock_change(
                 product_id=pid,
-                warehouse_id=str(wh.id),
+                warehouse_id=wh_id,
                 quantity_delta=qty,
                 movement_type="opening",
-                reason="Opening balance from product",
+                reason="Ensure inventory row from product",
+                allow_negative=False,
             )
-            created += 1
+        else:
+            await StockBalance(
+                productId=pid,
+                warehouseId=wh_id,
+                variantSku="",
+                quantity=0,
+                reserved=0,
+            ).insert()
+        created += 1
+
     return created
 
 
 async def cleanup_duplicate_inventory_rows() -> dict[str, int]:
-    """Merge duplicate balance keys and drop blank-SKU orphans for variant products.
+    """Merge duplicate balance keys and drop blank-SKU orphans beside real variant rows.
 
-    Inventory lists one row per StockBalance. Historical seeding often left a
-    product-level (empty variantSku) row beside real size SKUs, which looks like
-    duplicate products in admin.
+    Only removes empty-SKU balances when the same product+warehouse already has at
+    least one non-empty variantSku balance. Products that only have a blank-SKU
+    row are kept (otherwise they vanish from Inventory).
     """
     from collections import defaultdict
 
@@ -1004,22 +1050,17 @@ async def cleanup_duplicate_inventory_rows() -> dict[str, int]:
 
     removed_orphans = 0
     touched_products: set[str] = set()
-    product_cache: dict[str, Product | None] = {}
 
     for (product_id, _warehouse_id), items in by_product_wh.items():
+        # Only drop blank SKU when real variant ledger rows already exist.
         has_variant_balance = any((b.variantSku or "").strip() for b in items)
-        if product_id not in product_cache:
-            product_cache[product_id] = (
-                await Product.get(ObjectId(product_id)) if ObjectId.is_valid(product_id) else None
-            )
-        product = product_cache[product_id]
-        has_variant_skus = bool(
-            product and any((v.sku or "").strip() for v in (product.variants or []))
-        )
-        if not (has_variant_balance or has_variant_skus):
+        if not has_variant_balance:
             continue
         for bal in items:
             if (bal.variantSku or "").strip():
+                continue
+            # Never delete stocked blank rows — that made products vanish / lost qty.
+            if int(bal.quantity or 0) != 0 or int(bal.reserved or 0) != 0:
                 continue
             await bal.delete()
             removed_orphans += 1
