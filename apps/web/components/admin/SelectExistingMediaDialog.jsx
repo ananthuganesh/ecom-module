@@ -45,7 +45,8 @@ export default function SelectExistingMediaDialog({
     setSearch("");
     (async () => {
       try {
-        const data = await adminMediaService.list("products");
+        // Same scope as Admin → Files ("all" = products + ai; reels excluded).
+        const data = await adminMediaService.list("all");
         if (cancelled) return;
         const list = (Array.isArray(data) ? data : []).filter(
           (f) => (f.type || "image") === "image" && f.url

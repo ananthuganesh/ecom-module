@@ -52,14 +52,13 @@ async def list_stock(
             continue
         image = None
         if product:
-            image = (product.thumbnails or [None])[0]
-            if not image and product.variants:
-                for variant in product.variants:
-                    if variant.images:
-                        image = variant.images[0]
-                        break
+            # Product has thumbnails; images live on variants only.
+            image = next((u for u in (product.thumbnails or []) if u), None)
             if not image:
-                image = (product.images or [None])[0]
+                for variant in product.variants or []:
+                    image = next((u for u in (variant.images or []) if u), None)
+                    if image:
+                        break
 
         rows.append(
             {
