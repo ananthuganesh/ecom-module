@@ -45,7 +45,10 @@ export default function SecurityPage() {
       } else {
         const data = await authService.setPassword(newPassword);
         setUserInfo(data);
-        setMessage({ type: "success", text: "Password set. You can sign in with email and password." });
+        setMessage({
+          type: "success",
+          text: "Password set. You can sign in with email and password.",
+        });
       }
       setCurrentPassword("");
       setNewPassword("");
@@ -53,77 +56,81 @@ export default function SecurityPage() {
     } catch (err) {
       setMessage({
         type: "error",
-        text: err.response?.data?.detail || err.response?.data?.message || "Could not update password.",
+        text:
+          err.response?.data?.detail ||
+          err.response?.data?.message ||
+          "Could not update password.",
       });
     } finally {
       setSaving(false);
     }
   };
 
+  const LABEL = "mb-1.5 block text-[12px] font-bold uppercase tracking-[0.16em] text-black";
+  const inputClass =
+    "h-10 w-full border border-black bg-white px-3 text-[14px] text-black placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#DF1721]";
+
   return (
-    <DashboardLayout title="Security Settings">
+    <DashboardLayout title="Security" eyebrow="Account safety">
       <div className="max-w-xl">
-        <div className="bg-white p-8 border border-gray-100 shadow-sm">
-          <div className="flex items-center space-x-3 text-primary mb-8 border-b border-gray-50 pb-4">
-            <Lock className="w-4 h-4 text-accent" />
-            <h2 className="text-[10px] uppercase tracking-[0.2em] font-black">
-              {hasPassword ? "Change Password" : "Set Password"}
+        <div className="border border-black bg-white p-6 sm:p-8">
+          <div className="mb-6 flex items-center gap-3 border-b border-black pb-4">
+            <Lock className="h-4 w-4 text-[#DF1721]" />
+            <h2 className="text-[12px] font-bold uppercase tracking-[0.2em]">
+              {hasPassword ? "Change password" : "Set password"}
             </h2>
           </div>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             {hasPassword ? (
-              <div className="space-y-2">
-                <label className="text-[9px] uppercase tracking-widest font-black text-gray-400">
-                  Current Password
-                </label>
+              <div>
+                <label className={LABEL}>Current password</label>
                 <input
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required
-                  className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
+                  className={inputClass}
                 />
               </div>
             ) : null}
-            <div className="space-y-2 relative">
-              <label className="text-[9px] uppercase tracking-widest font-black text-gray-400">
-                New Password
-              </label>
+
+            <div className="relative">
+              <label className={LABEL}>New password</label>
               <input
                 type={showPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 minLength={8}
                 required
-                className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
+                className={inputClass}
               />
               <button
                 type="button"
-                className="absolute right-4 bottom-4 p-1 text-gray-300 hover:text-primary transition-colors"
+                className="absolute right-3 bottom-2.5 p-1 text-gray-400 transition-colors hover:text-black"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <div className="space-y-2">
-              <label className="text-[9px] uppercase tracking-widest font-black text-gray-400">
-                Confirm Password
-              </label>
+
+            <div>
+              <label className={LABEL}>Confirm password</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 minLength={8}
                 required
-                className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
+                className={inputClass}
               />
             </div>
 
             {message.text ? (
               <p
-                className={`text-[11px] font-medium ${
-                  message.type === "error" ? "text-red-600" : "text-emerald-600"
+                className={`text-[12px] font-medium ${
+                  message.type === "error" ? "text-[#DF1721]" : "text-black"
                 }`}
               >
                 {message.text}
@@ -133,18 +140,18 @@ export default function SecurityPage() {
             <button
               type="submit"
               disabled={saving}
-              className="btn-primary w-full py-4 text-[9px] font-black tracking-[0.2em] disabled:opacity-50"
+              className="mt-2 h-10 w-full bg-[#DF1721] text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black disabled:opacity-50"
             >
-              {saving ? "Saving…" : hasPassword ? "Update Password" : "Set Password"}
+              {saving ? "Saving…" : hasPassword ? "Update password" : "Set password"}
             </button>
           </form>
         </div>
 
-        <div className="mt-8 p-8 bg-primary text-white relative overflow-hidden">
-          <div className="absolute inset-0 opacity-5 pointer-events-none">
-            <ShieldCheck className="w-48 h-48 -ml-10 -mt-10" />
+        <div className="relative mt-6 overflow-hidden border border-black bg-black p-6 text-white sm:p-8">
+          <div className="pointer-events-none absolute inset-0 opacity-10">
+            <ShieldCheck className="-mt-8 -ml-8 h-40 w-40" />
           </div>
-          <p className="text-xs text-gray-300 leading-relaxed relative z-10">
+          <p className="relative z-10 text-sm leading-relaxed text-gray-300">
             Use a unique password for your Urban Aana account. If you checked out with email only,
             set a password here to sign in next time.
           </p>

@@ -32,15 +32,15 @@ export default function CartPage() {
       <main className="min-h-screen bg-[#F9F9F5]">
         <div className="px-4 py-24 sm:px-8">
           <section className="mx-auto flex max-w-xl flex-col items-center border border-black bg-white px-6 py-16 text-center sm:px-12">
-            <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full border border-black">
-              <BagIcon size={32} strokeWidth={1.4} />
+            <div className="mb-8 flex h-16 w-16 items-center justify-center border border-black">
+              <BagIcon size={28} strokeWidth={1.4} />
             </div>
             <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">Urban Aana</p>
             <h1 className="font-vina text-5xl uppercase leading-none sm:text-6xl">Your bag is empty</h1>
             <p className="mt-5 max-w-sm text-sm leading-relaxed text-gray-600">
               The next drop is waiting. Find a piece that feels like you.
             </p>
-            <Link href="/all-products" className="mt-9 inline-flex items-center gap-2 bg-black px-7 py-3 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]">
+            <Link href="/all-products" className="mt-9 inline-flex h-10 items-center gap-2 bg-black px-7 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]">
               Shop the collection <ChevronRightIcon size={16} />
             </Link>
           </section>
@@ -114,10 +114,10 @@ export default function CartPage() {
               <span className="text-2xl font-black">{formatPrice(cartTotal)}</span>
             </div>
             <p className="mt-4 text-xs leading-relaxed text-gray-300">Shipping and taxes are calculated securely at checkout.</p>
-            <Link href="/checkout" className="mt-7 flex w-full items-center justify-center gap-2 bg-[#DF1721] px-5 py-3.5 text-xs font-bold uppercase tracking-[0.16em] transition-colors hover:bg-white hover:text-black">
+            <Link href="/checkout" className="mt-7 flex h-10 w-full items-center justify-center gap-2 bg-[#DF1721] px-5 text-xs font-bold uppercase tracking-[0.16em] transition-colors hover:bg-white hover:text-black">
               Checkout <ChevronRightIcon size={16} />
             </Link>
-            <div className="mt-6 flex justify-center gap-4 text-[12px] uppercase tracking-wide text-gray-300">
+            <div className="mt-6 flex justify-center gap-4 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-300">
               <span className="flex items-center gap-1"><Shield size={12} /> Secure</span>
               <span className="flex items-center gap-1"><CardIcon size={12} /> Payments</span>
             </div>

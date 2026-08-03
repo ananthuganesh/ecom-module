@@ -30,8 +30,8 @@ export default function ProfileLayout({ children }) {
 
     if (isChecking) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#fcfcfc]">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+            <div className="flex min-h-screen items-center justify-center bg-[#F9F9F5]">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-black border-t-transparent" />
             </div>
         );
     }

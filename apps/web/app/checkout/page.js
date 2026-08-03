@@ -29,11 +29,11 @@ import { getAttributionSnapshot } from "@/lib/attribution";
 import { persistAuth } from "@/lib/persistAuth";
 
 const INPUT =
-  "w-full rounded-md border border-gray-300 bg-white px-3 py-3 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#1773b0] focus:outline-none focus:ring-1 focus:ring-[#1773b0]";
+  "h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-0 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#222222] focus:outline-none focus:ring-1 focus:ring-[#222222]";
 const INPUT_ERR =
-  "w-full rounded-md border border-red-400 bg-white px-3 py-3 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500";
+  "h-10 w-full rounded-md border border-red-400 bg-white px-3 py-0 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500";
 const INPUT_READONLY =
-  "w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-3 text-[14px] text-gray-700 placeholder:text-gray-400 cursor-not-allowed";
+  "h-10 w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-0 text-[14px] text-gray-700 placeholder:text-gray-400 cursor-not-allowed";
 const LABEL = "mb-1.5 block text-[13px] font-medium text-gray-700";
 const SECTION = "text-[18px] font-semibold text-gray-900 tracking-tight";
 
@@ -773,31 +773,31 @@ function CheckoutPageContent() {
 
   return (
     <main className="min-h-screen bg-white">
-      <header className="border-b border-gray-200 px-4 py-5 sm:px-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+      <header className="border-b border-gray-200 bg-white">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-8">
           <Link href="/" className="inline-flex items-center">
             <Image
-              src="/urban/logo.png"
+              src="/brand/logo.png"
               alt="URBAN AANA"
-              width={120}
-              height={40}
+              width={96}
+              height={34}
               priority
               className="h-8 w-auto object-contain"
             />
           </Link>
           <Link
             href={isBuyNow ? "/all-products" : "/cart"}
-            className="text-[13px] text-[#1773b0] hover:underline"
+            className="text-[13px] text-[#222222] hover:underline"
           >
             {isBuyNow ? "Back to shopping" : "Return to cart"}
           </Link>
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl grid-cols-1 lg:grid-cols-[1.15fr_0.85fr]">
-        {/* Form column */}
-        <div className="order-2 px-4 py-8 sm:px-8 lg:order-1 lg:border-r lg:border-gray-200 lg:pr-10">
-            <div className="max-w-xl space-y-8">
+      <div className="grid grid-cols-1 lg:min-h-[calc(100vh-3.5rem)] lg:grid-cols-2">
+        {/* Form column — pure white */}
+        <div className="order-2 bg-white px-4 py-8 sm:px-8 lg:order-1 lg:flex lg:justify-end lg:border-r lg:border-gray-200 lg:px-10 lg:py-10">
+            <div className="w-full max-w-xl space-y-8">
               {/* Contact */}
               <section>
                 <h2 className={`${SECTION} mb-3`}>Contact</h2>
@@ -896,16 +896,6 @@ function CheckoutPageContent() {
                     )}
                   </div>
 
-                  <div>
-                    <label className={LABEL}>Apartment, suite, etc. (optional)</label>
-                    <input
-                      className={INPUT}
-                      autoComplete="address-line2"
-                      value={formData.address2}
-                      onChange={(e) => updateField("address2", e.target.value)}
-                    />
-                  </div>
-
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
                       <label className={LABEL}>PIN code</label>
@@ -1000,9 +990,9 @@ function CheckoutPageContent() {
               <section>
                 <h2 className={`${SECTION} mb-3`}>Shipping method</h2>
                 <div className="overflow-hidden rounded-md border border-gray-300">
-                  <div className="flex items-center justify-between gap-3 bg-[#f0f5ff] px-4 py-3.5">
+                  <div className="flex h-10 items-center justify-between gap-3 bg-[#F9F9F5] px-4">
                     <div className="flex items-center gap-3">
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full border-[5px] border-[#1773b0] bg-white" />
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full border-[5px] border-[#222222] bg-white" />
                       <span className="text-[14px] text-gray-900">
                         Standard
                       </span>
@@ -1023,14 +1013,14 @@ function CheckoutPageContent() {
                 </p>
 
                 <div className="overflow-hidden rounded-md border border-gray-300">
-                  <div className="flex w-full items-center gap-3 bg-[#f0f5ff] px-4 py-3.5">
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-[5px] border-[#1773b0] bg-white" />
-                    <Smartphone className="h-5 w-5 text-gray-600" />
-                    <span className="flex-1">
-                      <span className="block text-[14px] font-medium text-gray-900">Razorpay</span>
-                      <span className="block text-[12px] text-gray-500">Card, UPI, or wallet</span>
+                  <div className="flex h-10 w-full items-center gap-3 bg-[#F9F9F5] px-4">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-[5px] border-[#222222] bg-white" />
+                    <Smartphone className="h-4 w-4 shrink-0 text-gray-600" />
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-gray-900">
+                      Razorpay
+                      <span className="ml-2 font-normal text-gray-500">Card, UPI, or wallet</span>
                     </span>
-                    <CheckIcon className="h-4 w-4 text-[#1773b0]" />
+                    <CheckIcon className="h-4 w-4 shrink-0 text-[#222222]" />
                   </div>
                 </div>
 
@@ -1047,7 +1037,7 @@ function CheckoutPageContent() {
                 type="button"
                 onClick={handlePlaceOrder}
                 disabled={loading || availableItems.length === 0}
-                className="flex w-full items-center justify-center gap-2 rounded-md bg-[#1773b0] py-3.5 text-[15px] font-semibold text-white hover:bg-[#0e5a8c] disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-[#222222] py-3.5 text-[15px] font-semibold text-white hover:bg-[#000000] disabled:opacity-50"
               >
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                 {loading
@@ -1058,16 +1048,18 @@ function CheckoutPageContent() {
               </button>
 
               <p className="pt-2 text-[12px]">
-                <Link href="/contact" className="text-[#1773b0] hover:underline">
+                <Link href="/contact" className="text-[#222222] hover:underline">
                   Contact
                 </Link>
               </p>
             </div>
         </div>
 
-        {/* Summary column */}
-        <aside className="order-1 border-b border-gray-200 bg-[#f5f5f5] px-4 py-8 sm:px-8 lg:order-2 lg:border-b-0 lg:pl-10">
-          <OrderSummary />
+        {/* Summary column — full grey */}
+        <aside className="order-1 border-b border-gray-200 bg-[#f5f5f5] px-4 py-8 sm:px-8 lg:order-2 lg:flex lg:justify-start lg:border-b-0 lg:px-10 lg:py-10">
+          <div className="w-full max-w-md">
+            <OrderSummary />
+          </div>
         </aside>
       </div>
     </main>

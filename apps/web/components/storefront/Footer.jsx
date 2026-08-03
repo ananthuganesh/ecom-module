@@ -96,11 +96,6 @@ const Footer = () => {
                   All Products
                 </Link>
               </li>
-              <li>
-                <Link href="/all-products?search=Oversized+T-shirt" className={FOOTER_LINK}>
-                  Oversized T-shirt
-                </Link>
-              </li>
             </ul>
           </div>
 
@@ -109,11 +104,6 @@ const Footer = () => {
               About
             </p>
             <ul className="flex flex-col gap-3">
-              <li>
-                <Link href="/about" className={FOOTER_LINK}>
-                  Our Story
-                </Link>
-              </li>
               <li>
                 <Link href="/profile" className={FOOTER_LINK}>
                   My Account

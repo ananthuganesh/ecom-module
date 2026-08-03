@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { persistAuth } from "@/lib/persistAuth";
 
 const INPUT =
-  "w-full rounded-md border border-gray-300 bg-white px-3 py-3 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#1773b0] focus:outline-none focus:ring-1 focus:ring-[#1773b0]";
+  "h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-0 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#222222] focus:outline-none focus:ring-1 focus:ring-[#222222]";
 
 /**
  * Post-purchase one-click password setup for passwordless customer records.
@@ -80,7 +80,7 @@ export default function CreatePasswordPrompt() {
             <button
               type="submit"
               disabled={loading || password.length < 6}
-              className="shrink-0 inline-flex items-center justify-center gap-2 rounded-md bg-[#1773b0] px-5 py-3 text-[13px] font-semibold text-white hover:bg-[#0e5a8c] disabled:opacity-50"
+              className="shrink-0 inline-flex items-center justify-center gap-2 rounded-md bg-[#222222] px-5 py-3 text-[13px] font-semibold text-white hover:bg-[#000000] disabled:opacity-50"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               Save password

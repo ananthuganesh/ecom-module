@@ -4,6 +4,7 @@ import { MapPin } from "lucide-react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { useAuthStore } from "@/store/useAuthStore";
 import Link from "next/link";
+import { ChevronRightIcon } from "@/components/icons/storeIcons";
 
 function formatAddress(addr) {
   if (!addr) return "";
@@ -27,41 +28,49 @@ export default function AddressesPage() {
   const addresses = list.length > 0 ? list : fallback;
 
   return (
-    <DashboardLayout title="Saved Addresses">
+    <DashboardLayout title="Saved Addresses" eyebrow="Delivery">
       {addresses.length === 0 ? (
-        <div className="bg-white border border-gray-100 p-10 text-center">
-          <MapPin className="w-8 h-8 text-gray-300 mx-auto mb-4" />
-          <p className="text-sm text-gray-500 mb-2">No saved addresses yet.</p>
-          <p className="text-[11px] text-gray-400 mb-6">
+        <div className="border border-black bg-white px-6 py-16 text-center sm:px-12">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center border border-black">
+            <MapPin className="h-7 w-7" />
+          </div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">
+            No addresses yet
+          </p>
+          <h2 className="mt-3 font-vina text-4xl uppercase leading-none">Add on checkout</h2>
+          <p className="mx-auto mt-4 max-w-sm text-sm text-gray-600">
             Addresses are saved when you complete checkout.
           </p>
           <Link
             href="/all-products"
-            className="inline-block text-[10px] uppercase tracking-widest font-black text-accent border-b border-accent pb-1"
+            className="mt-8 inline-flex h-10 items-center gap-2 bg-black px-7 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]"
           >
-            Continue shopping
+            Continue shopping <ChevronRightIcon className="h-4 w-4" />
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {addresses.map((addr, idx) => {
             const text = formatAddress(addr);
             return (
-              <div key={addr._id || addr.id || idx} className="bg-white p-8 border border-gray-100 shadow-sm">
-                <div className="flex items-center space-x-3 text-primary mb-6">
-                  <MapPin className="w-4 h-4 text-gray-400" />
-                  <h3 className="text-[10px] uppercase tracking-[0.2em] font-black">
+              <article
+                key={addr._id || addr.id || idx}
+                className="border border-black bg-white p-6 sm:p-8"
+              >
+                <div className="mb-5 flex items-center gap-3 border-b border-black pb-4">
+                  <MapPin className="h-4 w-4 text-[#DF1721]" />
+                  <h3 className="text-[12px] font-bold uppercase tracking-[0.16em]">
                     {addr.label || addr.type || `Address ${idx + 1}`}
                   </h3>
                 </div>
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{text}</p>
-              </div>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-gray-600">{text}</p>
+              </article>
             );
           })}
         </div>
       )}
 
-      <p className="mt-8 text-[11px] text-gray-400">
+      <p className="mt-8 text-[12px] text-gray-500">
         To change a delivery address, update it during checkout on your next order.
       </p>
     </DashboardLayout>

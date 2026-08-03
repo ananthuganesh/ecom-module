@@ -4,148 +4,154 @@ import { Camera, Mail, Phone } from "lucide-react";
 import {
   AccountIcon,
   ChevronRightIcon,
-  InfoIcon
+  InfoIcon,
 } from "@/components/icons/storeIcons";
 import { useState } from "react";
 import { authService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-
 import { motion } from "framer-motion";
 
 export default function SettingsPage() {
-    const { userInfo, setUserInfo } = useAuthStore();
-    const [updating, setUpdating] = useState(false);
-    const [message, setMessage] = useState({ type: "", text: "" });
-    const [profileForm, setProfileForm] = useState({
-        name: userInfo?.name || "",
-        email: userInfo?.email || "",
-        phone: userInfo?.phone || ""
-    });
+  const { userInfo, setUserInfo } = useAuthStore();
+  const [updating, setUpdating] = useState(false);
+  const [message, setMessage] = useState({ type: "", text: "" });
+  const [profileForm, setProfileForm] = useState({
+    name: userInfo?.name || "",
+    email: userInfo?.email || "",
+    phone: userInfo?.phone || "",
+  });
 
-    const handleUpdateProfile = async (e) => {
-        e.preventDefault();
-        setUpdating(true);
-        setMessage({ type: "", text: "" });
-        try {
-            const data = await authService.updateProfile({
-                name: profileForm.name,
-                email: profileForm.email,
-                phone: profileForm.phone
-            });
-            setUserInfo(data);
-            setMessage({ type: "success", text: "Profile details updated successfully." });
-        } catch (error) {
-            setMessage({ type: "error", text: error.response?.data?.message || "Error updating profile" });
-        } finally {
-            setUpdating(false);
-        }
-    };
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setUpdating(true);
+    setMessage({ type: "", text: "" });
+    try {
+      const data = await authService.updateProfile({
+        name: profileForm.name,
+        email: profileForm.email,
+        phone: profileForm.phone,
+      });
+      setUserInfo(data);
+      setMessage({ type: "success", text: "Profile details updated successfully." });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Error updating profile",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
 
-    return (
-        <DashboardLayout title="Account Settings">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-                {/* Profile Picture Section */}
-                <div className="lg:col-span-1">
-                    <div className="bg-white p-8 border border-gray-100 shadow-sm text-center flex flex-col items-center">
-                        <div className="relative group mb-6">
-                            <div className="w-32 h-32 bg-primary/5 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-50 group-hover:border-accent transition-all">
-                                <AccountIcon className="w-16 h-16 text-primary/20" />
-                            </div>
-                            <button className="absolute bottom-1 right-1 bg-accent text-white p-2.5 rounded-full shadow-lg hover:scale-110 transition-transform">
-                                <Camera className="w-4 h-4" />
-                            </button>
-                        </div>
-                        <h3 className="text-sm font-black uppercase tracking-widest text-primary mb-1">{userInfo?.name}</h3>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-8">{userInfo?.email}</p>
-                        
-                        <div className="w-full pt-8 border-t border-gray-50 text-left space-y-4">
-                            <div className="flex items-center space-x-3 text-gray-400">
-                                <Mail className="w-3 h-3" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">{userInfo?.email}</span>
-                            </div>
-                            <div className="flex items-center space-x-3 text-gray-400">
-                                <Phone className="w-3 h-3" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">{userInfo?.phone || "No phone added"}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+  const LABEL = "mb-1.5 block text-[12px] font-bold uppercase tracking-[0.16em] text-black";
+  const inputClass =
+    "h-10 w-full border border-black bg-white px-3 text-[14px] text-black placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#DF1721]";
 
-                {/* Form Section */}
-                <div className="lg:col-span-2">
-                    <div className="bg-white p-8 md:p-12 border border-gray-100 shadow-sm">
-                        <form onSubmit={handleUpdateProfile} className="space-y-8">
-                            {message.text && (
-                                <motion.div 
-                                    initial={{ opacity: 0, x: -10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    className={`p-4 text-[10px] font-black uppercase tracking-widest border border-l-4 ${
-                                        message.type === "success" 
-                                            ? "bg-emerald-50 text-emerald-600 border-emerald-100 border-l-emerald-500" 
-                                            : "bg-red-50 text-brand-red border-red-100 border-l-red-500"
-                                    }`}
-                                >
-                                    {message.text}
-                                </motion.div>
-                            )}
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-primary block">Full Name</label>
-                                    <input
-                                        type="text"
-                                        className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
-                                        value={profileForm.name}
-                                        onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-3">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-primary block">Email Address</label>
-                                    <input
-                                        type="email"
-                                        className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
-                                        value={profileForm.email}
-                                        onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-3 md:col-span-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-primary block">Phone Number</label>
-                                    <input
-                                        type="tel"
-                                        className="w-full border border-gray-100 p-4 text-sm focus:outline-none focus:border-accent transition-colors bg-gray-50/30"
-                                        value={profileForm.phone}
-                                        placeholder="+91 00000 00000"
-                                        onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={updating}
-                                className="btn-primary w-full md:w-auto px-12 py-4 text-[10px] uppercase font-black tracking-[0.3em] flex items-center justify-center space-x-3 group"
-                            >
-                                {updating ? (
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                ) : (
-                                    <>
-                                        <span>Save Changes</span>
-                                        <ChevronRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                                    </>
-                                )}
-                            </button>
-                        </form>
-
-                        <div className="mt-12 p-6 bg-secondary/30 flex items-start space-x-4 border-l-2 border-gray-200">
-                            <InfoIcon className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                            <p className="text-[10px] text-gray-500 leading-relaxed font-bold uppercase tracking-widest">
-                                Changing your email address will require you to log in again with the new credentials.
-                            </p>
-                        </div>
-                    </div>
-                </div>
+  return (
+    <DashboardLayout title="Account Settings" eyebrow="Profile">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+        <aside className="border border-black bg-white p-6 text-center sm:p-8 lg:col-span-1">
+          <div className="relative mx-auto mb-6 inline-block">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden border border-black bg-[#F9F9F5]">
+              <AccountIcon className="h-12 w-12 text-gray-300" />
             </div>
-        </DashboardLayout>
-    );
+            <button
+              type="button"
+              className="absolute right-0 bottom-0 bg-[#DF1721] p-2 text-white transition-colors hover:bg-black"
+              aria-label="Update photo"
+            >
+              <Camera className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-black">
+            {userInfo?.name}
+          </h3>
+          <p className="mt-1 truncate text-[12px] text-gray-500">{userInfo?.email}</p>
+
+          <div className="mt-8 space-y-3 border-t border-black pt-6 text-left">
+            <div className="flex items-center gap-3 text-gray-500">
+              <Mail className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate text-[12px]">{userInfo?.email}</span>
+            </div>
+            <div className="flex items-center gap-3 text-gray-500">
+              <Phone className="h-3.5 w-3.5 shrink-0" />
+              <span className="text-[12px]">{userInfo?.phone || "No phone added"}</span>
+            </div>
+          </div>
+        </aside>
+
+        <div className="border border-black bg-white p-6 sm:p-8 lg:col-span-2">
+          <form onSubmit={handleUpdateProfile} className="space-y-6">
+            {message.text ? (
+              <motion.div
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                className={`border border-l-4 px-4 py-3 text-[12px] font-bold uppercase tracking-[0.16em] ${
+                  message.type === "success"
+                    ? "border-black bg-[#F9F9F5] text-black"
+                    : "border-[#DF1721] bg-red-50 text-[#DF1721]"
+                }`}
+              >
+                {message.text}
+              </motion.div>
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className={LABEL}>Full name</label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Email address</label>
+                <input
+                  type="email"
+                  className={inputClass}
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className={LABEL}>Phone number</label>
+                <input
+                  type="tel"
+                  className={inputClass}
+                  value={profileForm.phone}
+                  placeholder="+91 00000 00000"
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={updating}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 bg-[#DF1721] px-8 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black disabled:opacity-50 md:w-auto"
+            >
+              {updating ? (
+                <div className="h-4 w-4 animate-spin border-2 border-white/30 border-t-white" />
+              ) : (
+                <>
+                  <span>Save changes</span>
+                  <ChevronRightIcon className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-8 flex items-start gap-3 border border-black bg-[#F9F9F5] p-4">
+            <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+            <p className="text-[12px] leading-relaxed text-gray-600">
+              Changing your email address will require you to log in again with the new credentials.
+            </p>
+          </div>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
 }
