@@ -24,8 +24,14 @@ function mediaKey(file) {
 function normalizeMediaUrl(url) {
   const raw = String(url || "").trim();
   if (!raw) return "";
+  const siteBase = (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_WEB_URL ||
+    process.env.PUBLIC_WEB_URL ||
+    "https://urbanaana.com"
+  ).replace(/\/$/, "");
   try {
-    const u = new URL(raw, "https://urbanaana.com");
+    const u = new URL(raw, siteBase);
     return `${u.origin}${u.pathname}`;
   } catch {
     return raw.split("?")[0].split("#")[0];

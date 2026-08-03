@@ -45,7 +45,10 @@ def _file_type(path: Path) -> str:
     mime_type, _ = mimetypes.guess_type(path.name)
     if (mime_type or "").startswith("image/"):
         return "image"
-    if (mime_type or "").startswith("video/") or path.suffix.lower() in VIDEO_EXTENSIONS:
+    suffix = path.suffix.lower()
+    if suffix in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".bmp", ".ico"}:
+        return "image"
+    if (mime_type or "").startswith("video/") or suffix in VIDEO_EXTENSIONS:
         return "video"
     return "file"
 

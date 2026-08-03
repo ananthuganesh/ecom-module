@@ -17,6 +17,7 @@ from app.config import get_settings
 ALLOWED_FOLDERS = {"products", "ai", "reels"}
 # Content library "All" excludes reels (managed under Content → Reels).
 LIBRARY_FOLDERS = {"products", "ai"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".bmp", ".ico"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 _STEM_SAFE = re.compile(r"[^\w\-]+", re.UNICODE)
 
@@ -80,6 +81,8 @@ def _file_type(name: str) -> str:
     if (mime_type or "").startswith("image/"):
         return "image"
     suffix = Path(name).suffix.lower()
+    if suffix in IMAGE_EXTENSIONS:
+        return "image"
     if (mime_type or "").startswith("video/") or suffix in VIDEO_EXTENSIONS:
         return "video"
     return "file"

@@ -43,3 +43,11 @@ export function mediaFileKey(file) {
 export function mediaDisplayName(file) {
   return file?.name || "Untitled";
 }
+
+export function isMediaImage(file, kind = "image") {
+  const type = String(file?.type || "").toLowerCase();
+  if (type === "video" || kind === "video") return false;
+  if (type === "image" || kind === "image") return true;
+  const name = String(file?.name || file?.url || "");
+  return /\.(webp|png|jpe?g|gif|avif|svg)(\?|#|$)/i.test(name);
+}

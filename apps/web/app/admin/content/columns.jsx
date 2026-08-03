@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Loader2, File as FileIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -7,6 +8,7 @@ import {
   fileExtLabel,
   formatFileSize,
   formatRelativeDate,
+  isMediaImage,
   mediaDisplayName,
   mediaFileKey,
 } from "./mediaUtils";
@@ -46,6 +48,10 @@ function selectColumn() {
 }
 
 function FilePreview({ file, kind = "image" }) {
+  const [broken, setBroken] = useState(false);
+  const showVideo = kind === "video" || file.type === "video";
+  const showImage = !showVideo && !broken && isMediaImage(file, kind);
+
   return (
     <a
       href={file.url}
@@ -55,7 +61,7 @@ function FilePreview({ file, kind = "image" }) {
       onClick={(e) => e.stopPropagation()}
     >
       <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
-        {kind === "video" || file.type === "video" ? (
+        {showVideo ? (
           <video
             src={file.url}
             className="h-full w-full object-cover"
@@ -63,12 +69,13 @@ function FilePreview({ file, kind = "image" }) {
             playsInline
             preload="metadata"
           />
-        ) : file.type === "image" ? (
+        ) : showImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={file.url}
             alt={file.altText || ""}
             className="h-full w-full object-cover"
+            onError={() => setBroken(true)}
           />
         ) : (
           <FileIcon className="h-4 w-4 text-muted-foreground" />

@@ -19,6 +19,7 @@ export default function ProductCard({
   product,
   listName = "Catalog",
   listId = "catalog",
+  priority = false,
 }) {
   const addItem = useCartStore((s) => s.addItem);
 
@@ -130,6 +131,7 @@ export default function ProductCard({
                   src={resolveImageUrl(image)}
                   alt={title}
                   fill
+                  priority={priority}
                   sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
                   className={`object-cover transition-opacity duration-300 ${
                     hoverImage ? "group-hover:opacity-0" : ""

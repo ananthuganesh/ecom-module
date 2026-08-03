@@ -1,50 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { productService } from "@/api";
+import React from "react";
 import ProductCard from "./ProductCard";
 
-function normalizeProducts(data) {
-  if (Array.isArray(data?.products)) return data.products;
-  if (Array.isArray(data)) return data;
-  return [];
-}
-
-export default function ProductGrid() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const data = await productService.getProducts();
-        setProducts(normalizeProducts(data));
-      } catch (err) {
-        console.error("Failed to load products", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProducts();
-  }, []);
-
-  if (loading) {
+export default function ProductGrid({
+  products = [],
+  listName = "Latest Drops",
+  listId = "home-latest",
+  priorityCount = 4,
+}) {
+  if (!products.length) {
     return (
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
-        {[...Array(8)].map((_, i) => (
-          <div
-            key={i}
-            className="aspect-[2/3] animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
-          />
-        ))}
-      </div>
-    );
-  }
-
-  if (products.length === 0) {
-    return (
-      <p className="text-center text-sm text-gray-500 uppercase tracking-widest py-12">
+      <p className="py-12 text-center text-sm tracking-widest text-gray-500 uppercase">
         No products available
       </p>
     );
@@ -52,8 +19,14 @@ export default function ProductGrid() {
 
   return (
     <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
-      {products.map((product) => (
-        <ProductCard key={product._id} product={product} />
+      {products.map((product, index) => (
+        <ProductCard
+          key={product._id || product.id || index}
+          product={product}
+          listName={listName}
+          listId={listId}
+          priority={index < priorityCount}
+        />
       ))}
     </div>
   );

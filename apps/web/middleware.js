@@ -1,7 +1,24 @@
 import { NextResponse } from "next/server";
 
+function apexHostFromEnv() {
+  const raw = (
+    process.env.PUBLIC_WEB_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_WEB_URL ||
+    "https://urbanaana.com"
+  ).trim();
+  try {
+    return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.replace(
+      /^www\./i,
+      ""
+    );
+  } catch {
+    return "urbanaana.com";
+  }
+}
+
 /** Apex is the Razorpay-approved Live domain; www must not host checkout. */
-const APEX_HOST = "urbanaana.com";
+const APEX_HOST = apexHostFromEnv();
 const WWW_HOST = `www.${APEX_HOST}`;
 
 export function middleware(request) {
