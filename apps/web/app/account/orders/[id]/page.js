@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, MapPin, Printer, RefreshCw, RotateCcw } from "lucide-react";
+import { Clock, Download, MapPin, RefreshCw, RotateCcw } from "lucide-react";
 import {
   CardIcon,
   CheckBurstIcon,
@@ -28,6 +28,22 @@ const STATUS_CONFIG = {
   returned: { icon: RotateCcw, tone: "text-gray-500", label: "Returned" },
 };
 
+const SHIPPED_STATUSES = new Set([
+  "shipped",
+  "out for delivery",
+  "delivered",
+]);
+
+function canDownloadInvoice(order) {
+  if (!order) return false;
+  const pay = String(order.paymentStatus || "").toLowerCase();
+  const paid = Boolean(order.isPaid) || pay === "paid";
+  if (!paid) return false;
+  const status = String(order.orderStatus || order.status || "").toLowerCase();
+  const shipping = String(order.shippingStatus || "").toLowerCase();
+  return SHIPPED_STATUSES.has(status) || SHIPPED_STATUSES.has(shipping);
+}
+
 export default function OrderDetailsPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
   const orderId = params.id;
@@ -51,7 +67,8 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
     return () => clearInterval(interval);
   }, [orderId]);
 
-  const handlePrintInvoice = () => {
+  const handleDownloadInvoice = () => {
+    if (!canDownloadInvoice(order)) return;
     window.print();
   };
 
@@ -94,6 +111,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
   const status = (order.orderStatus || order.status || "order placed").toLowerCase();
   const config = STATUS_CONFIG[status] || STATUS_CONFIG["order placed"];
   const StatusIcon = config.icon;
+  const showInvoiceDownload = canDownloadInvoice(order);
   const subtotal =
     (order.totalPrice || 0) -
     (order.shippingPrice || 0) -
@@ -119,14 +137,16 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
       </div>
 
       <div className="mb-8 flex flex-wrap items-center gap-3 no-print">
-        <button
-          type="button"
-          onClick={handlePrintInvoice}
-          className="inline-flex items-center gap-2 border border-black bg-white px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.16em] transition-colors hover:bg-black hover:text-white"
-        >
-          <Printer className="h-4 w-4" />
-          Print invoice
-        </button>
+        {showInvoiceDownload ? (
+          <button
+            type="button"
+            onClick={handleDownloadInvoice}
+            className="inline-flex items-center gap-2 border border-black bg-white px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.16em] transition-colors hover:bg-black hover:text-white"
+          >
+            <Download className="h-4 w-4" />
+            Download invoice
+          </button>
+        ) : null}
         <div
           className={`inline-flex items-center gap-2 border border-black bg-white px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.16em] ${config.tone}`}
         >
@@ -356,7 +376,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
         </div>
       </div>
 
-      <Invoice order={order} />
+      {showInvoiceDownload ? <Invoice order={order} /> : null}
     </DashboardLayout>
   );
 }
