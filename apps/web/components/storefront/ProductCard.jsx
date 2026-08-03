@@ -10,6 +10,7 @@ import { adaptProductForCard } from "@/utils/urbanProductAdapter";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { getProductSizeOptions } from "@/utils/productSizes";
 import { trackSelectItem } from "@/lib/tracking";
+import WishlistButton from "@/components/storefront/WishlistButton";
 
 function formatInr(value) {
   return Number(value || 0).toLocaleString("en-IN");
@@ -163,6 +164,12 @@ export default function ProductCard({
                   </span>
                 </div>
               ) : null}
+
+              <WishlistButton
+                product={product}
+                iconSize={16}
+                className="absolute top-2 right-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-[#131814] shadow-sm ring-1 ring-black/5 transition-colors hover:bg-white lg:top-3 lg:right-3 lg:h-9 lg:w-9"
+              />
 
               {!isOutOfStock && availableSizes.length > 0 ? (
                 <div

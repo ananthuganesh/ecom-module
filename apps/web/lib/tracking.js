@@ -15,7 +15,7 @@ export function toTrackingItem(raw, qty = 1) {
   if (!raw) return null;
   const price = Number(raw.price ?? raw.pricing?.sellingPrice ?? 0);
   const quantity = Math.max(1, Number(raw.quantity ?? raw.qty ?? qty) || 1);
-  return {
+  const item = {
     item_id: String(raw.item_id || raw.productId || raw._id || raw.id || ""),
     item_name: String(raw.item_name || raw.productName || raw.name || "Product"),
     price,
@@ -24,6 +24,10 @@ export function toTrackingItem(raw, qty = 1) {
     item_brand: raw.item_brand || raw.brand || "Urban Aana",
     item_variant: raw.item_variant || [raw.size, raw.color].filter(Boolean).join(" / ") || undefined,
   };
+  if (raw.index != null && Number.isFinite(Number(raw.index))) {
+    item.index = Number(raw.index);
+  }
+  return item;
 }
 
 export function itemsValue(items = []) {
@@ -145,6 +149,35 @@ export function trackBeginCheckout(cartItems = [], coupon = "") {
     value: itemsValue(items),
     items,
     coupon: coupon || undefined,
+  });
+}
+
+/** Site search — Meta Search / GA4 search. */
+export function trackSearch(searchTerm, products = []) {
+  const dl = ensureDataLayer();
+  const term = String(searchTerm || "").trim();
+  if (!dl || !term) return;
+  const items = products.map((p) => toTrackingItem(p, 1)).filter(Boolean);
+  dl.push({ ecommerce: null });
+  dl.push({
+    event: "search",
+    search_term: term,
+    search_string: term,
+    ecommerce: {
+      currency: TRACKING_CURRENCY,
+      value: Number(itemsValue(items).toFixed(2)),
+      items,
+    },
+  });
+}
+
+/** Wishlist — call when a wishlist UI exists and user saves an item. */
+export function trackAddToWishlist(product) {
+  const item = toTrackingItem(product, 1);
+  if (!item?.item_id) return;
+  pushEcommerceEvent("add_to_wishlist", {
+    value: item.price,
+    items: [item],
   });
 }
 

@@ -5,6 +5,7 @@ import {
   BagIcon,
   CartIcon,
   CloseIcon,
+  HeartBagIcon,
   InfoIcon,
   LocationIcon,
   LogOutIcon,
@@ -20,7 +21,9 @@ import { usePathname } from "next/navigation";
 import { useCartStore } from "@/store/useCartStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import CartDrawer from "./CartDrawer";
+import { useWishlistStore } from "@/store/useWishlistStore";
 import { motion, AnimatePresence } from "framer-motion";
+import { Heart } from "lucide-react";
 
 const NAVBAR_HEIGHT = 56;
 
@@ -43,6 +46,7 @@ const Navbar = () => {
 
   const cartItems = useCartStore((s) => s.cartItems);
   const setDrawerOpen = useCartStore((s) => s.setDrawerOpen);
+  const wishlistCount = useWishlistStore((s) => s.items.length);
   const userInfo = useAuthStore((s) => s.userInfo);
   const logout = useAuthStore((s) => s.logout);
 
@@ -154,6 +158,28 @@ const Navbar = () => {
               </Link>
             )}
 
+            <Link
+              href="/wishlist"
+              className={`relative inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
+                transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
+              }`}
+              aria-label={`Wishlist, ${wishlistCount} items`}
+            >
+              <span className="relative inline-flex">
+                <Heart size={18} strokeWidth={2} />
+                {wishlistCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#DF1721] px-0.5 text-[9px] font-bold leading-none text-white ring-1 ring-white"
+                  >
+                    {wishlistCount > 99 ? "99+" : wishlistCount}
+                  </motion.span>
+                )}
+              </span>
+              <span className="hidden md:inline">Wishlist</span>
+            </Link>
+
             <button
               onClick={() => setDrawerOpen(true)}
               className={`relative inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
@@ -263,6 +289,9 @@ const Navbar = () => {
                     icon={BagIcon}
                   >
                     All Products
+                  </MenuLink>
+                  <MenuLink href="/wishlist" onClick={closeMenu} icon={HeartBagIcon}>
+                    Wishlist{wishlistCount ? ` (${wishlistCount})` : ""}
                   </MenuLink>
                 </div>
 

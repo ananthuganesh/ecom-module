@@ -21,6 +21,7 @@ import RecentlyViewed from "@/components/RecentlyViewed";
 import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
+import WishlistButton from "@/components/storefront/WishlistButton";
 import {
   SIZE_GUIDE_COLUMNS,
   SIZE_GUIDE_NOTE,
@@ -451,9 +452,16 @@ export default function ProductDetailPage() {
 
           {/* Buy box */}
           <div className="lg:sticky lg:top-24 lg:self-start lg:max-w-md xl:max-w-lg">
-            <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
-              {displayTitle}
-            </h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
+                {displayTitle}
+              </h1>
+              <WishlistButton
+                product={product}
+                iconSize={20}
+                className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50"
+              />
+            </div>
             {soldLabel ? (
               <p className="mt-1.5 text-[12px] font-medium text-gray-500">
                 {soldLabel}

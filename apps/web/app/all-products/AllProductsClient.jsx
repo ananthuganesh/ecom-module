@@ -9,7 +9,7 @@ import { productService } from "@/api";
 import FilterSidebar from "@/components/FilterSidebar";
 import ProductSkeleton from "@/components/ProductSkeleton";
 import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
-import { trackViewItemList } from "@/lib/tracking";
+import { trackViewItemList, trackSearch } from "@/lib/tracking";
 import { motion } from "framer-motion";
 
 const SORT_OPTIONS = [
@@ -123,6 +123,7 @@ function AllProductsContent({
             ? data
             : [];
         setProducts(list);
+        if (keyword) trackSearch(keyword, list);
         trackViewItemList(
           list,
           keyword ? "Search results" : "All products",
@@ -139,6 +140,7 @@ function AllProductsContent({
     if (skipInitialFetch.current) {
       skipInitialFetch.current = false;
       if (initialProducts.length) {
+        if (keyword) trackSearch(keyword, initialProducts);
         trackViewItemList(
           initialProducts,
           keyword ? "Search results" : "All products",

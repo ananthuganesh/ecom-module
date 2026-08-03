@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import ProductCard from "./ProductCard";
+import { trackViewItemList } from "@/lib/tracking";
 
 export default function ProductGrid({
   products = [],
@@ -9,6 +10,16 @@ export default function ProductGrid({
   listId = "home-latest",
   priorityCount = 4,
 }) {
+  const lastKeyRef = useRef("");
+
+  useEffect(() => {
+    if (!products.length) return;
+    const key = `${listId}:${products.map((p) => p._id || p.id).join(",")}`;
+    if (lastKeyRef.current === key) return;
+    lastKeyRef.current = key;
+    trackViewItemList(products, listName, listId);
+  }, [products, listName, listId]);
+
   if (!products.length) {
     return (
       <p className="py-12 text-center text-sm tracking-widest text-gray-500 uppercase">

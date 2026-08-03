@@ -131,14 +131,9 @@ export const useCartStore = create(
                 });
             },
 
+            /** Bulk remove (e.g. after purchase). Does not fire remove_from_cart. */
             removeItems: (itemsToRemove) => {
                 const { cartItems } = get();
-                for (const r of itemsToRemove || []) {
-                    const existing = cartItems.find(
-                        (item) => item._id === r._id && item.size === r.size && item.color === r.color
-                    );
-                    if (existing) trackRemoveFromCart(existing, existing.qty || 1);
-                }
                 const remaining = cartItems.filter(item => 
                     !itemsToRemove.some(r => r._id === item._id && r.size === item.size && r.color === item.color)
                 );
