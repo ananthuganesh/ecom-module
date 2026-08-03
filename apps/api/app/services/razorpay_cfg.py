@@ -16,8 +16,8 @@ SETTING_KEY = "razorpay_settings"
 def env_creds() -> dict[str, str]:
     s = get_settings()
     return {
-        "keyId": str(s.razorpay_key_id or "").strip(),
-        "keySecret": str(s.razorpay_key_secret or "").strip(),
+        "keyId": str(s.razorpay_live_api_key or "").strip(),
+        "keySecret": str(s.razorpay_live_key_secret or "").strip(),
         "webhookSecret": str(s.razorpay_webhook_secret or "").strip(),
     }
 
@@ -27,7 +27,7 @@ def require_creds() -> tuple[str, str]:
     if not c["keyId"] or not c["keySecret"]:
         raise HTTPException(
             status_code=503,
-            detail="Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the API environment.",
+            detail="Razorpay is not configured. Set RAZORPAY_LIVE_API_KEY and RAZORPAY_LIVE_KEY_SECRET in the API environment.",
         )
     return c["keyId"], c["keySecret"]
 

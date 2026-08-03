@@ -10,8 +10,8 @@ from mongomock_motor import AsyncMongoMockClient
 os.environ.setdefault("MONGO_URI", "mongodb://127.0.0.1:27017/urbanaana_test")
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("ENVIRONMENT", "development")
-os.environ.setdefault("RAZORPAY_KEY_ID", "rzp_test_key")
-os.environ.setdefault("RAZORPAY_KEY_SECRET", "rzp_test_secret")
+os.environ.setdefault("RAZORPAY_LIVE_API_KEY", "rzp_test_key")
+os.environ.setdefault("RAZORPAY_LIVE_KEY_SECRET", "rzp_test_secret")
 
 from app.config import get_settings
 from app.db import close_db, init_db
@@ -350,7 +350,7 @@ async def test_payment_verify_rejects_mismatched_order(client, user):
         status="created",
     ).insert()
 
-    secret = os.environ["RAZORPAY_KEY_SECRET"]
+    secret = os.environ["RAZORPAY_LIVE_KEY_SECRET"]
     payment_id = "pay_AAA"
     signature = hmac.new(secret.encode(), f"order_AAA|{payment_id}".encode(), hashlib.sha256).hexdigest()
 

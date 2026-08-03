@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     node_env: str = "development"
     allowed_origins: str = ""
 
-    razorpay_key_id: str = ""
-    razorpay_key_secret: str = ""
+    razorpay_live_api_key: str = ""
+    razorpay_live_key_secret: str = ""
     razorpay_webhook_secret: str = ""
 
     aisensy_api_key: str = ""
