@@ -21,6 +21,32 @@ function mediaKey(file) {
   return file?.key || `${file?.folder || ""}/${file?.name || ""}`;
 }
 
+function normalizeMediaUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw, "https://urbanaana.com");
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return raw.split("?")[0].split("#")[0];
+  }
+}
+
+function isImageFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  if (type === "image") return true;
+  if (type === "video") return false;
+  const name = String(file?.name || file?.url || "");
+  return /\.(webp|png|jpe?g|gif|avif|svg)(\?|#|$)/i.test(name);
+}
+
+function asMediaList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.files)) return data.files;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
 export default function SelectExistingMediaDialog({
   open,
   onOpenChange,
@@ -33,7 +59,10 @@ export default function SelectExistingMediaDialog({
   const [selected, setSelected] = useState(() => new Set());
 
   const excluded = useMemo(
-    () => new Set((excludeUrls || []).filter(Boolean)),
+    () =>
+      new Set(
+        (excludeUrls || []).map(normalizeMediaUrl).filter(Boolean)
+      ),
     [excludeUrls]
   );
 
@@ -48,8 +77,8 @@ export default function SelectExistingMediaDialog({
         // Same scope as Admin → Files ("all" = products + ai; reels excluded).
         const data = await adminMediaService.list("all");
         if (cancelled) return;
-        const list = (Array.isArray(data) ? data : []).filter(
-          (f) => (f.type || "image") === "image" && f.url
+        const list = asMediaList(data).filter(
+          (f) => isImageFile(f) && f.url
         );
         setFiles(list);
       } catch (err) {
@@ -71,7 +100,6 @@ export default function SelectExistingMediaDialog({
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return files.filter((f) => {
-      if (excluded.has(f.url)) return false;
       if (!q) return true;
       return (
         String(f.name || "")
@@ -82,9 +110,17 @@ export default function SelectExistingMediaDialog({
           .includes(q)
       );
     });
-  }, [files, search, excluded]);
+  }, [files, search]);
+
+  const selectableCount = useMemo(
+    () =>
+      visible.filter((f) => !excluded.has(normalizeMediaUrl(f.url))).length,
+    [visible, excluded]
+  );
 
   const toggle = (url) => {
+    const key = normalizeMediaUrl(url) || url;
+    if (excluded.has(key)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(url)) next.delete(url);
@@ -94,7 +130,9 @@ export default function SelectExistingMediaDialog({
   };
 
   const handleDone = () => {
-    const urls = [...selected];
+    const urls = [...selected].filter(
+      (url) => !excluded.has(normalizeMediaUrl(url))
+    );
     if (!urls.length) {
       onOpenChange?.(false);
       return;
@@ -102,6 +140,16 @@ export default function SelectExistingMediaDialog({
     onSelect?.(urls);
     onOpenChange?.(false);
   };
+
+  const emptyMessage = (() => {
+    if (files.length === 0) {
+      return "No images in the media library yet.";
+    }
+    if (selectableCount === 0) {
+      return "All library images are already on this product.";
+    }
+    return "No images match your search.";
+  })();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -132,24 +180,34 @@ export default function SelectExistingMediaDialog({
             </div>
           ) : visible.length === 0 ? (
             <div className="px-4 py-16 text-center text-[13px] text-[#616161]">
-              No images in the media library yet.
+              {emptyMessage}
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
               {visible.map((file) => {
+                const alreadyOnProduct = excluded.has(
+                  normalizeMediaUrl(file.url)
+                );
                 const active = selected.has(file.url);
                 return (
                   <button
                     key={mediaKey(file)}
                     type="button"
+                    disabled={alreadyOnProduct}
                     onClick={() => toggle(file.url)}
                     className={cn(
                       "relative aspect-square overflow-hidden rounded-lg border bg-[#fafafa] text-left",
-                      active
-                        ? "border-[#005bd3] ring-2 ring-[#005bd3]/30"
-                        : "border-[#e3e3e3] hover:border-[#b5b5b5]"
+                      alreadyOnProduct
+                        ? "cursor-not-allowed border-[#e3e3e3] opacity-45"
+                        : active
+                          ? "border-[#005bd3] ring-2 ring-[#005bd3]/30"
+                          : "border-[#e3e3e3] hover:border-[#b5b5b5]"
                     )}
-                    title={file.name}
+                    title={
+                      alreadyOnProduct
+                        ? `${file.name} (already on product)`
+                        : file.name
+                    }
                   >
                     <SafeImage
                       src={file.url}
@@ -157,7 +215,11 @@ export default function SelectExistingMediaDialog({
                       fill
                       className="object-cover"
                     />
-                    {active ? (
+                    {alreadyOnProduct ? (
+                      <span className="absolute inset-x-1 bottom-1 rounded bg-black/65 px-1 py-0.5 text-center text-[10px] font-medium text-white">
+                        Added
+                      </span>
+                    ) : active ? (
                       <span className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#005bd3] text-[11px] font-bold text-white">
                         ✓
                       </span>
@@ -173,7 +235,7 @@ export default function SelectExistingMediaDialog({
           <p className="text-[12px] text-[#616161]">
             {selected.size
               ? `${selected.size} selected`
-              : `${visible.length} image${visible.length === 1 ? "" : "s"}`}
+              : `${selectableCount} image${selectableCount === 1 ? "" : "s"} available`}
           </p>
           <div className="flex gap-2">
             <Button
