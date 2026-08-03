@@ -488,13 +488,29 @@ function CheckoutPageContent() {
   const openRazorpayCheckout = ({ paymentData, localOrderId }) => {
     const rzOrderId = paymentData.razorpayOrderId || paymentData.razorpayOrder?.id;
     const keyId = paymentData.keyId;
-    const amount = paymentData.amount || paymentData.razorpayOrder?.amount;
+    const amount = Number(paymentData.amount || paymentData.razorpayOrder?.amount || 0);
+    if (!rzOrderId || !keyId || !Number.isFinite(amount) || amount < 100) {
+      setLoading(false);
+      setPaymentError("Payment session is invalid. Please refresh and try again.");
+      return;
+    }
+
+    const rawPhone = String(formData.phone || userInfo?.phone || "").replace(/\D/g, "");
+    const contact =
+      rawPhone.length === 10
+        ? `+91${rawPhone}`
+        : rawPhone.length === 12 && rawPhone.startsWith("91")
+          ? `+${rawPhone}`
+          : rawPhone
+            ? `+${rawPhone}`
+            : "";
+
     const options = {
       key: keyId,
       amount,
       currency: paymentData.currency || "INR",
       name: "Urban Aana",
-      description: `Order #${localOrderId}`,
+      description: `Order #${String(localOrderId).slice(-8)}`,
       order_id: rzOrderId,
       handler: async (response) => {
         try {
@@ -525,7 +541,7 @@ function CheckoutPageContent() {
       },
       prefill: {
         name: formData.name || userInfo?.name || "",
-        contact: formData.phone || userInfo?.phone || "",
+        contact,
         email: formData.email || userInfo?.email || "",
       },
       theme: { color: "#DF1721" },
@@ -540,6 +556,19 @@ function CheckoutPageContent() {
       },
     };
     const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", (response) => {
+      const err = response?.error || {};
+      console.error("Razorpay payment.failed", err);
+      setLoading(false);
+      setPaymentError(
+        err.description ||
+          err.reason ||
+          "Payment failed. Please try another method or card."
+      );
+      if (localOrderId) {
+        paymentService.releaseReservation(localOrderId);
+      }
+    });
     rzp.open();
   };
 

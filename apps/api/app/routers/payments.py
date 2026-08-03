@@ -273,25 +273,54 @@ async def create_razorpay_order(
             PaymentTransaction.orderId == order.id,
             PaymentTransaction.razorpayOrderId == order.razorpayOrderId,
         )
-        if existing_txn and str(existing_txn.status or "").lower() in ("created", "attempted", ""):
-            key_id, _ = await _get_razorpay_creds()
-            return {
-                "razorpayOrder": {
-                    "id": order.razorpayOrderId,
-                    "amount": int(existing_txn.amountInPaise or 0),
-                    "currency": existing_txn.currency or "INR",
-                },
-                "keyId": key_id,
-                "razorpayOrderId": order.razorpayOrderId,
-                "amount": int(existing_txn.amountInPaise or 0),
-                "currency": existing_txn.currency or "INR",
-                "reused": True,
-            }
+        expected_paise = int(round(float(order.finalPrice) * 100))
+        txn_paise = int(existing_txn.amountInPaise or 0) if existing_txn else 0
+        reusable = (
+            existing_txn
+            and str(existing_txn.status or "").lower() in ("created", "attempted", "")
+            and txn_paise == expected_paise
+            and expected_paise >= 100
+        )
+        if reusable:
+            # Confirm the Razorpay order is still open; otherwise create a fresh one.
+            try:
+                import razorpay
+
+                key_id, key_secret = await _get_razorpay_creds()
+                client = razorpay.Client(auth=(key_id, key_secret))
+                remote = client.order.fetch(order.razorpayOrderId)
+                remote_status = str((remote or {}).get("status") or "").lower()
+                if remote_status in ("created", "attempted"):
+                    return {
+                        "razorpayOrder": {
+                            "id": order.razorpayOrderId,
+                            "amount": txn_paise,
+                            "currency": existing_txn.currency or "INR",
+                        },
+                        "keyId": key_id,
+                        "razorpayOrderId": order.razorpayOrderId,
+                        "amount": txn_paise,
+                        "currency": existing_txn.currency or "INR",
+                        "reused": True,
+                    }
+            except Exception:
+                # Fall through and create a new Razorpay order.
+                pass
+            # Stale / paid / missing remote order — clear for recreation.
+            order.razorpayOrderId = None
+            await order.save()
+            if existing_txn and str(existing_txn.status or "").lower() in ("created", "attempted", ""):
+                existing_txn.status = "superseded"
+                existing_txn.updatedAt = datetime.utcnow()
+                await existing_txn.save()
 
     key_id, key_secret = await _get_razorpay_creds()
+    amount_paise = int(round(float(order.finalPrice) * 100))
+    if amount_paise < 100:
+        raise HTTPException(status_code=400, detail="Order amount is too low for online payment")
     payload: dict = {
         "currency": "INR",
-        "amount": int(round(float(order.finalPrice) * 100)),
+        "amount": amount_paise,
         "receipt": str(local_order_id)[:40],
         "notes": {"localOrderId": str(local_order_id), "userId": str(user.id)},
     }

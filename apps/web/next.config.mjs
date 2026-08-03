@@ -123,7 +123,8 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
+            value:
+              "camera=(), microphone=(), geolocation=(), accelerometer=(self \"https://api.razorpay.com\" \"https://checkout.razorpay.com\"), gyroscope=(self \"https://api.razorpay.com\" \"https://checkout.razorpay.com\"), payment=(self \"https://api.razorpay.com\" \"https://checkout.razorpay.com\")",
           },
           {
             key: "Content-Security-Policy",
