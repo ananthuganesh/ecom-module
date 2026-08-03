@@ -193,23 +193,15 @@ function paymentDetails(order, grand) {
   ).toLowerCase();
   const td = order?.transactionDetails || {};
 
-  const isCod =
-    methodRaw === "cod" ||
-    methodRaw === "cash_on_delivery" ||
-    methodRaw.includes("cash on delivery") ||
-    statusRaw === "pay_on_delivery";
-
   let paymentStatus = "PAYMENT PENDING";
   if (statusRaw === "paid" || statusRaw === "captured") paymentStatus = "PAID";
   else if (statusRaw === "refunded") paymentStatus = "REFUNDED";
   else if (statusRaw === "partially_refunded") paymentStatus = "PARTIALLY REFUNDED";
-  else if (isCod) paymentStatus = "PAYMENT PENDING";
   else if (statusRaw === "failed") paymentStatus = "FAILED";
   else if (statusRaw === "pending" || !statusRaw) paymentStatus = "PAYMENT PENDING";
 
   let paymentMethod = "—";
-  if (isCod) paymentMethod = "Cash on Delivery";
-  else if (instrument.includes("upi")) paymentMethod = "Razorpay / UPI";
+  if (instrument.includes("upi")) paymentMethod = "Razorpay / UPI";
   else if (instrument.includes("card")) paymentMethod = "Razorpay / Card";
   else if (instrument.includes("netbanking") || instrument.includes("net_banking"))
     paymentMethod = "Razorpay / Netbanking";

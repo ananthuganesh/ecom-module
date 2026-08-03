@@ -331,7 +331,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
               <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Payment details</h2>
             </div>
             <p className="text-sm font-bold uppercase text-black">
-              {order.paymentMethod || "COD"}
+              {order.paymentMethod || "Razorpay"}
             </p>
             <div
               className={`mt-3 inline-flex items-center gap-1.5 border border-black px-3 py-1 ${

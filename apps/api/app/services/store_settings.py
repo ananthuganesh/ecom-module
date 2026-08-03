@@ -101,7 +101,8 @@ async def save_notification_prefs(value: dict | None) -> dict[str, bool]:
 
 async def ensure_payment_method_enabled(payment_method: str) -> None:
     method = str(payment_method or "razorpay").lower()
-    if method in {"cod", "cash_on_delivery", "magic", "razorpay_magic"}:
+    # Store is Razorpay-only — reject COD and legacy aliases.
+    if method in {"cod", "cash_on_delivery", "pay_on_delivery", "magic", "razorpay_magic"}:
         raise HTTPException(status_code=400, detail="Unsupported payment method")
     enabled = await get_payment_methods()
     if method in {"razorpay", "prepaid"} and not enabled.get("razorpay", True):

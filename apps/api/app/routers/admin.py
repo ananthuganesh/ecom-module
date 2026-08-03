@@ -185,7 +185,7 @@ async def admin_users(
                                 {
                                     "$in": [
                                         {"$toLower": {"$ifNull": ["$paymentStatus", ""]}},
-                                        ["paid", "pay_on_delivery", "cod"],
+                                        ["paid"],
                                     ]
                                 },
                                 {"$ifNull": ["$finalPrice", {"$ifNull": ["$total", 0]}]},
@@ -866,7 +866,6 @@ def _exclude_incomplete_checkout_clause() -> dict[str, Any]:
                         "paid",
                         "Paid",
                         "PAID",
-                        "pay_on_delivery",
                         "partially_refunded",
                         "refunded",
                     ]
@@ -897,7 +896,7 @@ def _apply_order_view_filters(
         extras.append(
             {
                 "$or": [
-                    {"paymentStatus": {"$nin": ["paid", "Paid", "PAID", "pay_on_delivery"]}},
+                    {"paymentStatus": {"$nin": ["paid", "Paid", "PAID"]}},
                     {"paymentStatus": {"$exists": False}},
                     {"paymentStatus": None},
                     {"paymentStatus": ""},
@@ -1013,7 +1012,6 @@ async def admin_orders(
                         "paid",
                         "Paid",
                         "PAID",
-                        "pay_on_delivery",
                         "refunded",
                         "partially_refunded",
                         "refund_pending",
@@ -1469,13 +1467,14 @@ async def order_payment_status(order_id: str, body: dict, _: PaymentsWriter):
         raise HTTPException(status_code=404, detail="Order not found")
     next_status = str(body.get("paymentStatus") or order.paymentStatus or "").strip().lower()
     # Manual refunds require Razorpay; do not invent refunded state here.
-    allowed = {"pending", "paid", "failed", "pay_on_delivery"}
+    # COD / pay_on_delivery is not supported.
+    allowed = {"pending", "paid", "failed"}
     if next_status not in allowed:
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Invalid paymentStatus '{next_status}'. "
-                "Allowed: pending, paid, failed, pay_on_delivery. "
+                "Allowed: pending, paid, failed. "
                 "Refunded statuses require a Razorpay refund."
             ),
         )

@@ -193,7 +193,6 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
     origin = await _origin_details()
     dest = _destination_details(order, user)
     dims = await _package_defaults()
-    is_cod = str(order.paymentMethod or "").lower() in ("cod",) or order.paymentStatus == "pay_on_delivery"
     invoice_no = order.invoiceNumber or order.orderNumber or str(order.id)
     invoice_date = (order.createdAt or datetime.utcnow()).strftime("%Y-%m-%d")
     declared = float(order.finalPrice or order.total or 0)
@@ -262,10 +261,6 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
     if cfg.get("useOrderIdAsReference"):
         payload["reference_number"] = str(order.id)[:40]
 
-    if is_cod:
-        payload["cod_amount"] = str(declared)
-        payload["cod_collection_mode"] = "cash"
-
     gstin = ""
     company = await Setting.find_one(Setting.key == "company_profile")
     if company and isinstance(company.value, dict):
@@ -289,12 +284,9 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
     if order.awb:
         raise HTTPException(status_code=400, detail="Shipment already created for this order")
 
-    payment_ok = (
-        str(order.paymentMethod or "").lower() == "cod"
-        or order.paymentStatus in ("paid", "pay_on_delivery")
-    )
+    payment_ok = order.paymentStatus in ("paid",)
     if not payment_ok:
-        raise HTTPException(status_code=400, detail="Order must be paid or COD before creating a shipment")
+        raise HTTPException(status_code=400, detail="Order must be paid before creating a shipment")
 
     base_payload = await build_softdata_payload(order, user, cfg)
     api_key = str(cfg["apiKey"])

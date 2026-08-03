@@ -13,8 +13,7 @@ from app.documents import Order
 # abandoned-cart WhatsApp delay (admin AiSensy abandonedMinutes, default 15).
 DEFAULT_ABANDONED_ORDER_MINUTES = 30
 ABANDONABLE_STATUSES = {"order placed", "draft"}
-PAID_LIKE = {"paid", "refunded", "partially_refunded", "pay_on_delivery", "refund_pending"}
-COD_LIKE = {"cod", "cash_on_delivery", "pay_on_delivery"}
+PAID_LIKE = {"paid", "refunded", "partially_refunded", "refund_pending"}
 
 
 def abandoned_order_minutes() -> int:
@@ -34,21 +33,11 @@ def _payment_status(order: Order) -> str:
     ).strip().lower()
 
 
-def _payment_method(order: Order) -> str:
-    return str(
-        order.paymentMethod
-        or (order.transactionDetails or {}).get("paymentMethod")
-        or ""
-    ).strip().lower()
-
-
 def is_unpaid_gateway_candidate(order: Order) -> bool:
     status = (order.status or "").strip().lower()
     if status not in ABANDONABLE_STATUSES:
         return False
     if _payment_status(order) in PAID_LIKE:
-        return False
-    if _payment_method(order) in COD_LIKE:
         return False
     # Treat empty / pending as unpaid online
     pay = _payment_status(order)

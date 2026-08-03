@@ -10,7 +10,7 @@ from app.documents import Order
 from app.services.stock import release_order_stock
 
 STOCK_RESERVE_TTL_MINUTES = 30
-PAID_LIKE = {"paid", "refunded", "partially_refunded", "pay_on_delivery", "refund_pending"}
+PAID_LIKE = {"paid", "refunded", "partially_refunded", "refund_pending"}
 
 
 async def release_expired_stock_reservations(*, limit: int = 200) -> dict[str, Any]:

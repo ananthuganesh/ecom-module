@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Clock, MapPin, Smartphone } from "lucide-react";
+import { Clock, MapPin, Smartphone } from "lucide-react";
 import {
   CheckBurstIcon,
   ChevronLeftIcon,
@@ -63,9 +63,8 @@ function OrderContent({ params: paramsPromise }) {
         }
     }, [order?.awbCode]);
 
-    const paymentMethod = order?.transactionDetails?.paymentMethod || "razorpay";
-    const isCod = paymentMethod === "cod";
-    const isRazorpay = paymentMethod === "razorpay";
+    const paymentMethod = order?.transactionDetails?.paymentMethod || order?.paymentMethod || "razorpay";
+    const isRazorpay = String(paymentMethod).toLowerCase().includes("razorpay") || paymentMethod === "prepaid";
 
     if (loading) return (
         <div className="min-h-screen flex items-center justify-center">
@@ -114,11 +113,6 @@ function OrderContent({ params: paramsPromise }) {
                             <div className="flex items-center space-x-2 text-emerald-600">
                                 <CheckBurstIcon className="w-5 h-5" />
                                 <span className="text-[10px] font-bold uppercase tracking-widest">Payment Received</span>
-                            </div>
-                        ) : isCod ? (
-                            <div className="flex items-center space-x-2 text-primary">
-                                <Banknote className="w-5 h-5" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">Cash on Delivery</span>
                             </div>
                         ) : (
                             <div className="flex items-center space-x-2 text-amber-500">
@@ -255,25 +249,17 @@ function OrderContent({ params: paramsPromise }) {
                         <div className="bg-white p-6 border border-gray-100 shadow-sm">
                             <h3 className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-3 border-b border-gray-100 pb-3">Payment</h3>
                             <div className="mb-6 flex items-center gap-2">
-                                {isCod ? (
-                                    <>
-                                        <Banknote className="w-4 h-4 text-primary" />
-                                        <span className="text-sm font-bold uppercase tracking-widest">Cash on Delivery</span>
-                                    </>
-                                ) : isRazorpay ? (
+                                {isRazorpay ? (
                                     <>
                                         <Smartphone className="w-4 h-4 text-gray-600" />
-                                        <span className="text-sm font-bold uppercase tracking-widest">Razorpay (option)</span>
+                                        <span className="text-sm font-bold uppercase tracking-widest">Razorpay</span>
                                     </>
                                 ) : (
                                     <span className="text-sm font-bold uppercase tracking-widest">{paymentMethod}</span>
                                 )}
                             </div>
-                            {isCod && (
-                                <p className="text-xs text-gray-500 mb-6">Pay when your order is delivered.</p>
-                            )}
                             {isRazorpay && !order.isPaid && (
-                                <p className="text-xs text-gray-500 mb-6">Razorpay payment integration can be added later.</p>
+                                <p className="text-xs text-gray-500 mb-6">Complete payment online to confirm your order.</p>
                             )}
 
                             <div className="space-y-4 mb-8">

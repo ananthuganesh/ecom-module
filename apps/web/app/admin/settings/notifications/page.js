@@ -10,7 +10,7 @@ const CUSTOMER_EMAIL_EVENTS = [
   {
     key: "emailOrderConfirmation",
     label: "Order confirmation",
-    description: "When an order is placed (COD) or paid online",
+    description: "When an order is paid online (Razorpay)",
   },
   {
     key: "emailOrderShipped",

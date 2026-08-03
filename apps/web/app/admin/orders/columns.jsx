@@ -148,7 +148,6 @@ function attributionTag(order) {
 function paymentLabel(status) {
   const s = String(status || "pending").toLowerCase();
   if (s === "paid") return "Paid";
-  if (s === "pay_on_delivery") return "COD";
   if (s === "refunded") return "Refunded";
   if (s === "partially_refunded") return "Partial refund";
   return status || "Pending";
@@ -157,7 +156,6 @@ function paymentLabel(status) {
 function paymentTone(status) {
   const s = String(status || "pending").toLowerCase();
   if (s === "paid") return "success";
-  if (s === "pay_on_delivery") return "info";
   if (s === "refunded" || s === "partially_refunded") return "review";
   if (s === "failed" || s === "cancelled") return "danger";
   return "warning";

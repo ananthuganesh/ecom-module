@@ -337,8 +337,8 @@ async def stats(
     eligible: dict[str, Any] = {
         "status": {"$nin": ["draft", "abandoned", "cancelled"]},
         "$or": [
-            {"paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-            {"transactionDetails.paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
+            {"paymentStatus": "paid"},
+            {"transactionDetails.paymentStatus": "paid"},
         ],
     }
     collection = Order.get_pymongo_collection()
@@ -372,8 +372,8 @@ async def stats(
         "status": {"$ne": "draft"},
         **date_match,
         "$nor": [
-            {"paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-            {"transactionDetails.paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
+            {"paymentStatus": "paid"},
+            {"transactionDetails.paymentStatus": "paid"},
         ],
     }
     all_orders = await collection.count_documents({"status": {"$ne": "draft"}, **date_match})
@@ -381,7 +381,7 @@ async def stats(
     total_orders = all_orders  # paid + pending (excludes drafts only)
 
     users = User.get_pymongo_collection()
-    # Customers who completed at least one paid/COD order (not abandoned-only accounts)
+    # Customers who completed at least one paid order (not abandoned-only accounts)
     paid_customer_ids = await collection.distinct(
         "customerId",
         eligible,
@@ -696,7 +696,7 @@ async def release_reservation(order_id: str, user: CurrentUser):
     if not _is_owner(order, user):
         raise HTTPException(status_code=403, detail="Not authorized")
     pay = str(order.paymentStatus or "").lower()
-    if pay in {"paid", "refunded", "partially_refunded", "pay_on_delivery"}:
+    if pay in {"paid", "refunded", "partially_refunded"}:
         raise HTTPException(status_code=400, detail="Cannot release reservation for a paid order")
     from app.services.order_abandon import mark_order_abandoned
     from app.services.stock import release_order_stock

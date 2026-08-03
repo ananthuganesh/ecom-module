@@ -39,7 +39,7 @@ async def record_order_sold_counts(order: Order) -> bool:
 
 
 async def recompute_all_sold_counts() -> dict[str, int]:
-    """Reset and recompute soldCount from paid / COD-confirmed orders."""
+    """Reset and recompute soldCount from paid orders."""
     product_col = Product.get_pymongo_collection()
     await product_col.update_many({}, {"$set": {"soldCount": 0}})
 
@@ -47,9 +47,8 @@ async def recompute_all_sold_counts() -> dict[str, int]:
     orders = await Order.find(
         {
             "$or": [
-                {"paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-                {"transactionDetails.paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-                {"paymentMethod": "cod"},
+                {"paymentStatus": "paid"},
+                {"transactionDetails.paymentStatus": "paid"},
             ]
         }
     ).to_list()
@@ -58,8 +57,7 @@ async def recompute_all_sold_counts() -> dict[str, int]:
     for order in orders:
         pay = str(order.paymentStatus or "").lower()
         pay_td = str((order.transactionDetails or {}).get("paymentStatus") or "").lower()
-        method = str(order.paymentMethod or "").lower()
-        if pay not in {"paid", "pay_on_delivery"} and pay_td not in {"paid", "pay_on_delivery"} and method != "cod":
+        if pay != "paid" and pay_td != "paid":
             continue
         order_count += 1
         for pid, qty in _line_qty_by_product(order).items():

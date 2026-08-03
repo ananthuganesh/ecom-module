@@ -161,12 +161,9 @@ def mark_ready_to_ship_after_label(order: Order) -> bool:
 async def process_full_order_flow(order: Order, user: User | None = None) -> dict:
     """No auto carrier create. Admin creates DTDC consignment from the order page.
 
-    Paid / COD orders stay Unfulfilled (no shippingStatus) until Create DTDC shipment.
+    Paid orders stay Unfulfilled (no shippingStatus) until Create DTDC shipment.
     """
-    payment_ok = (
-        str(order.paymentMethod or "").lower() == "cod"
-        or order.paymentStatus in ("paid", "pay_on_delivery")
-    )
+    payment_ok = order.paymentStatus in ("paid",)
     if not payment_ok:
         order.shippingStatus = "Payment Pending"
         await order.save()

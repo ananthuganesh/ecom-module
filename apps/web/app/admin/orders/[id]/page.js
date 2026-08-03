@@ -1138,9 +1138,9 @@ export default function AdminOrderDetailPage() {
                    !order.transactionDetails?.paymentId &&
                    !order.razorpayOrderId &&
                    !order.transactionDetails?.razorpayOrderId &&
-                   String(order.paymentMethod || order.transactionDetails?.paymentMethod || "").toLowerCase() === "cod" && (
+                   String(order.paymentStatus || order.transactionDetails?.paymentStatus || "").toLowerCase() !== "paid" && (
                      <p className="admin-card-muted">
-                       Collect on delivery — no online payment reference.
+                       Awaiting online payment — no Razorpay reference yet.
                      </p>
                    )}
                  {(order.refunds?.length > 0 || order.transactionDetails?.refunds?.length > 0) && (

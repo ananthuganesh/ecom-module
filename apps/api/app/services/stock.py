@@ -735,8 +735,7 @@ async def restock_order_stock(order) -> bool:
 async def apply_order_commitments(order) -> bool:
     """Commit an eligible order's stock and coupon once after placement/payment."""
     payment_status = str(order.paymentStatus or "").lower()
-    payment_method = str(order.paymentMethod or "").lower()
-    if payment_status not in ("paid", "pay_on_delivery") and payment_method != "cod":
+    if payment_status != "paid":
         return False
 
     col = Order.get_pymongo_collection()

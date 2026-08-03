@@ -194,7 +194,7 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                                                         "$ifNull": ["$paymentStatus", ""]
                                                     }
                                                 },
-                                                ["paid", "pay_on_delivery", "cod"],
+                                                ["paid"],
                                             ]
                                         },
                                         {

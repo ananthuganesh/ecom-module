@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recompute Product.soldCount from paid / COD-confirmed orders."""
+"""Recompute Product.soldCount from paid orders."""
 
 from __future__ import annotations
 
@@ -25,9 +25,8 @@ async def main() -> None:
     result = await col.update_many(
         {
             "$or": [
-                {"paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-                {"transactionDetails.paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-                {"paymentMethod": "cod"},
+                {"paymentStatus": "paid"},
+                {"transactionDetails.paymentStatus": "paid"},
             ]
         },
         {"$set": {"transactionDetails.soldCounted": True}},

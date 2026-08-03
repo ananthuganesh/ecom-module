@@ -292,12 +292,12 @@ export function buildOrderTimeline(order) {
   });
 
   // 3) Payment
-  if (payStatus === "paid" || payStatus === "pay_on_delivery") {
+  if (payStatus === "paid") {
     steps.push({
       id: "payment",
       type: "payment",
       seq: SEQ.payment,
-      title: payStatus === "pay_on_delivery" ? "Cash on delivery" : "Payment received",
+      title: "Payment received",
       subtitle: [amountText, method ? method.toUpperCase() : null].filter(Boolean).join(" · ") || null,
       at: paidAt,
       sortAt: paidAt,

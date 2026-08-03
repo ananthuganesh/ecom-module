@@ -104,8 +104,6 @@ def _admin_order_url(order) -> str:
 def _payment_label(order) -> str:
     method = str(getattr(order, "paymentMethod", None) or "razorpay").lower()
     status = str(getattr(order, "paymentStatus", None) or "").lower()
-    if method in {"cod", "cash_on_delivery"}:
-        return "Cash on Delivery"
     if method in {"manual"}:
         return "Manual"
     if "razorpay" in method or method in {"prepaid", "online"}:
@@ -370,7 +368,7 @@ async def notify_order_email_once(email_type: EmailType, order, user=None) -> di
 
     PLACED + CONFIRMED share one customer confirmation email:
     - Razorpay/prepaid awaiting payment → skip PLACED, send CONFIRMED on pay
-    - COD / already paid → send PLACED (or CONFIRMED) once via shared marker
+    - Already paid → send PLACED (or CONFIRMED) once via shared marker
     """
     method = str(getattr(order, "paymentMethod", None) or "razorpay").lower()
     pay_status = str(getattr(order, "paymentStatus", None) or "").lower()
