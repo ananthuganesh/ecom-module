@@ -2275,36 +2275,3 @@ async def save_dtdc_settings(body: dict, _: AdminUser):
         "isConnected": True,
     }
 
-
-@router.get("/meta/capi/status")
-async def meta_capi_status(_: AdminUser):
-    from app.services import meta_capi
-
-    return {
-        "configured": meta_capi.is_configured(),
-        "pixelIdSet": bool((os.environ.get("META_PIXEL_ID") or "").strip()),
-        "testEventCode": (os.environ.get("META_TEST_EVENT_CODE") or "").strip() or None,
-    }
-
-
-@router.post("/meta/capi/test")
-async def meta_capi_test(_: AdminUser, body: dict | None = None):
-    """Send a server PageView into Events Manager → Test events.
-
-    Body optional: { "testEventCode": "TEST34326" }
-    Keep the Test events page open while calling this.
-    """
-    from app.services import meta_capi
-
-    payload = dict(body or {})
-    code = str(payload.get("testEventCode") or payload.get("test_event_code") or "").strip() or None
-    result = await meta_capi.send_test_page_view(test_event_code=code)
-    if result.get("skipped"):
-        raise HTTPException(
-            status_code=400,
-            detail="Set META_PIXEL_ID and META_CAPI_ACCESS_TOKEN in root .env, then restart API",
-        )
-    if not result.get("ok"):
-        raise HTTPException(status_code=502, detail=result)
-    return result
-
