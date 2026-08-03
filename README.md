@@ -44,7 +44,7 @@ docker compose up -d --build
 
 ```bash
 # Mongo must be reachable (Docker: docker compose up -d mongo)
-cp apps/api/.env.example apps/api/.env
+cp .env.example .env
 npm run install:all
 npm run dev
 ```

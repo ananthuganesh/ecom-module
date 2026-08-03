@@ -1,11 +1,23 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_ENV_FILES = tuple(
+    str(path)
+    for path in (_REPO_ROOT / ".env", Path(".env"))
+    if path.is_file()
+)
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILES or ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     mongo_uri: str = "mongodb://127.0.0.1:27017/urbanaana"
     jwt_secret: str = "dev-secret-change-in-production"

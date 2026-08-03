@@ -15,7 +15,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 
 def load_env() -> None:
-    env = Path(__file__).resolve().parents[1] / ".env"
+    root = Path(__file__).resolve().parents[2]
+    env = root / ".env" if (root / ".env").is_file() else Path(__file__).resolve().parents[1] / ".env"
     if not env.exists():
         return
     for line in env.read_text().splitlines():

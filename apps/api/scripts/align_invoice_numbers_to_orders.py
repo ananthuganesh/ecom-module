@@ -20,7 +20,8 @@ sys.path.insert(0, str(ROOT))
 
 
 def load_env() -> None:
-    env = ROOT / ".env"
+    repo_root = Path(__file__).resolve().parents[2]
+    env = repo_root / ".env" if (repo_root / ".env").is_file() else ROOT / ".env"
     if not env.exists():
         return
     for line in env.read_text().splitlines():
