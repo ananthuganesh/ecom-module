@@ -58,7 +58,10 @@ async def release_expired_stock_reservations(*, limit: int = 200) -> dict[str, A
                 print(f"[Orders] Abandon after TTL release failed for {order.id}: {abandon_exc}")
         except Exception as exc:
             errors += 1
-            print(f"[Stock] Reserve TTL release failed for {order.id}: {exc}")
+            # reserved=0 is handled as noop now; keep noise down for transient races
+            msg = str(exc)
+            if "reserved 0" not in msg:
+                print(f"[Stock] Reserve TTL release failed for {order.id}: {exc}")
 
     return {"scanned": len(candidates), "released": released, "errors": errors}
 

@@ -258,6 +258,9 @@ async def release_reserved_stock(
         on_hand = int(bal.quantity or 0)
         reserved = int(bal.reserved or 0)
         if reserved < qty:
+            # Already cleared (TTL race, prior release, or balance drift) — idempotent no-op.
+            if reserved <= 0:
+                return {"balance": bal, "movement": None, "noop": True}
             raise HTTPException(
                 status_code=400,
                 detail=f"Insufficient reserved stock to release (reserved {reserved})",
