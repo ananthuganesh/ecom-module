@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
+from app.documents import AdminAccount, User
 from app.deps import AdminUser, CustomersReader, CurrentUser, user_has_admin_access
 from app.documents import User
 from app.security import create_access_token, hash_password, verify_password
@@ -37,11 +38,15 @@ class ProfileUpdate(BaseModel):
     email: EmailStr | None = None
     password: str | None = Field(default=None, min_length=_MIN_PASSWORD)
     currentPassword: str | None = None
+    emailSubscribed: bool | None = None
+    whatsappSubscribed: bool | None = None
 
 
 class CheckoutEmailBody(BaseModel):
     email: EmailStr
     name: str | None = None
+    emailSubscribed: bool | None = None
+    whatsappSubscribed: bool | None = None
 
 
 class SetPasswordBody(BaseModel):
@@ -81,7 +86,7 @@ async def admin_login(
     """Staff login — sets `ua_admin_session` only (does not affect storefront)."""
     email = body.email.lower().strip()
     await assert_login_not_locked(email)
-    user = await User.find_one(User.email == email)
+    user = await AdminAccount.find_one(AdminAccount.email == email)
     if not user or not user.password or not verify_password(body.password, user.password):
         await record_failed_login(email)
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -145,6 +150,10 @@ async def update_profile(body: ProfileUpdate, user: CurrentUser, response: Respo
             if not body.currentPassword or not verify_password(body.currentPassword, user.password):
                 raise HTTPException(status_code=400, detail="Current password is required")
         user.password = hash_password(body.password)
+    if body.emailSubscribed is not None:
+        user.emailSubscribed = bool(body.emailSubscribed)
+    if body.whatsappSubscribed is not None:
+        user.whatsappSubscribed = bool(body.whatsappSubscribed)
     user.updatedAt = datetime.utcnow()
     await user.save()
     token = create_access_token(user.id)
@@ -159,10 +168,11 @@ async def list_users(
     skip: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
 ):
+    from app.services.customers import customer_mongo_filter
     from app.services.pagination import parse_pagination
 
     sk, lim, _pg = parse_pagination(page=page, skip=skip, limit=limit)
-    users = await User.find_all().skip(sk).limit(lim).to_list()
+    users = await User.find(customer_mongo_filter()).skip(sk).limit(lim).to_list()
     return [user_public(u) for u in users]
 
 
@@ -202,28 +212,19 @@ async def update_user(user_id: str, body: dict, actor: AdminUser):
 async def delete_user(user_id: str, actor: AdminUser):
     from bson import ObjectId
 
-    from app.deps import require_role_manager
-
     user = await User.get(ObjectId(user_id))
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    is_staff = bool(user.isAdmin or (getattr(user, "roleId", None) and str(user.roleId).strip()))
-    if is_staff:
-        # Only role managers may remove staff; never delete Admin via this path.
-        if user.isAdmin:
-            raise HTTPException(status_code=400, detail="Cannot delete admin user")
-        await require_role_manager(actor)
-    if str(user.id) == str(actor.id):
-        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        raise HTTPException(status_code=404, detail="Customer not found")
+    # Staff live in `admins` — this endpoint only deletes customers.
+    if bool(getattr(user, "isAdmin", False)) or (
+        getattr(user, "roleId", None) and str(user.roleId).strip()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Staff accounts are managed under Settings → Users",
+        )
     await user.delete()
     return {"message": "User removed"}
-
-
-def _is_staff_account(user: User) -> bool:
-    if bool(getattr(user, "isAdmin", False)):
-        return True
-    role_id = getattr(user, "roleId", None)
-    return bool(role_id and str(role_id).strip())
 
 
 def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
@@ -235,6 +236,12 @@ def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
         "requiresExistingSession": False,
         "continue": True,
     }
+
+
+async def _email_is_staff(email: str) -> bool:
+    from app.documents import AdminAccount
+
+    return bool(await AdminAccount.find_one(AdminAccount.email == email))
 
 
 @router.post("/checkout-email")
@@ -250,25 +257,46 @@ async def checkout_email(
     Existing passworded / staff: never mint a JWT from email alone — require login.
     """
     email = body.email.lower().strip()
+    if await _email_is_staff(email):
+        return _checkout_continue_payload(email=email, requires_login=True)
+
     user = await User.find_one(User.email == email)
     created = False
+    # Checkout checkbox sends both flags as the same value.
+    opt_in = None
+    if body.emailSubscribed is not None:
+        opt_in = bool(body.emailSubscribed)
+    elif body.whatsappSubscribed is not None:
+        opt_in = bool(body.whatsappSubscribed)
+
     if not user:
         name = (body.name or "").strip() or email.split("@")[0]
-        user = User(name=name, email=email, password=None)
+        user = User(
+            name=name,
+            email=email,
+            password=None,
+            emailSubscribed=True if opt_in is None else opt_in,
+            whatsappSubscribed=True if opt_in is None else opt_in,
+        )
         user.customerUrlId = await next_customer_url_id()
         await user.insert()
         created = True
     else:
-        if _is_staff_account(user):
-            # Same outer shape as passworded accounts — ask for sign-in.
-            return _checkout_continue_payload(email=email, requires_login=True)
         await ensure_customer_url_id(user)
+        changed = False
         if body.name and str(body.name).strip():
             current_name = (user.name or "").strip().lower()
             if not current_name or current_name in {"guest user", "guest", "customer"}:
                 user.name = str(body.name).strip()
-                user.updatedAt = datetime.utcnow()
-                await user.save()
+                changed = True
+        if opt_in is not None and not user.password:
+            # Guests can update marketing prefs at checkout without login.
+            user.emailSubscribed = opt_in
+            user.whatsappSubscribed = opt_in
+            changed = True
+        if changed:
+            user.updatedAt = datetime.utcnow()
+            await user.save()
 
         if user.password:
             return _checkout_continue_payload(email=user.email, requires_login=True)

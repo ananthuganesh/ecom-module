@@ -19,7 +19,31 @@ AuthScope = Literal["customer", "admin"]
 
 
 def cookie_secure() -> bool:
-    return get_settings().is_production()
+    """HttpOnly Secure flag.
+
+    Production HTTPS needs Secure=true. Local Docker often uses
+    http://127.0.0.1:3000 with ENVIRONMENT=production — Secure cookies are
+    dropped by the browser on plain HTTP, which breaks admin uploads (401).
+    Override with COOKIE_SECURE=true|false when needed.
+    """
+    import os
+
+    raw = (os.environ.get("COOKIE_SECURE") or "").strip().lower()
+    if raw in {"0", "false", "no"}:
+        return False
+    if raw in {"1", "true", "yes"}:
+        return True
+    if not get_settings().is_production():
+        return False
+    public = (
+        os.environ.get("PUBLIC_WEB_URL")
+        or os.environ.get("NEXT_PUBLIC_SITE_URL")
+        or os.environ.get("NEXT_PUBLIC_WEB_URL")
+        or ""
+    ).strip().lower()
+    if public.startswith("http://"):
+        return False
+    return True
 
 
 def cookie_max_age(*, hours: int | None = None) -> int:

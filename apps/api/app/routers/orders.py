@@ -8,7 +8,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.deps import AdminUser, CurrentUser, PaymentsWriter
-from app.documents import AbandonedCheckout, Order, OrderItem, Product, Setting
+from app.documents import Order, OrderItem, Product, Setting
 from app.serializers import remap_order
 from app.services import erp_ops
 from app.services.attribution import sanitize_attribution
@@ -140,6 +140,14 @@ async def create_order(
             raise HTTPException(status_code=400, detail="Item quantity must be between 1 and 50")
         color = oi.get("color") or ""
         size = oi.get("size") or ""
+        # Only persist axes this product actually sells on its variants
+        from app.services.variants import product_variant_axes
+
+        axes = product_variant_axes(product)
+        if not axes.get("color"):
+            color = ""
+        if not axes.get("size"):
+            size = ""
         available = product.totalStock or 0
         variant = find_variant(product, color=color, size=size)
         if variant is not None:
@@ -161,7 +169,22 @@ async def create_order(
                 detail=f"{name} has no sellable price configured.",
             )
         price = correct
-        item = OrderItem(productId=product.id, color=color, size=size, quantity=qty, price=price)
+        thumb = (product.thumbnails[0] if product.thumbnails else None) or None
+        if not thumb and product.variants:
+            for v in product.variants:
+                imgs = getattr(v, "images", None) or []
+                if imgs:
+                    thumb = imgs[0]
+                    break
+        item = OrderItem(
+            productId=product.id,
+            productName=product.productName or product.name or product.product or "Product",
+            image=str(thumb or "") or None,
+            color=color,
+            size=size,
+            quantity=qty,
+            price=price,
+        )
         items.append(item)
 
     subtotal = sum(i.price * i.quantity for i in items)
@@ -226,6 +249,11 @@ async def create_order(
             "paymentMethod": payment,
             "paymentStatus": "pending",
             **({"couponReserved": True} if coupon_reserved else {}),
+            **(
+                {"guestId": str(body.get("guestId")).strip()}
+                if body.get("guestId")
+                else {}
+            ),
         },
         shippingStatus="Payment Pending",
         attribution=attribution,
@@ -270,22 +298,6 @@ async def create_order(
         print(f"[Checkout] Invoice create failed: {exc}")
 
     try:
-        guest_id = body.get("guestId")
-        q: dict[str, Any] = {"status": "abandoned"}
-        if guest_id:
-            q["guestId"] = guest_id
-        else:
-            q["userId"] = user.id
-        abandoned = await AbandonedCheckout.find_one(q)
-        if abandoned:
-            abandoned.status = "converted"
-            abandoned.orderId = order.id
-            abandoned.lastActivityAt = datetime.utcnow()
-            await abandoned.save()
-    except Exception:
-        pass
-
-    try:
         from app.services import aisensy as aisensy_svc
         from app.services import email_resend as email_svc
 
@@ -318,7 +330,7 @@ async def stats(
     _: AdminUser,
     range_: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d", alias="range"),
 ):
-    """Paid-order analytics. Excludes draft, abandoned, and cancelled checkouts."""
+    """Paid-order analytics. Excludes abandoned and cancelled checkouts."""
     from app.documents import User
 
     now = datetime.utcnow()
@@ -335,7 +347,7 @@ async def stats(
 
     # Real sales only — unpaid gateway exits / abandoned carts do not count
     eligible: dict[str, Any] = {
-        "status": {"$nin": ["draft", "abandoned", "cancelled"]},
+        "status": {"$nin": ["abandoned", "cancelled"]},
         "$or": [
             {"paymentStatus": "paid"},
             {"transactionDetails.paymentStatus": "paid"},
@@ -369,16 +381,16 @@ async def stats(
         date_match = {"createdAt": {"$gte": current_start, "$lt": now}}
 
     unpaid_match = {
-        "status": {"$ne": "draft"},
+        "status": {"$ne": "abandoned"},
         **date_match,
         "$nor": [
             {"paymentStatus": "paid"},
             {"transactionDetails.paymentStatus": "paid"},
         ],
     }
-    all_orders = await collection.count_documents({"status": {"$ne": "draft"}, **date_match})
+    all_orders = await collection.count_documents({"status": {"$ne": "abandoned"}, **date_match})
     pending_orders = await collection.count_documents(unpaid_match)
-    total_orders = all_orders  # paid + pending (excludes drafts only)
+    total_orders = all_orders  # paid + pending (excludes abandoned)
 
     users = User.get_pymongo_collection()
     # Customers who completed at least one paid order (not abandoned-only accounts)
@@ -405,7 +417,9 @@ async def stats(
         previous_customers = len([c for c in previous_ids if c])
 
     # Keep registered store size available for analytics pages if needed
-    registered_customers = await users.count_documents({"isAdmin": {"$ne": True}})
+    from app.services.customers import customer_mongo_filter
+
+    registered_customers = await users.count_documents(customer_mongo_filter())
 
     avg = round(total_revenue / paid_orders, 2) if paid_orders else 0.0
     previous_avg = (
@@ -719,6 +733,7 @@ async def mark_delivered(order_id: str, _: AdminUser):
     order.isDelivered = True
     order.deliveredAt = datetime.utcnow()
     order.status = "delivered"
+    order.shippingStatus = "Delivered"
     await order.save()
     try:
         await erp_ops.ensure_invoice_on_fulfillment(order, context="mark_delivered")

@@ -12,7 +12,7 @@ export function formatOrderNumber(order, fallbackLen = 6) {
 
 /**
  * Admin URL path key: 12-digit orderUrlId (not the display UA number).
- * Falls back to Mongo id for drafts without a url id yet.
+ * Falls back to Mongo id when orderUrlId is missing.
  */
 export function orderUrlKey(order) {
   const urlId = order?.orderUrlId != null ? String(order.orderUrlId).trim() : "";

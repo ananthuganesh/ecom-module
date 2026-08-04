@@ -193,11 +193,19 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
 
     order = await Order.get(order.id) or order
     pay_instrument.apply_instrument_to_order(order, payment)
-    from app.services.order_abandon import revive_abandoned_on_payment
+    from app.services.order_abandon import (
+        mark_checkouts_converted_for_order,
+        revive_abandoned_on_payment,
+    )
 
     revive_abandoned_on_payment(order)
     order.updatedAt = datetime.utcnow()
     await order.save()
+
+    try:
+        await mark_checkouts_converted_for_order(order, user=user)
+    except Exception as exc:
+        print(f"[Payment] Abandoned checkout convert failed: {exc}")
 
     try:
         await apply_order_commitments(order)

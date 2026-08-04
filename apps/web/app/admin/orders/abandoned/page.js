@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { abandonedCheckoutService, adminOrderService } from "@/api";
+import { abandonedCheckoutService } from "@/api";
 import { Search, Download } from "lucide-react";
 import { toast } from "sonner";
-import { displayCustomerName } from "@/utils/displayCustomerName";
-import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 import { unwrapPage } from "@/utils/unwrapPage";
 import {
   AdminListLayout,
@@ -41,46 +40,6 @@ function formatCheckoutId(id) {
   if (!s) return "";
   const short = s.length > 8 ? s.slice(-8).toUpperCase() : s.toUpperCase();
   return `#${short}`;
-}
-
-/** Unpaid payment-exit orders (previous abandoned list source). */
-function mapOrderToRow(order) {
-  const customer = order.customerId || {};
-  const ship = order.shippingAddress || {};
-  const items = (order.items || order.orderItems || []).map((i) => ({
-    name: i.productName || i.name || "Item",
-    quantity: Number(i.quantity ?? i.qty ?? 0),
-    qty: Number(i.quantity ?? i.qty ?? 0),
-    price: Number(i.price || 0),
-    image: i.image || i.thumbnail || "",
-  }));
-  const abandonedAt =
-    order.transactionDetails?.abandonedAt || order.updatedAt || order.createdAt;
-  return {
-    kind: "order",
-    _id: order._id,
-    checkoutId: null,
-    checkoutLabel: formatOrderNumber(order) || "",
-    recoveryUrl: null,
-    customerDetails: {
-      name: displayCustomerName(order),
-      email: customer.email || ship.email || "",
-      phone: customer.phone || ship.phone || "",
-      address: ship.address || ship.addressLine1 || "",
-      city: ship.city || "",
-      state: ship.state || "",
-      postalCode: ship.postalCode || ship.pincode || "",
-    },
-    items,
-    orderItems: items,
-    totalAmount: Number(order.finalPrice ?? order.total ?? 0),
-    lastActivityAt: abandonedAt,
-    status: "abandoned",
-    recoverySentAt: null,
-    recoveryLastResult: null,
-    emailSentAt: null,
-    emailStatus: null,
-  };
 }
 
 function mapCheckoutToRow(checkout) {
@@ -135,14 +94,12 @@ export default function AbandonedCheckoutsPage() {
     [rowSelection]
   );
 
-  const rowKey = (item) => `${item.kind}-${item._id}`;
+  const rowKey = (item) => String(item._id);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQ]);
-
-  const orderCacheRef = useRef([]);
 
   const fetchPage = useCallback(
     async (pageNum, { append } = {}) => {
@@ -158,54 +115,16 @@ export default function AbandonedCheckoutsPage() {
         if (datePreset && datePreset !== "all") checkoutParams.datePreset = datePreset;
         if (debouncedQ) checkoutParams.q = debouncedQ;
 
-        // Checkouts drive pagination. Abandoned orders are loaded once per filter
-        // change (page 1) so dual independent pages cannot skip/duplicate rows.
-        const loadOrders =
-          !append && viewFilter !== "converted"
-            ? adminOrderService
-                .getAll({
-                  status: "abandoned",
-                  page: 1,
-                  limit: 100,
-                  ...(datePreset && datePreset !== "all" ? { datePreset } : {}),
-                  ...(debouncedQ ? { q: debouncedQ } : {}),
-                })
-                .then((res) => {
-                  const page = unwrapPage(res, { fallbackLimit: 100 });
-                  let orderRows = page.items.map(mapOrderToRow);
-                  if (viewFilter === "abandoned") {
-                    orderRows = orderRows.filter((r) => r.status === "abandoned");
-                  }
-                  orderCacheRef.current = orderRows;
-                })
-                .catch((err) => {
-                  console.error(err);
-                  orderCacheRef.current = [];
-                  toast.error("Could not load abandoned orders");
-                })
-            : Promise.resolve();
-
-        const [checkoutsRes] = await Promise.all([
-          abandonedCheckoutService.getAll(checkoutParams),
-          loadOrders,
-        ]);
+        const checkoutsRes = await abandonedCheckoutService.getAll(checkoutParams);
         if (gen !== fetchGen.current) return;
 
         const checkoutsPage = unwrapPage(checkoutsRes, { fallbackLimit: PAGE_SIZE });
         const checkoutRows = checkoutsPage.items.map(mapCheckoutToRow);
 
         setRows((prev) => {
-          if (!append) {
-            return [...orderCacheRef.current, ...checkoutRows].sort(
-              (a, b) =>
-                new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0)
-            );
-          }
+          if (!append) return checkoutRows;
           const seen = new Set(prev.map(rowKey));
-          return [
-            ...prev,
-            ...checkoutRows.filter((r) => !seen.has(rowKey(r))),
-          ];
+          return [...prev, ...checkoutRows.filter((r) => !seen.has(rowKey(r)))];
         });
         setPage(pageNum);
         setHasMore(Boolean(checkoutsPage.hasMore));
@@ -260,7 +179,7 @@ export default function AbandonedCheckoutsPage() {
 
     const withLinks = await Promise.all(
       selected.map(async (item) => {
-        if (item.kind !== "checkout" || item.recoveryUrl) return item;
+        if (item.recoveryUrl) return item;
         try {
           const res = await abandonedCheckoutService.getRecoveryLink(item._id);
           return { ...item, recoveryUrl: res?.recoveryUrl || null };
@@ -292,13 +211,7 @@ export default function AbandonedCheckoutsPage() {
       );
       return {
         Checkout: item.checkoutLabel || "",
-        Date: item.lastActivityAt
-          ? new Date(item.lastActivityAt).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-          : "",
+        Date: formatAdminDateTime(item.lastActivityAt),
         Customer: customerLabel(c),
         Email: c.email || "",
         Phone: c.phone || "",

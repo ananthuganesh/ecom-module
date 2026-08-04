@@ -393,7 +393,9 @@ async def list_roles(_: AdminUser):
 
 @router.get("/users")
 async def list_staff_users(_: RoleManager):
-    """Admin + Staff accounts only (not storefront customers)."""
+    """Admin + Staff accounts from the `admins` collection."""
+    from app.documents import AdminAccount
+
     await erp_ops.ensure_default_roles()
     roles = await Role.find_all().to_list()
     active = {
@@ -401,19 +403,10 @@ async def list_staff_users(_: RoleManager):
         for r in roles
         if r.name in erp_ops.ACTIVE_ROLE_NAMES
     }
-    active_ids = list(active.keys())
-    users = await User.find(
-        {
-            "$or": [
-                {"isAdmin": True},
-                {"roleId": {"$in": active_ids}},
-            ]
-        }
-    ).to_list()
-    # Extra guard: roleId must still resolve to Admin/Staff.
+    staff = await AdminAccount.find_all().to_list()
     staff = [
         u
-        for u in users
+        for u in staff
         if u.isAdmin or (str(u.roleId or "") in active)
     ]
     staff.sort(key=lambda u: (not u.isAdmin, (u.name or u.email or "").lower()))
@@ -422,9 +415,9 @@ async def list_staff_users(_: RoleManager):
 
 @router.post("/users", status_code=201)
 async def create_staff_user(body: dict, admin: RoleManager):
-    """Create a staff user with email/password and an assigned role."""
+    """Create a staff account in `admins` with email/password and an assigned role."""
+    from app.documents import AdminAccount, User
     from app.security import hash_password
-    from app.services.customer_url_id import next_customer_url_id
 
     name = str(body.get("name") or "").strip()
     email = str(body.get("email") or "").strip().lower()
@@ -443,17 +436,21 @@ async def create_staff_user(body: dict, admin: RoleManager):
     role = await Role.get(_oid(role_id, "roleId"))
     if not role or role.name not in erp_ops.ACTIVE_ROLE_NAMES:
         raise HTTPException(status_code=400, detail="Role must be Admin or Staff")
+    if await AdminAccount.find_one(AdminAccount.email == email):
+        raise HTTPException(status_code=400, detail="A staff user with this email already exists")
     if await User.find_one(User.email == email):
-        raise HTTPException(status_code=400, detail="A user with this email already exists")
+        raise HTTPException(
+            status_code=400,
+            detail="This email belongs to a customer. Use a different staff email.",
+        )
 
     perms = list(role.permissions or [])
-    user = User(
+    user = AdminAccount(
         name=name,
         email=email,
         password=hash_password(password),
         roleId=str(role.id),
         isAdmin=role.name == "Admin" or "*" in perms,
-        customerUrlId=await next_customer_url_id(),
     )
     await user.insert()
     return user_public(user)
@@ -461,9 +458,11 @@ async def create_staff_user(body: dict, admin: RoleManager):
 
 @router.put("/users/{user_id}/role")
 async def assign_role(user_id: str, body: dict, admin: RoleManager):
-    user = await User.get(_oid(user_id, "user_id"))
+    from app.documents import AdminAccount
+
+    user = await AdminAccount.get(_oid(user_id, "user_id"))
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Staff user not found")
     role_id = body.get("roleId")
     if role_id:
         role = await Role.get(_oid(role_id, "roleId"))
@@ -472,7 +471,7 @@ async def assign_role(user_id: str, body: dict, admin: RoleManager):
         becoming_admin = role.name == "Admin" or "*" in list(role.permissions or [])
         # Never demote the last Admin — locks the store owner out of user management.
         if user.isAdmin and not becoming_admin:
-            other_admins = await User.find(
+            other_admins = await AdminAccount.find(
                 {
                     "isAdmin": True,
                     "_id": {"$ne": user.id},
@@ -487,7 +486,7 @@ async def assign_role(user_id: str, body: dict, admin: RoleManager):
         user.isAdmin = becoming_admin
     else:
         if user.isAdmin:
-            other_admins = await User.find(
+            other_admins = await AdminAccount.find(
                 {
                     "isAdmin": True,
                     "_id": {"$ne": user.id},
@@ -503,3 +502,26 @@ async def assign_role(user_id: str, body: dict, admin: RoleManager):
     user.updatedAt = datetime.utcnow()
     await user.save()
     return user_public(user)
+
+
+@router.delete("/users/{user_id}")
+async def delete_staff_user(user_id: str, admin: RoleManager):
+    """Remove a staff account from `admins` (never customers)."""
+    from app.documents import AdminAccount
+
+    user = await AdminAccount.get(_oid(user_id, "user_id"))
+    if not user:
+        raise HTTPException(status_code=404, detail="Staff user not found")
+    if str(user.id) == str(admin.id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    if user.isAdmin:
+        other_admins = await AdminAccount.find(
+            {"isAdmin": True, "_id": {"$ne": user.id}}
+        ).to_list()
+        if not other_admins:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete the only Admin account.",
+            )
+    await user.delete()
+    return {"message": "Staff user removed"}

@@ -22,9 +22,18 @@ export const authService = {
   updateProfile: (data) =>
     client.put(e.profile, data).then((res) => res.data),
 
-  checkoutEmail: (email, name) =>
+  checkoutEmail: (email, name, prefs = {}) =>
     client
-      .post(e.checkoutEmail, { email, ...(name ? { name } : {}) })
+      .post(e.checkoutEmail, {
+        email,
+        ...(name ? { name } : {}),
+        ...(prefs.emailSubscribed !== undefined
+          ? { emailSubscribed: !!prefs.emailSubscribed }
+          : {}),
+        ...(prefs.whatsappSubscribed !== undefined
+          ? { whatsappSubscribed: !!prefs.whatsappSubscribed }
+          : {}),
+      })
       .then((res) => res.data),
 
   setPassword: (password) =>

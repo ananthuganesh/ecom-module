@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { BUY_NOW_STORAGE_KEY } from "@/lib/storageKeys";
+import { pricingForCartLine, stockForCartLine } from "@/utils/cartStock";
 
 const memoryStorage = {
   getItem: () => null,
@@ -10,15 +11,10 @@ const memoryStorage = {
 
 function normalizeBuyNowItem(item) {
   const maxQty = 5;
-  let stock = item.totalStock ?? item.countInStock ?? 0;
-  if (item.size && item.variants) {
-    const variant = item.variants.find(
-      (v) => String(v.size || "").trim() === String(item.size || "").trim()
-    );
-    if (variant) stock = variant.quantity ?? variant.stock ?? stock;
-  }
+  const stock = stockForCartLine(item, item);
 
   const price = Number(item.price ?? item.pricing?.sellingPrice ?? 0);
+  const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
   const name = item.productName ?? item.name ?? "";
   const image =
     item.image ??
@@ -33,6 +29,7 @@ function normalizeBuyNowItem(item) {
     productName: name,
     name,
     price,
+    mrp: mrp > 0 ? mrp : undefined,
     image,
     qty: stock > 0 ? Math.min(qty, stock) : qty,
     size: item.size || "",
@@ -66,18 +63,14 @@ export const useBuyNowStore = create(
           items.map(async (item) => {
             try {
               const product = await productService.getById(item._id);
-              let stock = product.totalStock || 0;
-              if (item.size && product.variants) {
-                const variant = product.variants.find(
-                  (v) => String(v.size || "").trim() === String(item.size || "").trim()
-                );
-                if (variant) stock = variant.quantity ?? variant.stock ?? stock;
-              }
+              const stock = stockForCartLine(product, item);
+              const pricing = pricingForCartLine(product, item);
               return {
                 ...item,
+                ...pricing,
                 countInStock: stock,
                 totalStock: stock,
-                qty: Math.min(item.qty, stock === 0 ? 1 : stock),
+                qty: Math.min(item.qty, stock === 0 ? item.qty : stock),
               };
             } catch {
               return item;

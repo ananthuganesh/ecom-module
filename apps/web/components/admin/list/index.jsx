@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardAction,
@@ -38,6 +40,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -265,25 +272,101 @@ const DATE_PRESETS = [
   { value: "30d", label: "Last 30 days" },
 ];
 
+function toDayKey(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseDayKey(key) {
+  if (!key || typeof key !== "string") return undefined;
+  const [y, m, d] = key.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+}
+
+function formatRangeLabel(fromKey, toKey) {
+  const from = parseDayKey(fromKey);
+  const to = parseDayKey(toKey || fromKey);
+  if (!from) return "Custom range";
+  const fmt = (dt) =>
+    dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  if (!to || toDayKey(from) === toDayKey(to)) return fmt(from);
+  return `${fmt(from)} – ${fmt(to)}`;
+}
+
 export function AdminDateRangeButton({
   value,
   onChange,
   className = "",
   presets = DATE_PRESETS,
   align = "end",
+  allowCustom = false,
 }) {
   const list = Array.isArray(presets) && presets.length ? presets : DATE_PRESETS;
-  const preset =
-    typeof value === "string"
-      ? value
-      : value?.preset || list[0]?.value || "all";
-  const current = list.find((p) => p.value === preset) || list[0];
+  const isObject = value && typeof value === "object";
+  const preset = isObject
+    ? value.preset || (value.from || value.to ? "custom" : list[0]?.value || "all")
+    : value || list[0]?.value || "all";
+  const fromKey = isObject ? value.from || "" : "";
+  const toKey = isObject ? value.to || "" : "";
+  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState("presets"); // presets | custom
+  const [draftRange, setDraftRange] = useState({
+    from: parseDayKey(fromKey),
+    to: parseDayKey(toKey),
+  });
+
+  const current = list.find((p) => p.value === preset);
+  const label =
+    preset === "custom" || (fromKey && toKey)
+      ? formatRangeLabel(fromKey, toKey || fromKey)
+      : current?.label || list[0]?.label || "Date";
   const hasAll = list.some((p) => p.value === "all");
-  const isFiltered = hasAll ? preset !== "all" : false;
+  const isFiltered =
+    preset === "custom" || Boolean(fromKey) || (hasAll ? preset !== "all" : Boolean(preset));
+
+  const emit = (next) => {
+    if (typeof value === "string" && next.preset && next.preset !== "custom" && !next.from) {
+      onChange?.(next.preset);
+      return;
+    }
+    onChange?.(next);
+  };
+
+  const handleOpenChange = (nextOpen) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setPanel("presets");
+  };
+
+  const applyPreset = (p) => {
+    setPanel("presets");
+    setOpen(false);
+    emit({ preset: p.value });
+  };
+
+  const showCustom = () => {
+    setDraftRange({
+      from: parseDayKey(fromKey) || undefined,
+      to: parseDayKey(toKey || fromKey) || undefined,
+    });
+    setPanel("custom");
+  };
+
+  const applyCustom = () => {
+    if (!draftRange?.from) return;
+    const from = toDayKey(draftRange.from);
+    const to = toDayKey(draftRange.to || draftRange.from);
+    emit({ preset: "custom", from, to });
+    setPanel("presets");
+    setOpen(false);
+  };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
         className={cn(
           "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[13px] font-medium outline-none hover:bg-muted",
           isFiltered && "border-foreground/20 bg-muted/60",
@@ -291,29 +374,93 @@ export function AdminDateRangeButton({
         )}
       >
         <CalendarDays className="size-3.5 text-muted-foreground" />
-        <span className="max-w-[9.5rem] truncate">{current.label}</span>
+        <span className="max-w-[14rem] truncate">{label}</span>
         <ChevronDown className="size-3.5 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className="min-w-[200px]">
-        {list.map((p, idx) => (
-          <div key={p.value}>
-            {hasAll && idx === 1 ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem
-              onClick={() => {
-                if (typeof value === "string") onChange?.(p.value);
-                else onChange?.({ preset: p.value });
-              }}
-              className="gap-2 text-[13px]"
-            >
-              <span className="flex size-4 shrink-0 items-center justify-center">
-                {p.value === preset ? <Check className="size-3.5" /> : null}
-              </span>
-              {p.label}
-            </DropdownMenuItem>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        side="bottom"
+        sideOffset={6}
+        className={cn(
+          "gap-0 p-1.5 shadow-lg",
+          panel === "custom" ? "w-auto min-w-[280px]" : "w-[220px]"
+        )}
+      >
+        {panel === "presets" ? (
+          <div className="flex flex-col py-0.5">
+            {list.map((p, idx) => (
+              <div key={p.value}>
+                {hasAll && idx === 1 ? (
+                  <div className="my-1 h-px bg-border" />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground outline-none hover:bg-muted"
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    {p.value === preset && preset !== "custom" ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                  </span>
+                  {p.label}
+                </button>
+              </div>
+            ))}
+            {allowCustom ? (
+              <>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  onClick={showCustom}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground outline-none hover:bg-muted"
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    {preset === "custom" ? <Check className="size-3.5" /> : null}
+                  </span>
+                  Custom range…
+                </button>
+              </>
+            ) : null}
           </div>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        ) : (
+          <div className="flex flex-col gap-2 p-1">
+            <Calendar
+              mode="range"
+              numberOfMonths={1}
+              selected={draftRange}
+              onSelect={(range) => {
+                setDraftRange(range || { from: undefined, to: undefined });
+              }}
+              defaultMonth={draftRange?.from || new Date()}
+            />
+            <div className="flex items-center justify-end gap-1.5 border-t border-border px-1 pt-2 pb-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[12px]"
+                onClick={() => {
+                  setPanel("presets");
+                  setOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2.5 text-[12px]"
+                disabled={!draftRange?.from}
+                onClick={applyCustom}
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 

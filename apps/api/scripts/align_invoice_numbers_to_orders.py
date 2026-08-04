@@ -1,6 +1,6 @@
 """
 Align invoice numbers with order chronology:
-  oldest non-draft order → INV-100000, next → INV-100001, …
+  oldest non-abandoned order → INV-100000, next → INV-100001, …
 
 Usage (from apps/api):
   .venv/bin/python scripts/align_invoice_numbers_to_orders.py
@@ -30,7 +30,7 @@ def load_env() -> None:
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-SKIP = {"draft", "abandoned"}
+SKIP = {"abandoned"}
 START = 100000
 
 

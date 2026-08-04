@@ -11,7 +11,8 @@ BG_CARD = "#ffffff"
 TEXT_PRIMARY = "#202223"
 TEXT_MUTED = "#6d7175"
 BORDER = "#c9cccf"
-ACCENT = "#df1721"  # Urban Aana red (Shopify used #008060)
+ACCENT = "#df1721"  # Urban Aana red (strip / links)
+CTA_BG = "#000000"  # Primary button fill
 LINK = "#df1721"
 FONT_STACK = (
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
@@ -19,7 +20,7 @@ FONT_STACK = (
 )
 
 SITE_URL_DEFAULT = "https://urbanaana.com"
-SUPPORT_EMAIL = "hello@urbanaana.com"
+SUPPORT_EMAIL = "support@urbanaana.com"
 INSTAGRAM_URL = "https://www.instagram.com/urbanaana.in"
 FACEBOOK_URL = "https://www.facebook.com/share/18vF3ZB3BJ/"
 CONTAINER_WIDTH = 470
@@ -46,17 +47,29 @@ def brand_logo_url() -> str:
 
     from app.config import get_settings
 
-    base = (
+    override = (
+        os.environ.get("EMAIL_LOGO_URL")
+        or os.environ.get("BRAND_LOGO_URL")
+        or ""
+    ).strip()
+    if override:
+        return override
+
+    # Prefer the public site (emails need a stable absolute HTTPS URL).
+    # Storefront logo lives at /brand/logo.png — NOT /logo.png (404).
+    site = (
         os.environ.get("PUBLIC_WEB_URL")
         or os.environ.get("NEXT_PUBLIC_SITE_URL")
         or os.environ.get("FRONTEND_URL")
-        or os.environ.get("R2_PUBLIC_URL")
-        or get_settings().r2_public_url
-        or ""
+        or site_url()
     ).rstrip("/")
-    if base:
-        return f"{base}/logo.png"
-    return "https://images.urbanaana.com/logo.png"
+    if site:
+        return f"{site}/brand/logo.png"
+
+    r2 = (os.environ.get("R2_PUBLIC_URL") or get_settings().r2_public_url or "").rstrip("/")
+    if r2:
+        return f"{r2}/brand/logo.png"
+    return "https://urbanaana.com/brand/logo.png"
 
 
 def _styles() -> str:
@@ -81,11 +94,66 @@ def mail_button(href: str, label: str) -> str:
     return f"""
 <table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0 0;">
   <tr>
-    <td style="border-radius:4px;background-color:{ACCENT};">
+    <td style="border-radius:4px;background-color:{CTA_BG};">
       <a href="{esc(href)}" target="_blank"
         style="display:inline-block;padding:8px 16px;font-family:{FONT_STACK};font-size:14px;
         font-weight:400;line-height:1.41;color:#ffffff;text-decoration:none;border-radius:4px;">
         {esc(label)}
+      </a>
+    </td>
+  </tr>
+</table>"""
+
+
+def mail_button_row(*buttons: tuple[str, str]) -> str:
+    """Primary + optional outline buttons side by side."""
+    if not buttons:
+        return ""
+    cells = []
+    for i, (href, label) in enumerate(buttons):
+        if i == 0:
+            cells.append(
+                f"""<td style="border-radius:4px;background-color:{CTA_BG};">
+      <a href="{esc(href)}" target="_blank"
+        style="display:inline-block;padding:8px 16px;font-family:{FONT_STACK};font-size:14px;
+        font-weight:400;line-height:1.41;color:#ffffff;text-decoration:none;border-radius:4px;">
+        {esc(label)}
+      </a>
+    </td>"""
+            )
+        else:
+            cells.append(
+                f"""<td style="padding-left:10px;">
+      <a href="{esc(href)}" target="_blank"
+        style="display:inline-block;padding:7px 15px;font-family:{FONT_STACK};font-size:14px;
+        font-weight:400;line-height:1.41;color:{TEXT_PRIMARY};text-decoration:none;
+        border-radius:4px;border:1px solid {BORDER};background:#fff;">
+        {esc(label)}
+      </a>
+    </td>"""
+            )
+    return f"""
+<table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0 0;">
+  <tr>{"".join(cells)}</tr>
+</table>"""
+
+
+def support_block() -> str:
+    return (
+        f"Need help? Email us at "
+        f'<a href="mailto:{SUPPORT_EMAIL}" style="color:{LINK};">{SUPPORT_EMAIL}</a>.'
+    )
+
+
+def brand_header() -> str:
+    logo = brand_logo_url()
+    return f"""
+<table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+  <tr>
+    <td align="center" style="padding:24px 24px 8px;">
+      <a href="{esc(site_url())}" target="_blank" style="text-decoration:none;">
+        <img src="{esc(logo)}" alt="Urban Aana" width="140"
+          style="display:block;width:140px;max-width:60%;height:auto;margin:0 auto;" />
       </a>
     </td>
   </tr>
@@ -132,7 +200,7 @@ def order_item_row(
     img = ""
     if image:
         img = f"""
-<td valign="middle" style="padding:0;width:75px;">
+<td valign="middle" style="padding:0 16px 0 0;width:76px;">
   <img src="{esc(image)}" width="60" height="60" alt=""
     style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid {BORDER};display:block;" />
 </td>"""
@@ -197,7 +265,7 @@ def render_shopify_email(
         f'<span style="display:none;font-size:0;line-height:0;max-height:0;max-width:0;opacity:0;overflow:hidden;">'
         f"{esc(preheader)}</span>"
     )
-    footer = footer_note or f"© {year} Urban Aana · {SUPPORT_EMAIL}"
+    footer = footer_note or f"© {year} Urban Aana"
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -225,11 +293,16 @@ def render_shopify_email(
           </td>
         </tr>
       </table>
-      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:24px auto 32px;max-width:{CONTAINER_WIDTH}px;">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:24px auto 0;max-width:{CONTAINER_WIDTH}px;">
         <tr>
           <td align="center" style="padding:0 20px;font-family:{FONT_STACK};font-size:12px;line-height:20px;color:{TEXT_MUTED};">
             {esc(footer)}
           </td>
+        </tr>
+      </table>
+      <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:24px 0 0;">
+        <tr>
+          <td style="height:8px;background:{ACCENT};font-size:0;line-height:0;">&nbsp;</td>
         </tr>
       </table>
     </td>

@@ -25,7 +25,8 @@ def _jsonify(value: Any) -> Any:
     return value
 
 
-def user_public(user: User, token: str | None = None, stats: dict | None = None) -> dict:
+def user_public(user, token: str | None = None, stats: dict | None = None) -> dict:
+    """Serialize a customer User or staff AdminAccount for API responses."""
     first = getattr(user, "firstName", None) or None
     last = getattr(user, "lastName", None) or None
     if not first and not last and user.name:
@@ -33,19 +34,26 @@ def user_public(user: User, token: str | None = None, stats: dict | None = None)
         if parts:
             first = parts[0]
             last = " ".join(parts[1:]) if len(parts) > 1 else ""
+    raw_addresses = getattr(user, "addresses", None) or []
+    addresses = []
+    for a in raw_addresses:
+        if hasattr(a, "model_dump"):
+            addresses.append(a.model_dump())
+        elif isinstance(a, dict):
+            addresses.append(a)
     data = {
         "_id": oid_str(user.id),
         "name": user.name,
         "firstName": first or "",
         "lastName": last or "",
         "email": user.email,
-        "isAdmin": user.isAdmin,
+        "isAdmin": bool(getattr(user, "isAdmin", False)),
         "roleId": getattr(user, "roleId", None),
-        "phone": user.phone,
-        "addresses": [a.model_dump() for a in (user.addresses or [])],
+        "phone": getattr(user, "phone", None),
+        "addresses": addresses,
         "emailSubscribed": bool(getattr(user, "emailSubscribed", False)),
         "whatsappSubscribed": bool(getattr(user, "whatsappSubscribed", False)),
-        "hasPassword": bool(user.password),
+        "hasPassword": bool(getattr(user, "password", None)),
         "customerUrlId": getattr(user, "customerUrlId", None) or None,
         "createdAt": getattr(user, "createdAt", None),
         "updatedAt": getattr(user, "updatedAt", None),
@@ -178,7 +186,7 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                     {
                         "$match": {
                             "customerId": {"$in": list(customer_ids)},
-                            "status": {"$nin": ["draft", "abandoned", "cancelled"]},
+                            "status": {"$nin": ["abandoned", "cancelled"]},
                         }
                     },
                     {
@@ -223,23 +231,6 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
 
         abandoned_by_id: dict[str, int] = {}
         try:
-            collection = Order.get_pymongo_collection()
-            ab_rows = await collection.aggregate(
-                [
-                    {
-                        "$match": {
-                            "customerId": {"$in": list(customer_ids)},
-                            "status": "abandoned",
-                        }
-                    },
-                    {"$group": {"_id": "$customerId", "count": {"$sum": 1}}},
-                ]
-            ).to_list(length=None)
-            for row in ab_rows:
-                abandoned_by_id[str(row.get("_id"))] = int(row.get("count") or 0)
-        except Exception:
-            pass
-        try:
             from app.documents import AbandonedCheckout
 
             ac_rows = await AbandonedCheckout.get_pymongo_collection().aggregate(
@@ -255,9 +246,7 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
             ).to_list(length=None)
             for row in ac_rows:
                 key = str(row.get("_id"))
-                abandoned_by_id[key] = abandoned_by_id.get(key, 0) + int(
-                    row.get("count") or 0
-                )
+                abandoned_by_id[key] = int(row.get("count") or 0)
         except Exception:
             pass
         for key, count in abandoned_by_id.items():

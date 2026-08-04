@@ -1,7 +1,7 @@
 """
 Backfill sales invoices for orders that don't have one.
 
-Skips draft/abandoned orders. Idempotent — existing invoices are linked, not duplicated.
+Skips abandoned orders. Idempotent — existing invoices are linked, not duplicated.
 
 Usage (from apps/api):
   .venv/bin/python scripts/backfill_order_invoices.py
@@ -22,7 +22,7 @@ from app.documents import Order, SalesInvoice  # noqa: E402
 from app.services import erp_ops  # noqa: E402
 
 
-SKIP_STATUSES = {"draft", "abandoned"}
+SKIP_STATUSES = {"abandoned"}
 
 
 async def main() -> None:
@@ -76,7 +76,7 @@ async def main() -> None:
     print(
         f"Done at {datetime.utcnow().isoformat()}Z | "
         f"new_invoices={after_count - before_count} assigned={created} "
-        f"already_had={already} skipped_draft={skipped} no_items={no_items} "
+        f"already_had={already} skipped_abandoned={skipped} no_items={no_items} "
         f"failed={failed} total_orders={len(orders)} sales_invoices={after_count}"
     )
 

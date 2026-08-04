@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { trackAddToCart, trackRemoveFromCart } from '@/lib/tracking';
 import { CART_STORAGE_KEY, ensureStorageKey } from '@/lib/storageKeys';
+import { isCartLineUnavailable, pricingForCartLine, stockForCartLine } from '@/utils/cartStock';
 
 ensureStorageKey(CART_STORAGE_KEY);
 
@@ -17,14 +18,10 @@ export const useCartStore = create(
 
             addItem: (item) => {
                 const maxQty = 5;
-                // Determine stock based on variant if color/size is provided, or totalStock
-                let stock = item.totalStock ?? 0;
-                if (item.color && item.variants) {
-                    const variant = item.variants.find(v => v.color === item.color);
-                    if (variant) stock = variant.quantity ?? stock;
-                }
+                const stock = stockForCartLine(item, item);
 
                 const price = Number(item.price ?? item.pricing?.sellingPrice ?? 0);
+                const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
                 const name = item.productName ?? item.name ?? '';
                 const image = item.image ?? item.thumbnails?.[0] ?? item.variants?.[0]?.images?.[0] ?? item.images?.[0];
                 
@@ -59,7 +56,15 @@ export const useCartStore = create(
 
                 if (finalQty < 1) finalQty = 1;
 
-                const normalized = { ...item, price, name, image, qty: finalQty, countInStock: stock };
+                const normalized = {
+                    ...item,
+                    price,
+                    mrp: mrp > 0 ? mrp : undefined,
+                    name,
+                    image,
+                    qty: finalQty,
+                    countInStock: stock,
+                };
 
                 if (existItem) {
                     set({
@@ -79,8 +84,8 @@ export const useCartStore = create(
                 set({
                     cartItems: get().cartItems.map((x) => {
                         if (x._id === id && x.size === size && x.color === color) {
-                            const stock = x.countInStock ?? 5; 
-                            // Ensure it doesn't exceed stock even if user tries to force it
+                            const stock = Number(x.countInStock ?? 0);
+                            if (stock <= 0) return x;
                             const finalQty = Math.min(Math.max(1, newQty), maxQty, stock);
                             return { ...x, qty: finalQty };
                         }
@@ -96,16 +101,14 @@ export const useCartStore = create(
                 const updatedItems = await Promise.all(cartItems.map(async (item) => {
                     try {
                         const product = await productService.getById(item._id);
-                        let stock = product.totalStock || 0;
-                        if (item.color && product.variants) {
-                            const variant = product.variants.find(v => v.color === item.color);
-                            if (variant) stock = variant.quantity ?? stock;
-                        }
-                        
-                        return { 
-                            ...item, 
+                        const stock = stockForCartLine(product, item);
+                        const pricing = pricingForCartLine(product, item);
+
+                        return {
+                            ...item,
+                            ...pricing,
                             countInStock: stock,
-                            qty: Math.min(item.qty, stock === 0 ? 1 : stock) // Don't set to 0 qty to avoid UI breakage, but stock will be 0
+                            qty: Math.min(item.qty, stock === 0 ? item.qty : stock),
                         };
                     } catch (err) {
                         return item; // Fallback to current item if fetch fails
@@ -116,7 +119,7 @@ export const useCartStore = create(
             },
 
             hasOutOfStockItems: () => {
-                return get().cartItems.some(item => (item.countInStock ?? 1) < item.qty || item.countInStock === 0);
+                return get().cartItems.some((item) => isCartLineUnavailable(item));
             },
 
             removeItem: (id, size, color) => {

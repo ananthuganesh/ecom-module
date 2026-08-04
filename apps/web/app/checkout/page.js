@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Lock, Smartphone } from "lucide-react";
+import { ChevronDown, Loader2, Lock, Smartphone } from "lucide-react";
 import {
   CheckIcon,
   InfoIcon
@@ -22,6 +22,7 @@ import {
   productService,
   authService,
 } from "@/api";
+import { isCartLineUnavailable } from "@/utils/cartStock";
 import CheckoutAccountPrompt from "@/components/CheckoutAccountPrompt";
 import { normalizeIndianState } from "@/components/storefront/StateSearchSelect";
 import { trackBeginCheckout, stashPurchaseEvent, trackSelectPromotion, trackAddPaymentInfo, trackAddShippingInfo } from "@/lib/tracking";
@@ -43,6 +44,28 @@ function splitName(full = "") {
   if (parts.length === 1) return { firstName: parts[0], lastName: "" };
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
+
+/** Normalize to a 10-digit Indian mobile (strip +91 / leading 0). */
+function toIndianMobile(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length >= 12) {
+    digits = digits.slice(-10);
+  } else if (digits.startsWith("0") && digits.length === 11) {
+    digits = digits.slice(1);
+  }
+  return digits.slice(0, 10);
+}
+
+const isIndianMobile = (phone) => /^[6-9]\d{9}$/.test(String(phone || ""));
+
+const formatCheckoutMoney = (amount) => {
+  const n = Number(amount) || 0;
+  const whole = Math.abs(n - Math.round(n)) < 0.005;
+  return `₹${n.toLocaleString("en-IN", {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  })}`;
+};
 
 export default function CheckoutPage() {
   return (
@@ -94,11 +117,11 @@ function CheckoutPageContent() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [couponError, setCouponError] = useState("");
+  const [showCouponPanel, setShowCouponPanel] = useState(false);
   const [isCouponLoading, setIsCouponLoading] = useState(false);
   const [pendingOrderId, setPendingOrderId] = useState(null);
   const [paymentError, setPaymentError] = useState("");
-  const [emailOffers, setEmailOffers] = useState(true);
-  const [saveInfo, setSaveInfo] = useState(true);
+  const [marketingOptIn, setMarketingOptIn] = useState(true);
 
   const checkoutItems = isBuyNow ? buyNowItems : cartItems;
 
@@ -158,9 +181,17 @@ function CheckoutPageContent() {
       name: prev.name || userInfo.name || "",
       firstName: prev.firstName || parts.firstName,
       lastName: prev.lastName || parts.lastName,
-      phone: prev.phone || userInfo.phone || "",
+      phone: prev.phone || toIndianMobile(userInfo.phone),
       email: prev.email || userInfo.email || "",
     }));
+    if (
+      userInfo.emailSubscribed !== undefined ||
+      userInfo.whatsappSubscribed !== undefined
+    ) {
+      setMarketingOptIn(
+        Boolean(userInfo.emailSubscribed) && Boolean(userInfo.whatsappSubscribed)
+      );
+    }
   }, [userInfo]);
 
   useEffect(() => {
@@ -176,10 +207,7 @@ function CheckoutPageContent() {
   }, []);
 
   const availableItems = checkoutItems.filter(
-    (item) => (item.countInStock ?? 1) >= (item.qty || 1) && item.countInStock > 0
-  );
-  const unavailableItems = checkoutItems.filter(
-    (item) => (item.countInStock ?? 1) < (item.qty || 1) || item.countInStock === 0
+    (item) => !isCartLineUnavailable(item)
   );
 
   const subtotal = availableItems.reduce(
@@ -190,6 +218,14 @@ function CheckoutPageContent() {
   const baseTotalPrice = subtotal + shippingPrice;
   const discountAmount = appliedCoupon ? appliedCoupon.discountAmount : 0;
   const totalPrice = baseTotalPrice - discountAmount;
+  const mrpSavings = availableItems.reduce((acc, item) => {
+    const price = Number(item.price) || 0;
+    const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
+    const qty = item.qty || 1;
+    if (mrp > price) return acc + (mrp - price) * qty;
+    return acc;
+  }, 0);
+  const totalSavings = mrpSavings + (Number(discountAmount) || 0);
 
   const syncFullName = (next) => {
     const name = [next.firstName, next.lastName].filter(Boolean).join(" ").trim();
@@ -197,10 +233,18 @@ function CheckoutPageContent() {
   };
 
   const updateField = (key, value) => {
+    let nextValue = value;
+    if (key === "firstName" || key === "lastName") {
+      // Letters, spaces, hyphen, apostrophe only — no digits.
+      nextValue = String(value).replace(/[^\p{L}\s'-]/gu, "");
+    }
+    if (key === "phone") {
+      nextValue = toIndianMobile(value);
+    }
     setFormData((prev) => {
-      const next = { ...prev, [key]: value };
+      const next = { ...prev, [key]: nextValue };
       if (key === "firstName" || key === "lastName") return syncFullName(next);
-      if (key === "postalCode" && String(value).length !== 6) {
+      if (key === "postalCode" && String(nextValue).length !== 6) {
         next.city = "";
         next.state = "";
       }
@@ -210,7 +254,7 @@ function CheckoutPageContent() {
       setShowLoginPrompt(false);
       setLoginPromptSkipped(false);
       setPaymentError("");
-      const normalized = String(value).trim().toLowerCase();
+      const normalized = String(nextValue).trim().toLowerCase();
       if (normalized !== resolvedEmail) setResolvedEmail("");
     }
     if (key === "postalCode") {
@@ -353,9 +397,20 @@ function CheckoutPageContent() {
     }
     if (!formData.firstName?.trim() && !formData.name?.trim()) {
       errors.firstName = "Enter a first name.";
+    } else if (
+      formData.firstName?.trim() &&
+      !/^[\p{L}\s'-]+$/u.test(formData.firstName.trim())
+    ) {
+      errors.firstName = "First name can only contain letters.";
     }
-    if (!/^\d{10}$/.test(formData.phone || "")) {
-      errors.phone = "Enter a valid 10-digit mobile number.";
+    if (
+      formData.lastName?.trim() &&
+      !/^[\p{L}\s'-]+$/u.test(formData.lastName.trim())
+    ) {
+      errors.lastName = "Last name can only contain letters.";
+    }
+    if (!isIndianMobile(formData.phone)) {
+      errors.phone = "Enter a valid 10-digit Indian mobile number.";
     }
     if ((formData.address || "").trim().length < 10) {
       errors.address = "Enter a complete street address.";
@@ -381,16 +436,24 @@ function CheckoutPageContent() {
       name: prev.name || user.name || "",
       firstName: prev.firstName || parts.firstName,
       lastName: prev.lastName || parts.lastName,
-      phone: prev.phone || user.phone || "",
+      phone: prev.phone || toIndianMobile(user.phone),
       email: prev.email || user.email || "",
     }));
+    if (
+      user.emailSubscribed !== undefined ||
+      user.whatsappSubscribed !== undefined
+    ) {
+      setMarketingOptIn(
+        Boolean(user.emailSubscribed) && Boolean(user.whatsappSubscribed)
+      );
+    }
     const defaultAddr = (user.addresses || []).find((a) => a.isDefault) || user.addresses?.[0];
     if (defaultAddr) {
       setFormData((prev) => ({
         ...prev,
         address: prev.address || defaultAddr.house || "",
         postalCode: prev.postalCode || defaultAddr.pincode || "",
-        phone: prev.phone || defaultAddr.phone || prev.phone,
+        phone: prev.phone || toIndianMobile(defaultAddr.phone) || prev.phone,
       }));
     }
   };
@@ -406,7 +469,10 @@ function CheckoutPageContent() {
 
     setIsResolvingEmail(true);
     try {
-      const data = await authService.checkoutEmail(email, name);
+      const data = await authService.checkoutEmail(email, name, {
+        emailSubscribed: marketingOptIn,
+        whatsappSubscribed: marketingOptIn,
+      });
       data.authMethod = "checkout";
       const hasSession = Boolean(data?.token || (data?._id && !data?.requiresLogin));
       if (hasSession) {
@@ -595,6 +661,20 @@ function CheckoutPageContent() {
     setPaymentError("");
 
     try {
+      // Persist marketing opt-in on the customer record (email + WhatsApp).
+      try {
+        const updated = await authService.updateProfile({
+          emailSubscribed: marketingOptIn,
+          whatsappSubscribed: marketingOptIn,
+        });
+        if (updated) {
+          setUserInfo(updated);
+          persistAuth(updated);
+        }
+      } catch {
+        // Non-blocking — order can still proceed if prefs update fails.
+      }
+
       let localOrderId = pendingOrderId;
       if (!localOrderId) {
         const orderData = {
@@ -659,16 +739,14 @@ function CheckoutPageContent() {
     ensureCheckoutAccount(() => executePlaceOrder());
   };
 
-  const OrderSummary = ({ compact = false }) => (
+  const OrderSummary = ({ compact = false }) => {
+    const itemCount = availableItems.reduce((acc, item) => acc + (item.qty || 1), 0);
+    const itemLabel = itemCount === 1 ? "Item" : "Items";
+    return (
     <div className={compact ? "" : "lg:sticky lg:top-8"}>
-      <h2 className={`${SECTION} mb-5`}>Order summary</h2>
-
-      {unavailableItems.length > 0 && (
-        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-800">
-          {unavailableItems.length} item{unavailableItems.length > 1 ? "s" : ""} out of stock and
-          won’t be included.
-        </div>
-      )}
+      <h2 className={`${SECTION} mb-5`}>
+        Order Summary ({itemCount} {itemLabel})
+      </h2>
 
       <div className="space-y-4 mb-6">
         {availableItems.map((item) => {
@@ -687,110 +765,139 @@ function CheckoutPageContent() {
                   fill
                   className="object-cover"
                 />
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-700 px-1 text-[11px] font-medium text-white">
-                  {item.qty || 1}
-                </span>
               </div>
               <div className="min-w-0 flex-1 pt-0.5">
                 <p className="truncate text-[13px] font-medium text-gray-900">
                   {item.name || item.productName}
                 </p>
-                {(item.size || item.color) && (
-                  <p className="text-[12px] text-gray-500">
-                    {[item.size].filter(Boolean).join(" / ")}
-                  </p>
-                )}
+                <p className="text-[12px] text-gray-500">
+                  {[item.size, item.color].filter(Boolean).join(" / ")}
+                  {[item.size, item.color].some(Boolean) ? " • " : ""}
+                  Qty {item.qty || 1}
+                </p>
+                <p className="mt-1 text-[13px] font-medium text-gray-900">
+                  {line === 0 ? "FREE" : formatCheckoutMoney(line)}
+                </p>
               </div>
-              <p className="shrink-0 text-[13px] font-medium text-gray-900">
-                {line === 0 ? "FREE" : `₹${line.toLocaleString("en-IN")}`}
-              </p>
             </div>
           );
         })}
       </div>
 
-      <div className="mb-4 flex gap-2">
-        {!appliedCoupon ? (
-          <>
-            <input
-              className={INPUT}
-              placeholder="Discount code"
-              value={couponInput}
-              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === "Enter" && handleApplyCoupon()}
-            />
-            <button
-              type="button"
-              onClick={() => handleApplyCoupon()}
-              disabled={isCouponLoading || !couponInput}
-              className="shrink-0 rounded-md bg-gray-200 px-4 text-[13px] font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-300"
-            >
-              {isCouponLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
-            </button>
-          </>
-        ) : (
-          <div className="flex w-full items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
-            <span className="text-[13px] font-medium text-emerald-800">
-              {appliedCoupon.code} (−₹{discountAmount.toFixed(0)})
-            </span>
-            <button
-              type="button"
-              onClick={removeCoupon}
-              className="text-[12px] font-medium text-gray-500 hover:text-red-600"
-            >
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
-      {couponError && <p className="mb-3 text-[12px] text-red-600">{couponError}</p>}
-
-      {!appliedCoupon && availableCoupons.filter((c) => c?.code).length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {availableCoupons.filter((c) => c?.code).slice(0, 4).map((coupon) => (
-            <button
-              key={coupon._id || coupon.code}
-              type="button"
-              onClick={() => handleApplyCoupon(coupon.code)}
-              className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:border-brand-red hover:text-brand-red"
-            >
-              {coupon.code}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="space-y-2 border-t border-gray-200 pt-4 text-[13px]">
         <div className="flex justify-between text-gray-600">
           <span>Subtotal</span>
-          <span>₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+          <span>{formatCheckoutMoney(subtotal)}</span>
         </div>
         <div className="flex justify-between text-gray-600">
           <span>Shipping</span>
           <span>
-            {shippingPrice === 0
-              ? "FREE"
-              : `₹${shippingPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+            {shippingPrice === 0 ? "FREE" : formatCheckoutMoney(shippingPrice)}
           </span>
         </div>
-        {appliedCoupon && (
+        {appliedCoupon && discountAmount > 0 && (
           <div className="flex justify-between text-emerald-700">
-            <span>Discount</span>
-            <span>−₹{discountAmount.toFixed(2)}</span>
+            <span>Coupon ({appliedCoupon.code})</span>
+            <span>−{formatCheckoutMoney(discountAmount)}</span>
           </div>
         )}
-        <div className="flex items-end justify-between border-t border-gray-200 pt-3">
+        <div className="flex items-center justify-between border-t border-gray-200 pt-3">
           <span className="text-[16px] font-semibold text-gray-900">Total</span>
-          <div className="text-right">
-            <span className="mr-2 text-[12px] text-gray-500">INR</span>
-            <span className="text-[20px] font-semibold text-gray-900">
-              ₹{totalPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-            </span>
-          </div>
+          <span className="text-[16px] font-semibold text-gray-900">
+            {formatCheckoutMoney(totalPrice)}
+          </span>
         </div>
+        {totalSavings > 0 && (
+          <p className="pt-1 text-[13px] font-medium text-emerald-700">
+            You save {formatCheckoutMoney(totalSavings)}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-5 border-t border-gray-200 pt-4">
+        {appliedCoupon ? (
+          <div className="flex w-full items-center justify-between rounded-md bg-emerald-600 px-3 py-2.5">
+            <span className="text-[13px] font-medium text-white">
+              {appliedCoupon.code} applied (−{formatCheckoutMoney(discountAmount)})
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                removeCoupon();
+                setShowCouponPanel(false);
+              }}
+              className="text-[12px] font-medium text-white/90 underline-offset-2 hover:text-white hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCouponPanel((open) => !open)}
+              className="flex w-full items-center justify-between text-left text-[13px] text-gray-700"
+              aria-expanded={showCouponPanel}
+            >
+              <span>Have a discount code?</span>
+              <span className="inline-flex items-center gap-1 font-medium text-gray-900">
+                Apply Coupon
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${showCouponPanel ? "rotate-180" : ""}`}
+                />
+              </span>
+            </button>
+            {showCouponPanel && (
+              <div className="mt-3 space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    className={INPUT}
+                    placeholder="Discount code"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === "Enter" && handleApplyCoupon()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleApplyCoupon()}
+                    disabled={isCouponLoading || !couponInput}
+                    className="shrink-0 rounded-md bg-gray-200 px-4 text-[13px] font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-300"
+                  >
+                    {isCouponLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Apply"
+                    )}
+                  </button>
+                </div>
+                {couponError && (
+                  <p className="text-[12px] text-red-600">{couponError}</p>
+                )}
+                {availableCoupons.filter((c) => c?.code).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {availableCoupons
+                      .filter((c) => c?.code)
+                      .slice(0, 4)
+                      .map((coupon) => (
+                        <button
+                          key={coupon._id || coupon.code}
+                          type="button"
+                          onClick={() => handleApplyCoupon(coupon.code)}
+                          className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:border-brand-red hover:text-brand-red"
+                        >
+                          {coupon.code}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
-  );
+    );
+  };
 
   if (!cartHydrated) {
     return (
@@ -818,14 +925,21 @@ function CheckoutPageContent() {
             href={isBuyNow ? "/all-products" : "/cart"}
             className="text-[13px] text-[#222222] hover:underline"
           >
-            {isBuyNow ? "Back to shopping" : "Return to cart"}
+            {isBuyNow ? "Back to shopping" : "Return to Cart"}
           </Link>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:min-h-[calc(100vh-3.5rem)] lg:grid-cols-2">
-        {/* Form column — pure white */}
-        <div className="order-2 bg-white px-4 py-8 sm:px-8 lg:order-1 lg:flex lg:justify-end lg:border-r lg:border-gray-200 lg:px-10 lg:py-10">
+      <div className="relative lg:min-h-[calc(100vh-3.5rem)]">
+        {/* Full-bleed summary background on desktop */}
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-1/2 bg-[#F8F8F8] lg:block"
+          aria-hidden
+        />
+
+        <div className="relative mx-auto grid max-w-6xl grid-cols-1 px-4 sm:px-8 lg:min-h-[calc(100vh-3.5rem)] lg:grid-cols-2">
+          {/* Form — left edge matches nav logo */}
+          <div className="order-2 bg-white py-8 lg:order-1 lg:border-r lg:border-gray-200 lg:py-10 lg:pr-10">
             <div className="w-full max-w-xl space-y-8">
               {/* Contact */}
               <section>
@@ -872,14 +986,14 @@ function CheckoutPageContent() {
                     />
                   )}
                 </div>
-                <label className="mt-3 flex items-center gap-2 text-[13px] text-gray-700">
+                <label className="mt-3 flex items-start gap-2 text-[13px] text-gray-700">
                   <input
                     type="checkbox"
-                    checked={emailOffers}
-                    onChange={(e) => setEmailOffers(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
+                    checked={marketingOptIn}
+                    onChange={(e) => setMarketingOptIn(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300"
                   />
-                  Email me with news and offers
+                  <span>Email & WhatsApp me about offers and updates</span>
                 </label>
               </section>
 
@@ -893,6 +1007,8 @@ function CheckoutPageContent() {
                       <input
                         className={formErrors.firstName ? INPUT_ERR : INPUT}
                         autoComplete="given-name"
+                        inputMode="text"
+                        autoCapitalize="words"
                         value={formData.firstName}
                         onChange={(e) => updateField("firstName", e.target.value)}
                       />
@@ -903,11 +1019,16 @@ function CheckoutPageContent() {
                     <div>
                       <label className={LABEL}>Last name</label>
                       <input
-                        className={INPUT}
+                        className={formErrors.lastName ? INPUT_ERR : INPUT}
                         autoComplete="family-name"
+                        inputMode="text"
+                        autoCapitalize="words"
                         value={formData.lastName}
                         onChange={(e) => updateField("lastName", e.target.value)}
                       />
+                      {formErrors.lastName && (
+                        <p className="mt-1 text-[12px] text-red-600">{formErrors.lastName}</p>
+                      )}
                     </div>
                   </div>
 
@@ -926,27 +1047,6 @@ function CheckoutPageContent() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className={LABEL}>PIN code</label>
-                      <div className="relative">
-                        <input
-                          className={formErrors.postalCode ? INPUT_ERR : INPUT}
-                          maxLength={6}
-                          inputMode="numeric"
-                          autoComplete="postal-code"
-                          value={formData.postalCode}
-                          onChange={(e) =>
-                            updateField("postalCode", e.target.value.replace(/\D/g, ""))
-                          }
-                        />
-                        {isPincodeLoading && (
-                          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
-                        )}
-                      </div>
-                      {formErrors.postalCode && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.postalCode}</p>
-                      )}
-                    </div>
                     <div>
                       <label className={LABEL}>City</label>
                       <input
@@ -973,10 +1073,28 @@ function CheckoutPageContent() {
                         <p className="mt-1 text-[12px] text-red-600">{formErrors.state}</p>
                       )}
                     </div>
+                    <div>
+                      <label className={LABEL}>PIN code</label>
+                      <div className="relative">
+                        <input
+                          className={formErrors.postalCode ? INPUT_ERR : INPUT}
+                          maxLength={6}
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          value={formData.postalCode}
+                          onChange={(e) =>
+                            updateField("postalCode", e.target.value.replace(/\D/g, ""))
+                          }
+                        />
+                        {isPincodeLoading && (
+                          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
+                        )}
+                      </div>
+                      {formErrors.postalCode && (
+                        <p className="mt-1 text-[12px] text-red-600">{formErrors.postalCode}</p>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-[12px] text-gray-500">
-                    City and state are filled automatically from your PIN code.
-                  </p>
 
                   <div>
                     <label className={LABEL}>Phone</label>
@@ -990,45 +1108,17 @@ function CheckoutPageContent() {
                       <input
                         className={`${formErrors.phone ? INPUT_ERR : INPUT} pl-[4.25rem]`}
                         type="tel"
+                        inputMode="numeric"
                         maxLength={10}
-                        autoComplete="tel"
+                        autoComplete="tel-national"
+                        placeholder="10-digit mobile"
                         value={formData.phone}
-                        onChange={(e) =>
-                          updateField("phone", e.target.value.replace(/\D/g, ""))
-                        }
+                        onChange={(e) => updateField("phone", e.target.value)}
                       />
                     </div>
                     {formErrors.phone && (
                       <p className="mt-1 text-[12px] text-red-600">{formErrors.phone}</p>
                     )}
-                  </div>
-
-                  <label className="flex items-center gap-2 text-[13px] text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={saveInfo}
-                      onChange={(e) => setSaveInfo(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    Save this information for next time
-                  </label>
-                </div>
-              </section>
-
-              {/* Shipping */}
-              <section>
-                <h2 className={`${SECTION} mb-3`}>Shipping method</h2>
-                <div className="overflow-hidden rounded-md border border-gray-300">
-                  <div className="flex h-10 items-center justify-between gap-3 bg-[#F9F9F5] px-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full border-[5px] border-[#222222] bg-white" />
-                      <span className="text-[14px] text-gray-900">
-                        Standard
-                      </span>
-                    </div>
-                    <span className="text-[14px] font-medium text-gray-900">
-                      {shippingPrice === 0 ? "FREE" : `₹${shippingPrice.toFixed(2)}`}
-                    </span>
                   </div>
                 </div>
               </section>
@@ -1076,20 +1166,37 @@ function CheckoutPageContent() {
                     : "Pay now"}
               </button>
 
-              <p className="pt-2 text-[12px]">
-                <Link href="/contact" className="text-[#222222] hover:underline">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1 text-[12px] text-gray-500">
+                <Link href="/return-refund" className="hover:text-gray-900 hover:underline">
+                  Refund policy
+                </Link>
+                <span aria-hidden>·</span>
+                <Link href="/shipping" className="hover:text-gray-900 hover:underline">
+                  Shipping policy
+                </Link>
+                <span aria-hidden>·</span>
+                <Link href="/privacy-policy" className="hover:text-gray-900 hover:underline">
+                  Privacy policy
+                </Link>
+                <span aria-hidden>·</span>
+                <Link href="/terms-and-conditions" className="hover:text-gray-900 hover:underline">
+                  Terms of service
+                </Link>
+                <span aria-hidden>·</span>
+                <Link href="/contact" className="hover:text-gray-900 hover:underline">
                   Contact
                 </Link>
               </p>
             </div>
-        </div>
-
-        {/* Summary column — full grey */}
-        <aside className="order-1 border-b border-gray-200 bg-[#f5f5f5] px-4 py-8 sm:px-8 lg:order-2 lg:flex lg:justify-start lg:border-b-0 lg:px-10 lg:py-10">
-          <div className="w-full max-w-md">
-            <OrderSummary />
           </div>
-        </aside>
+
+          {/* Summary — right edge matches nav “Return to Cart” */}
+          <aside className="order-1 border-b border-gray-200 bg-[#F8F8F8] py-8 lg:order-2 lg:flex lg:justify-end lg:border-b-0 lg:bg-transparent lg:py-10 lg:pl-10">
+            <div className="w-full max-w-xl">
+              <OrderSummary />
+            </div>
+          </aside>
+        </div>
       </div>
     </main>
   );

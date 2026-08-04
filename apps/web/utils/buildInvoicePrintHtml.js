@@ -226,7 +226,7 @@ function paymentDetails(order, grand) {
 
   const paidLike = paymentStatus === "PAID" || paymentStatus === "PARTIALLY REFUNDED";
   const paymentMade = paidLike ? grand : 0;
-  const balanceDue = paidLike ? 0 : isCod ? grand : grand;
+  const balanceDue = paidLike ? 0 : grand;
 
   return {
     paymentStatus,
@@ -235,7 +235,6 @@ function paymentDetails(order, grand) {
     paymentDate,
     paymentMade,
     balanceDue,
-    isCod,
   };
 }
 
@@ -1010,14 +1009,25 @@ export function buildMultiInvoicePrintHtml(entries) {
   <title>Invoices (${list.length})</title>
   <style>
     ${styles}
-    .invoice-page { padding: 0; }
+    @page { size: A4; margin: 10mm; }
+    body { padding: 0 !important; margin: 0 !important; background: #fff; }
+    .invoice-page {
+      padding: 24px 32px 32px;
+      box-sizing: border-box;
+      break-after: page;
+      page-break-after: always;
+    }
+    .invoice-page:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
     @media print {
       .invoice-page { break-after: page; page-break-after: always; }
       .invoice-page:last-child { break-after: auto; page-break-after: auto; }
     }
   </style>
 </head>
-<body style="padding:0;margin:0">
+<body>
   ${pages}
 </body>
 </html>`;

@@ -1,9 +1,11 @@
 /**
- * Open the system print dialog for a PDF blob (no forced download).
- * Uses a hidden iframe when possible; falls back to a same-origin HTML tab
- * (Chrome’s PDF iframe viewer blocks print()). That tab closes on afterprint.
+ * Deliver a PDF blob.
+ *
+ * autoPrint: false (default) — download + preview tab, no window.print().
+ *   Avoids Chrome "Headers and footers" chrome (date, title, URL, page X/Y).
+ * autoPrint: true — open PDF and call print() (shipping labels, etc.).
  */
-export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
+export function printPdfBlob(blob, { filename = "document.pdf", autoPrint = false } = {}) {
   return new Promise((resolve, reject) => {
     if (!(blob instanceof Blob)) {
       reject(new Error("Invalid PDF"));
@@ -21,11 +23,6 @@ export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
         ? new File([pdf], safeName, { type: "application/pdf" })
         : pdf;
     const url = URL.createObjectURL(named);
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("title", safeName.replace(/\.pdf$/i, ""));
-    iframe.style.cssText =
-      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
-    iframe.src = url;
 
     let cleaned = false;
     let popup = null;
@@ -41,114 +38,84 @@ export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
       }
       popup = null;
       URL.revokeObjectURL(url);
-      iframe.remove();
     };
 
-    const tryPrint = (win) => {
-      win.focus();
-      win.print();
-    };
+    // Always offer a clean download (no browser header overlay in the file).
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = safeName.endsWith(".pdf") ? safeName : `${safeName}.pdf`;
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      /* ignore */
+    }
 
-    const printViaPopup = () => {
-      // HTML shell (not raw PDF URL) so afterprint can close the tab.
-      popup = window.open("", "_blank");
-      if (!popup) {
-        cleanup();
-        reject(new Error("Allow pop-ups to print the PDF"));
-        return;
-      }
-
-      const title = (safeName.replace(/\.pdf$/i, "") || "document").replace(/[<>&"]/g, "");
-      const doc = popup.document;
-      doc.open();
-      doc.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${title}</title>
-  <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
-    embed { display: block; width: 100%; height: 100%; border: 0; }
-  </style>
-</head>
-<body>
-  <embed type="application/pdf" src="${url}" />
-  <script>
-    (function () {
-      var closed = false;
-      function closeSelf() {
-        if (closed) return;
-        closed = true;
-        try { window.close(); } catch (e) {}
-      }
-      function armCloseAfterPrint() {
-        window.addEventListener("afterprint", closeSelf);
+    if (!autoPrint) {
+      const preview = window.open(url, "_blank");
+      if (preview) {
         try {
-          var mql = window.matchMedia("print");
-          mql.addEventListener("change", function (e) {
-            if (!e.matches) setTimeout(closeSelf, 200);
-          });
-        } catch (e) {}
-        // Dialog closed / cancelled → focus returns here.
-        window.addEventListener("focus", function onFocus() {
-          setTimeout(closeSelf, 300);
-        });
-        setTimeout(closeSelf, 120000);
-      }
-      setTimeout(function () {
-        try {
-          window.focus();
-          window.print();
-        } catch (e) {}
-        armCloseAfterPrint();
-      }, 500);
-    })();
-  <\/script>
-</body>
-</html>`);
-      doc.close();
-
-      // Parent also closes leftover tab when user returns to admin.
-      window.setTimeout(() => {
-        window.addEventListener(
-          "focus",
-          () => {
-            window.setTimeout(cleanup, 200);
-          },
-          { once: true }
-        );
-      }, 800);
-      window.setTimeout(cleanup, 120_000);
-      resolve();
-    };
-
-    iframe.onload = () => {
-      window.setTimeout(() => {
-        try {
-          const win = iframe.contentWindow;
-          if (!win) throw new Error("Print window unavailable");
-          tryPrint(win);
-          try {
-            win.addEventListener("afterprint", cleanup, { once: true });
-          } catch {
-            /* ignore */
-          }
-          window.setTimeout(() => {
-            window.addEventListener("focus", cleanup, { once: true });
-          }, 800);
-          window.setTimeout(cleanup, 120_000);
-          resolve();
+          preview.opener = null;
         } catch {
-          printViaPopup();
+          /* ignore */
         }
-      }, 300);
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      resolve();
+      return;
+    }
+
+    popup = window.open(url, "_blank");
+    if (!popup) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      reject(new Error("Allow pop-ups to print the PDF"));
+      return;
+    }
+
+    try {
+      popup.opener = null;
+    } catch {
+      /* ignore */
+    }
+
+    const tryPrint = () => {
+      try {
+        popup.focus();
+        popup.print();
+      } catch {
+        /* user can print from the PDF tab */
+      }
     };
 
-    iframe.onerror = () => {
-      cleanup();
-      reject(new Error("Failed to load label PDF"));
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      tryPrint();
+      if (attempts < 4 && popup && !popup.closed) {
+        window.setTimeout(tick, 400);
+      }
     };
+    window.setTimeout(tick, 600);
 
-    document.body.appendChild(iframe);
+    try {
+      popup.addEventListener("afterprint", cleanup, { once: true });
+    } catch {
+      /* ignore */
+    }
+
+    window.setTimeout(() => {
+      window.addEventListener(
+        "focus",
+        () => {
+          window.setTimeout(cleanup, 1500);
+        },
+        { once: true }
+      );
+    }, 1200);
+    window.setTimeout(cleanup, 180_000);
+    resolve();
   });
 }

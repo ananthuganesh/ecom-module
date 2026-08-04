@@ -21,7 +21,8 @@ export const adminMediaService = {
     return client
       .post(`${MEDIA_BASE}/upload`, form, {
         params: { folder: target },
-        headers: { "Content-Type": "multipart/form-data" },
+        // Let the browser set multipart boundary (do not force Content-Type).
+        headers: { "Content-Type": false },
         onUploadProgress,
         // Large reels can take several minutes through the Next.js proxy → API → R2.
         timeout: 10 * 60 * 1000,

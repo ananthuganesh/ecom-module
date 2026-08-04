@@ -395,7 +395,7 @@ export default function AdminOrderDetailPage() {
       await printHtml(html, {
         title: inv?.number || order?.invoiceNumber || order.orderNumber || "invoice",
       });
-      toast.success("Print dialog opened");
+      toast.success("Invoice PDF downloaded");
     } catch (err) {
       toast.error(err?.message || "Invoice print failed");
     } finally {
@@ -440,6 +440,11 @@ export default function AdminOrderDetailPage() {
         setOrder(response.order);
       }
       toast.success("DTDC consignment booked");
+      try {
+        await ensureInvoice({ silent: true });
+      } catch {
+        /* invoice can still be generated from Print invoice */
+      }
     } catch (e) {
       console.error(e);
       const msg =
@@ -472,9 +477,8 @@ export default function AdminOrderDetailPage() {
         toast.error(detail);
         return;
       }
-      await printPdfBlob(blob, { filename: `label-${awb}.pdf` });
+      await printPdfBlob(blob, { filename: `label-${awb}.pdf`, autoPrint: true });
       toast.success("Print dialog opened");
-      // Label print may advance shippingStatus to Ready To Ship
       try {
         const refreshed = await adminOrderService.getById(order._id);
         if (refreshed) setOrder(refreshed);
@@ -650,6 +654,11 @@ export default function AdminOrderDetailPage() {
   ).toLowerCase();
   const fulfillment = resolveFulfillmentDisplay(order);
   const isCancelled = String(order.status || "").toLowerCase() === "cancelled";
+  const hasAwb = Boolean(order.awbCode || order.awb);
+  const isUnfulfilled =
+    fulfillment.key === "Unfulfilled" || fulfillment.key === "Payment Pending";
+  // Invoice print is the post-fulfillment document on this page (labels live under Shipments).
+  const showPrintInvoice = !isUnfulfilled || hasAwb;
 
   return (
     <main className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
@@ -712,21 +721,23 @@ export default function AdminOrderDetailPage() {
                 </AdminHeaderButton>
               )}
 
-              <AdminHeaderButton
-                onClick={handlePrintInvoice}
-                disabled={isPrintingInvoice || invoiceLoading}
-              >
-                {isPrintingInvoice ? (
-                  <>
-                    <Spinner className="size-3.5 text-[#303030]" />
-                    Preparing…
-                  </>
-                ) : (
-                  "Print invoice"
-                )}
-              </AdminHeaderButton>
+              {showPrintInvoice ? (
+                <AdminHeaderButton
+                  onClick={handlePrintInvoice}
+                  disabled={isPrintingInvoice || invoiceLoading}
+                >
+                  {isPrintingInvoice ? (
+                    <>
+                      <Spinner className="size-3.5 text-[#303030]" />
+                      Preparing…
+                    </>
+                  ) : (
+                    "Print invoice"
+                  )}
+                </AdminHeaderButton>
+              ) : null}
 
-              {(order.awbCode || order.awb) ? (
+              {hasAwb ? (
                 <AdminHeaderButton
                   onClick={handlePrintLabel}
                   disabled={isPrintingLabel}
@@ -995,8 +1006,7 @@ export default function AdminOrderDetailPage() {
                   );
                 })}
               </div>
-              {fulfillment.key === "Unfulfilled" &&
-              !(order.awbCode || order.awb) ? (
+              {fulfillment.key === "Unfulfilled" && !hasAwb ? (
                 <div className="admin-fulfillment-actions">
                   <Button
                     type="button"
@@ -1013,6 +1023,42 @@ export default function AdminOrderDetailPage() {
                       "Mark as fulfilled"
                     )}
                   </Button>
+                </div>
+              ) : showPrintInvoice ? (
+                <div className="admin-fulfillment-actions flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="lg"
+                    disabled={isPrintingInvoice || invoiceLoading}
+                    onClick={handlePrintInvoice}
+                  >
+                    {isPrintingInvoice ? (
+                      <>
+                        <Spinner className="size-3.5" />
+                        Preparing…
+                      </>
+                    ) : (
+                      "Print invoice"
+                    )}
+                  </Button>
+                  {hasAwb ? (
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="secondary"
+                      disabled={isPrintingLabel}
+                      onClick={handlePrintLabel}
+                    >
+                      {isPrintingLabel ? (
+                        <>
+                          <Spinner className="size-3.5" />
+                          Preparing…
+                        </>
+                      ) : (
+                        "Print label"
+                      )}
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1220,7 +1266,7 @@ export default function AdminOrderDetailPage() {
                   <p className="admin-card-muted">{formatINR(invoiceTotal)}</p>
                 </div>
               </div>
-              {!invoice ? (
+              {!invoice && showPrintInvoice ? (
                 <AdminHeaderButton
                   onClick={() => ensureInvoice()}
                   disabled={invoiceLoading || isPrintingInvoice}
@@ -1234,7 +1280,25 @@ export default function AdminOrderDetailPage() {
                     "Generate invoice"
                   )}
                 </AdminHeaderButton>
-              ) : null}
+              ) : invoice && showPrintInvoice ? (
+                <AdminHeaderButton
+                  onClick={handlePrintInvoice}
+                  disabled={isPrintingInvoice || invoiceLoading}
+                >
+                  {isPrintingInvoice ? (
+                    <>
+                      <Spinner className="size-3.5 text-[#303030]" />
+                      Preparing…
+                    </>
+                  ) : (
+                    "Print invoice"
+                  )}
+                </AdminHeaderButton>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">
+                  Invoice is available after the order is marked as fulfilled.
+                </p>
+              )}
             </CardContent>
           </Card>
 

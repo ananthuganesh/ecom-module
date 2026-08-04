@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
 import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
 import { formatINR } from "@/utils/formatINR";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 
 export function channelFromResult(result) {
   if (!result || typeof result !== "object") return null;
@@ -191,14 +192,7 @@ export function createAbandonedColumns() {
       accessorFn: (row) => row.lastActivityAt,
       header: "Date",
       cell: ({ row }) => {
-        const iso = row.original.lastActivityAt;
-        const dateLabel = iso
-          ? new Date(iso).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-          : "";
+        const dateLabel = formatAdminDateTime(row.original.lastActivityAt);
         return (
           <span className="whitespace-nowrap text-[13px] font-medium text-muted-foreground">
             {dateLabel}

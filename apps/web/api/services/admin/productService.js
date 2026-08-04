@@ -72,7 +72,10 @@ export const adminProductService = {
     form.append("file", file);
     return client
       .post("/admin/upload/image", form, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: { "Content-Type": false },
+        timeout: 2 * 60 * 1000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
       })
       .then((res) => res.data);
   },

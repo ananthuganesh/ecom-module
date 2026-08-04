@@ -30,7 +30,7 @@ function orderDisplayStatus(order) {
   const pay = String(order.paymentStatus || "").toLowerCase();
   if (status === "abandoned") return "payment incomplete";
   if (
-    ["order placed", "draft"].includes(status) &&
+    status === "order placed" &&
     pay &&
     !["paid", "refunded", "partially_refunded"].includes(pay)
   ) {

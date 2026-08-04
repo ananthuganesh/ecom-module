@@ -5,6 +5,7 @@ import {
   Database,
   GripVertical,
   ImagePlus,
+  Loader2,
   Plus,
   Search,
   Trash2,
@@ -15,6 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { emptyVariant, generateSku } from "@/utils/productForm";
 import { cn } from "@/lib/utils";
 
@@ -222,6 +228,8 @@ export default function ProductVariantsCard({
   focusPricing,
   blurPricing,
   onUploadImage,
+  onSelectExistingImage,
+  uploadingMedia = false,
 }) {
   const variants = form?.variants || [];
   const sizes = useMemo(() => uniqueSizes(variants), [variants]);
@@ -247,6 +255,7 @@ export default function ProductVariantsCard({
   );
 
   const [selected, setSelected] = useState({});
+  const [thumbMenuFor, setThumbMenuFor] = useState(null);
 
   useEffect(() => {
     if (!configured) return;
@@ -626,26 +635,76 @@ export default function ProductVariantsCard({
                             <td className="px-2 py-2 align-middle">
                               <div className="flex items-center gap-2.5">
                                 <div className="group/thumb relative shrink-0">
-                                  <button
-                                    type="button"
-                                    className={cn(
-                                      "relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#ccc] bg-[#fafafa]",
-                                      thumb && "border-solid border-[#e3e3e3]"
-                                    )}
-                                    onClick={() => onUploadImage?.(i)}
-                                    title={thumb ? "Change image" : "Upload image"}
+                                  <Popover
+                                    open={thumbMenuFor === i}
+                                    onOpenChange={(open) =>
+                                      setThumbMenuFor(open ? i : null)
+                                    }
                                   >
-                                    {thumb ? (
-                                      <SafeImage
-                                        src={thumb}
-                                        alt=""
-                                        fill
-                                        className="object-cover"
-                                      />
-                                    ) : (
-                                      <ImagePlus className="h-4 w-4 text-[#005bd3]" />
-                                    )}
-                                  </button>
+                                    <PopoverTrigger
+                                      type="button"
+                                      disabled={uploadingMedia}
+                                      className={cn(
+                                        "relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#ccc] bg-[#fafafa]",
+                                        thumb && "border-solid border-[#e3e3e3]",
+                                        uploadingMedia && "opacity-70"
+                                      )}
+                                      title={
+                                        uploadingMedia
+                                          ? "Uploading…"
+                                          : thumb
+                                            ? "Change image"
+                                            : "Add image"
+                                      }
+                                      aria-label={
+                                        uploadingMedia
+                                          ? "Uploading…"
+                                          : thumb
+                                            ? `Change image for ${variantLabel(v)}`
+                                            : `Add image for ${variantLabel(v)}`
+                                      }
+                                    >
+                                      {uploadingMedia && thumbMenuFor === i ? (
+                                        <Loader2 className="h-4 w-4 animate-spin text-[#005bd3]" />
+                                      ) : thumb ? (
+                                        <SafeImage
+                                          src={thumb}
+                                          alt=""
+                                          fill
+                                          className="object-cover"
+                                        />
+                                      ) : uploadingMedia ? (
+                                        <Loader2 className="h-4 w-4 animate-spin text-[#005bd3]" />
+                                      ) : (
+                                        <ImagePlus className="h-4 w-4 text-[#005bd3]" />
+                                      )}
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                      align="start"
+                                      className="w-44 gap-0.5 p-1.5"
+                                    >
+                                      <button
+                                        type="button"
+                                        className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                                        onClick={() => {
+                                          setThumbMenuFor(null);
+                                          onUploadImage?.(i);
+                                        }}
+                                      >
+                                        Upload new
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                                        onClick={() => {
+                                          setThumbMenuFor(null);
+                                          onSelectExistingImage?.(i);
+                                        }}
+                                      >
+                                        Select existing
+                                      </button>
+                                    </PopoverContent>
+                                  </Popover>
                                   {thumb ? (
                                     <button
                                       type="button"

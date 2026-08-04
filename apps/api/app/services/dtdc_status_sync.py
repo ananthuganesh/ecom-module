@@ -47,7 +47,7 @@ def is_open_for_dtdc_track(order: Order) -> bool:
     if status in TERMINAL_SHIPPING:
         return False
     order_status = str(order.status or "").strip().lower()
-    if order_status in TERMINAL_SHIPPING or order_status in {"draft", "abandoned"}:
+    if order_status in TERMINAL_SHIPPING or order_status in {"abandoned"}:
         return False
     return True
 
@@ -167,7 +167,7 @@ async def sync_open_shipments_batch(*, limit: int = SYNC_BATCH_LIMIT) -> dict[st
     """Cron batch: oldest-tracked open AWB orders first."""
     lim = max(1, min(int(limit), SYNC_BATCH_LIMIT))
     query: dict[str, Any] = {
-        "status": {"$nin": ["draft", "abandoned", "delivered", "cancelled", "canceled", "returned"]},
+        "status": {"$nin": ["abandoned", "delivered", "cancelled", "canceled", "returned"]},
         "isDelivered": {"$ne": True},
         "$or": [
             {"awb": {"$exists": True, "$nin": [None, ""]}},

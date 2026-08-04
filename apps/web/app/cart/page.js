@@ -1,49 +1,87 @@
 "use client";
 
-import { Shield } from "lucide-react";
-import {
-  BagIcon,
-  CardIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  DeleteIcon,
-  MinusIcon,
-  PlusIcon
-} from "@/components/icons/storeIcons";
+import { useEffect } from "react";
+import { ShoppingBag } from "lucide-react";
+import { DeleteIcon } from "@/components/icons/storeIcons";
 import Link from "next/link";
 
 import SafeImage from "@/components/SafeImage";
 import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { useCartStore } from "@/store/useCartStore";
 import { resolveImageUrl } from "@/utils/imageResolver";
+import { isCartLineUnavailable } from "@/utils/cartStock";
+import productService from "@/api/services/user/productService";
+
+const formatPrice = (price) => `₹${Number(price || 0).toLocaleString("en-IN")}`;
+
+function CartQtyControl({ qty, onChange, disabled = false }) {
+  return (
+    <div className="mt-3 flex items-center gap-3 text-sm text-gray-900">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, qty - 1))}
+        className="leading-none text-gray-600 transition-colors hover:text-black disabled:opacity-30"
+        disabled={disabled || qty <= 1}
+        aria-label="Decrease quantity"
+      >
+        −
+      </button>
+      <span className="min-w-[1.25rem] text-center font-medium tabular-nums">{qty}</span>
+      <button
+        type="button"
+        onClick={() => onChange(qty + 1)}
+        className="leading-none text-gray-600 transition-colors hover:text-black disabled:opacity-30"
+        disabled={disabled}
+        aria-label="Increase quantity"
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
 export default function CartPage() {
-  const { cartItems, updateQuantity, removeItem } = useCartStore();
+  const { cartItems, updateQuantity, removeItem, syncStock } = useCartStore();
 
-  const cartCount = cartItems.reduce((count, item) => count + (item.qty || 1), 0);
-  const cartTotal = cartItems.reduce(
+  useEffect(() => {
+    if (cartItems.length > 0) syncStock(productService);
+    // Only sync on mount / when cart gains items — not on every qty change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncStock, cartItems.length]);
+
+  const availableItems = cartItems.filter((item) => !isCartLineUnavailable(item));
+  const cartCount = availableItems.reduce((count, item) => count + (item.qty || 1), 0);
+  const cartTotal = availableItems.reduce(
     (total, item) => total + (Number(item.price) || 0) * (item.qty || 1),
     0
   );
-  const formatPrice = (price) => `₹${Number(price || 0).toLocaleString("en-IN")}`;
 
   if (!cartItems.length) {
     return (
-      <main className="min-h-screen bg-[#F9F9F5]">
-        <div className="px-4 py-24 sm:px-8">
-          <section className="mx-auto flex max-w-xl flex-col items-center border border-black bg-white px-6 py-16 text-center sm:px-12">
-            <div className="mb-8 flex h-16 w-16 items-center justify-center border border-black">
-              <BagIcon size={28} strokeWidth={1.4} />
-            </div>
-            <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">Urban Aana</p>
-            <h1 className="font-vina text-5xl uppercase leading-none sm:text-6xl">Your bag is empty</h1>
-            <p className="mt-5 max-w-sm text-sm leading-relaxed text-gray-600">
-              The next drop is waiting. Find a piece that feels like you.
+      <main className="min-h-[60vh] bg-white">
+        <div className="px-4 py-12 sm:px-8 md:py-16">
+          <header className="mb-8">
+            <p className="text-[11px] font-bold tracking-[0.2em] text-[#DF1721] uppercase">
+              Cart
             </p>
-            <Link href="/all-products" className="mt-9 inline-flex h-10 items-center gap-2 bg-black px-7 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#DF1721]">
-              Shop the collection <ChevronRightIcon size={16} />
+            <h1 className="title-knewave mt-1 text-3xl leading-none tracking-tight normal-case md:text-4xl">
+              Your <span className="title-knewave-accent">Bag</span>
+            </h1>
+          </header>
+
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 px-6 py-20 text-center">
+            <ShoppingBag className="mb-4 h-10 w-10 text-gray-300" strokeWidth={1.5} />
+            <h2 className="text-lg font-semibold text-gray-900">Your cart is empty</h2>
+            <p className="mt-2 max-w-sm text-sm text-gray-500">
+              Add items from the shop to get started.
+            </p>
+            <Link
+              href="/all-products"
+              className="mt-6 inline-flex h-10 items-center justify-center bg-[#DF1721] px-6 text-xs font-bold tracking-[0.14em] text-white uppercase transition-colors hover:bg-black"
+            >
+              Browse products
             </Link>
-          </section>
+          </div>
         </div>
         <WhyUrbanAana />
       </main>
@@ -51,76 +89,142 @@ export default function CartPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F9F9F5]">
-      <div className="container-site py-10 pb-20 md:py-16">
-        <Link href="/all-products" className="inline-flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.16em] text-gray-500 transition-colors hover:text-[#DF1721]">
-          <ChevronLeftIcon size={15} /> Continue shopping
+    <main className="min-h-screen bg-white">
+      <div className="px-4 py-8 sm:px-8 md:py-12">
+        <Link
+          href="/all-products"
+          className="inline-flex text-[13px] text-gray-600 transition-colors hover:text-gray-900 hover:underline"
+        >
+          ← Continue shopping
         </Link>
-        <div className="mt-7 flex flex-col gap-3 border-b-2 border-black pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">Your selection</p>
-            <h1 className="mt-2 font-vina text-5xl uppercase leading-none sm:text-7xl">Your bag</h1>
-          </div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em]">{cartCount} item{cartCount !== 1 ? "s" : ""}</p>
-        </div>
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">
-          <section className="border border-black bg-white">
-            {cartItems.map((item) => (
-              <article key={`${item._id}-${item.size}-${item.color}`} className="flex gap-4 border-b border-gray-200 p-4 last:border-b-0 sm:gap-6 sm:p-6">
-                <Link href={`/product/${item.slug || item._id}`} className="relative h-32 w-24 shrink-0 overflow-hidden bg-gray-100 sm:h-40 sm:w-28">
-                  <SafeImage
-                    src={resolveImageUrl(item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0])}
-                    alt={item.name || item.productName || "Product"}
-                    fill
-                    sizes="112px"
-                    className="object-cover"
-                  />
-                </Link>
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="flex justify-between gap-3">
-                    <div>
-                      <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#DF1721]">{item.color || "Urban Aana"}</p>
-                      <Link href={`/product/${item.slug || item._id}`} className="mt-1 block text-sm font-bold uppercase leading-snug hover:text-[#DF1721]">
-                        {item.name || item.productName}
-                      </Link>
-                      {item.size && <p className="mt-2 text-xs text-gray-500">Size: {item.size}</p>}
-                    </div>
-                    <button onClick={() => removeItem(item._id, item.size, item.color)} className="text-gray-400 transition-colors hover:text-[#DF1721]" aria-label={`Remove ${item.name || item.productName}`}>
-                      <DeleteIcon size={17} />
-                    </button>
-                  </div>
-                  <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-                    <div className="flex items-center border border-black">
-                      <button onClick={() => updateQuantity(item._id, item.size, item.color, (item.qty || 1) - 1)} disabled={(item.qty || 1) <= 1} className="p-2 transition-colors hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-30" aria-label="Decrease quantity">
-                        <MinusIcon size={14} />
+        <header className="mt-5 mb-8 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.2em] text-[#DF1721] uppercase">
+              Cart
+            </p>
+            <h1 className="title-knewave mt-1 text-3xl leading-none tracking-tight normal-case md:text-4xl">
+              Your <span className="title-knewave-accent">Bag</span>
+            </h1>
+            <p className="mt-2 text-sm text-gray-500">
+              {cartCount} item{cartCount !== 1 ? "s" : ""} ready for checkout
+            </p>
+          </div>
+        </header>
+
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-10">
+          <section className="divide-y divide-gray-100 border-t border-gray-100">
+            {cartItems.map((item) => {
+              const qty = item.qty || 1;
+              const unitPrice = Number(item.price) || 0;
+              const line = unitPrice * qty;
+              const name = item.name || item.productName || "Product";
+              const unavailable = isCartLineUnavailable(item);
+              const meta = [item.size, item.color].filter(Boolean).join(" / ");
+
+              return (
+                <article
+                  key={`${item._id}-${item.size}-${item.color}`}
+                  className={`flex gap-4 py-5 first:pt-5 ${unavailable ? "opacity-60" : ""}`}
+                >
+                  <Link
+                    href={`/product/${item.slug || item._id}`}
+                    className="relative h-24 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:h-28 sm:w-24"
+                  >
+                    <SafeImage
+                      src={resolveImageUrl(
+                        item.image ||
+                          item.thumbnails?.[0] ||
+                          item.variants?.[0]?.images?.[0]
+                      )}
+                      alt={name}
+                      fill
+                      sizes="96px"
+                      className={`object-cover ${unavailable ? "grayscale" : ""}`}
+                    />
+                  </Link>
+
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={`/product/${item.slug || item._id}`}
+                          className="block truncate text-sm font-semibold text-gray-900 hover:underline"
+                        >
+                          {name}
+                        </Link>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {meta}
+                          {meta ? " • " : ""}
+                          Qty {qty}
+                        </p>
+                        {unavailable ? (
+                          <p className="mt-1 text-xs font-medium text-red-600">
+                            Out of stock
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-sm font-medium text-gray-900">
+                            {formatPrice(line)}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item._id, item.size, item.color)}
+                        className="shrink-0 text-gray-400 transition-colors hover:text-red-500"
+                        aria-label={`Remove ${name}`}
+                      >
+                        <DeleteIcon size={16} />
                       </button>
-                      <span className="w-8 text-center text-sm font-bold">{item.qty || 1}</span>
-                      <button onClick={() => updateQuantity(item._id, item.size, item.color, (item.qty || 1) + 1)} className="p-2 transition-colors hover:bg-black hover:text-white" aria-label="Increase quantity">
-                        <PlusIcon size={14} />
-                      </button>
                     </div>
-                    <p className="text-lg font-black">{formatPrice((Number(item.price) || 0) * (item.qty || 1))}</p>
+
+                    {!unavailable ? (
+                      <CartQtyControl
+                        qty={qty}
+                        onChange={(next) =>
+                          updateQuantity(item._id, item.size, item.color, next)
+                        }
+                      />
+                    ) : null}
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </section>
 
-          <aside className="h-fit border border-black bg-black p-6 text-white lg:sticky lg:top-24">
-            <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-[#f87171]">Order total</p>
-            <div className="mt-6 flex justify-between border-b border-white/30 pb-5">
-              <span className="text-sm">Subtotal</span>
-              <span className="text-2xl font-black">{formatPrice(cartTotal)}</span>
+          <aside className="h-fit rounded-xl border border-gray-200 bg-[#F8F8F8] p-5 lg:sticky lg:top-24">
+            <h2 className="text-[16px] font-semibold text-gray-900">
+              Order Summary ({cartCount} {cartCount === 1 ? "Item" : "Items"})
+            </h2>
+
+            <div className="mt-4 space-y-2 border-t border-gray-200 pt-4 text-[13px]">
+              <div className="flex justify-between text-gray-600">
+                <span>Subtotal</span>
+                <span>{formatPrice(cartTotal)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Shipping</span>
+                <span>Calculated at checkout</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                <span className="text-[16px] font-semibold text-gray-900">Total</span>
+                <span className="text-[16px] font-semibold text-gray-900">
+                  {formatPrice(cartTotal)}
+                </span>
+              </div>
             </div>
-            <p className="mt-4 text-xs leading-relaxed text-gray-300">Shipping and taxes are calculated securely at checkout.</p>
-            <Link href="/checkout" className="mt-7 flex h-10 w-full items-center justify-center gap-2 bg-[#DF1721] px-5 text-xs font-bold uppercase tracking-[0.16em] transition-colors hover:bg-white hover:text-black">
-              Checkout <ChevronRightIcon size={16} />
+
+            <Link
+              href="/checkout"
+              className={`mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#222222] text-[15px] font-semibold text-white transition-colors hover:bg-black ${
+                availableItems.length === 0 ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              Checkout
             </Link>
-            <div className="mt-6 flex justify-center gap-4 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-300">
-              <span className="flex items-center gap-1"><Shield size={12} /> Secure</span>
-              <span className="flex items-center gap-1"><CardIcon size={12} /> Payments</span>
-            </div>
+            <p className="mt-3 text-center text-[12px] text-gray-500">
+              Taxes and shipping confirmed at checkout.
+            </p>
           </aside>
         </div>
       </div>

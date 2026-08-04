@@ -160,7 +160,7 @@ export default function AdminShipmentsPage() {
         const data = await adminOrderService.getAll(buildParams(pageNum));
         if (gen !== fetchGen.current) return;
         const { items, hasMore: more } = unwrapPage(data, { fallbackLimit: PAGE_SIZE });
-        const list = items.filter((o) => o.status !== "draft" && o.status !== "abandoned");
+        const list = items.filter((o) => o.status !== "abandoned");
         setOrders((prev) => {
           if (!append) return list;
           const seen = new Set(prev.map((o) => o._id));
@@ -305,7 +305,7 @@ export default function AdminShipmentsPage() {
         toast.error(detail);
         return;
       }
-      await printPdfBlob(blob);
+      await printPdfBlob(blob, { autoPrint: true });
       const extra = [];
       if (skipped) extra.push(`${skipped} skipped`);
       if (errors) extra.push(`${errors} failed`);

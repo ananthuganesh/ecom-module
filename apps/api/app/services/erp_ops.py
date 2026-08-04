@@ -147,7 +147,7 @@ ACTIVE_ROLE_NAMES = {row["name"] for row in DEFAULT_ROLES}
 
 async def ensure_default_roles() -> list[Role]:
     """Keep only Admin + Staff. Deletes every other role document."""
-    from app.documents import User
+    from app.documents import AdminAccount, User
 
     existing = await Role.find_all().to_list()
     by_name = {r.name: r for r in existing}
@@ -157,6 +157,12 @@ async def ensure_default_roles() -> list[Role]:
         if role.name in ACTIVE_ROLE_NAMES:
             continue
         role_id = str(role.id)
+        accounts = await AdminAccount.find(AdminAccount.roleId == role_id).to_list()
+        for account in accounts:
+            account.roleId = None
+            account.updatedAt = datetime.utcnow()
+            await account.save()
+        # Legacy: clear stale roleIds left on customer docs
         users = await User.find(User.roleId == role_id).to_list()
         for user in users:
             user.roleId = None
@@ -195,29 +201,20 @@ async def ensure_default_roles() -> list[Role]:
     staff_role = by_name.get("Staff")
     active_ids = {str(r.id) for r in (admin_role, staff_role) if r}
 
-    # Drop stale roleIds (deleted roles) and never treat storefront
-    # customers as staff just because they have a password.
-    tagged = await User.find(
-        {
-            "$or": [
-                {"roleId": {"$nin": [None, ""]}},
-                {"isAdmin": True},
-            ]
-        }
-    ).to_list()
-    for user in tagged:
-        rid = str(user.roleId or "").strip()
-        if user.isAdmin:
-            # Owners always map to Admin — never leave them on Staff / stale IDs.
+    # Keep AdminAccount roleIds healthy.
+    tagged = await AdminAccount.find_all().to_list()
+    for account in tagged:
+        rid = str(account.roleId or "").strip()
+        if account.isAdmin:
             if admin_role and rid != str(admin_role.id):
-                user.roleId = str(admin_role.id)
-                user.updatedAt = datetime.utcnow()
-                await user.save()
+                account.roleId = str(admin_role.id)
+                account.updatedAt = datetime.utcnow()
+                await account.save()
             continue
         if rid and rid not in active_ids:
-            user.roleId = None
-            user.updatedAt = datetime.utcnow()
-            await user.save()
+            account.roleId = None
+            account.updatedAt = datetime.utcnow()
+            await account.save()
 
     return [by_name[name] for name in ("Admin", "Staff") if name in by_name]
 

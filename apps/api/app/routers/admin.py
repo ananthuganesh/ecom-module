@@ -160,10 +160,11 @@ async def admin_users(
     skip: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=200),
 ):
+    from app.services.customers import customer_mongo_filter
     from app.services.pagination import parse_pagination
 
     sk, lim, _pg = parse_pagination(page=page, skip=skip, limit=limit)
-    users = await User.find_all().skip(sk).limit(lim).to_list()
+    users = await User.find(customer_mongo_filter()).skip(sk).limit(lim).to_list()
     user_ids = [u.id for u in users if u.id is not None]
     stats_by_id: dict[str, dict] = {}
     ship_by_id: dict[str, dict] = {}
@@ -171,7 +172,7 @@ async def admin_users(
         collection = Order.get_pymongo_collection()
         match = {
             "customerId": {"$in": user_ids},
-            "status": {"$nin": ["draft", "abandoned", "cancelled"]},
+            "status": {"$nin": ["abandoned", "cancelled"]},
         }
         stats_pipeline = [
             {"$match": match},
@@ -226,24 +227,8 @@ async def admin_users(
         except Exception:
             ship_by_id = {}
 
-        # Abandoned carts: unpaid abandoned orders + open AbandonedCheckout rows.
+        # Abandoned carts: open AbandonedCheckout rows only (checkout IDs, not order numbers).
         abandoned_by_id: dict[str, int] = {}
-        try:
-            ab_order_rows = await collection.aggregate(
-                [
-                    {
-                        "$match": {
-                            "customerId": {"$in": user_ids},
-                            "status": "abandoned",
-                        }
-                    },
-                    {"$group": {"_id": "$customerId", "count": {"$sum": 1}}},
-                ]
-            ).to_list(length=None)
-            for row in ab_order_rows:
-                abandoned_by_id[str(row.get("_id"))] = int(row.get("count") or 0)
-        except Exception:
-            pass
         try:
             ac_coll = AbandonedCheckout.get_pymongo_collection()
             ac_rows = await ac_coll.aggregate(
@@ -259,9 +244,7 @@ async def admin_users(
             ).to_list(length=None)
             for row in ac_rows:
                 key = str(row.get("_id"))
-                abandoned_by_id[key] = abandoned_by_id.get(key, 0) + int(
-                    row.get("count") or 0
-                )
+                abandoned_by_id[key] = int(row.get("count") or 0)
         except Exception:
             pass
         for key, count in abandoned_by_id.items():
@@ -898,31 +881,55 @@ def _empty_awb_clause() -> dict[str, Any]:
 
 
 def _exclude_incomplete_checkout_clause() -> dict[str, Any]:
-    """Hide Razorpay checkouts that never paid (still 'Payment Pending').
+    """Hide unpaid online checkouts from the main Orders list.
 
-    These rows are created before payment for stock hold; they belong under
-    Abandoned carts (and Unpaid until marked abandoned), not the main Orders list.
+    Until payment succeeds, those rows belong under Abandoned carts — not Orders.
+    Draft orders stay hidden from both lists.
     """
     return {
-        "$or": [
+        "$nor": [
             {
+                "status": "order placed",
                 "paymentStatus": {
-                    "$in": [
+                    "$nin": [
                         "paid",
                         "Paid",
                         "PAID",
-                        "partially_refunded",
+                        "captured",
+                        "authorized",
                         "refunded",
+                        "partially_refunded",
+                        "refund_pending",
                     ]
-                }
-            },
+                },
+            }
+        ]
+    }
+
+
+def _abandoned_cart_orders_clause() -> dict[str, Any]:
+    """Unpaid placed orders count as Abandoned carts until paid.
+
+    Draft orders are excluded — they are incomplete system rows, not carts.
+    """
+    return {
+        "$or": [
+            {"status": "abandoned"},
             {
-                "shippingStatus": {
-                    "$not": {"$regex": r"^payment pending$", "$options": "i"},
-                }
+                "status": "order placed",
+                "paymentStatus": {
+                    "$nin": [
+                        "paid",
+                        "Paid",
+                        "PAID",
+                        "captured",
+                        "authorized",
+                        "refunded",
+                        "partially_refunded",
+                        "refund_pending",
+                    ]
+                },
             },
-            {"shippingStatus": {"$in": [None, ""]}},
-            {"shippingStatus": {"$exists": False}},
         ]
     }
 
@@ -989,7 +996,6 @@ def _apply_order_view_filters(
                         "delivered",
                         "returned",
                         "return",
-                        "draft",
                         "abandoned",
                     ]
                 }
@@ -1011,7 +1017,6 @@ def _apply_order_view_filters(
                         "delivered",
                         "returned",
                         "return",
-                        "draft",
                         "abandoned",
                     ]
                 }
@@ -1036,37 +1041,27 @@ async def admin_orders(
     q: str | None = None,
     view: str | None = None,
     datePreset: str | None = None,
+    dateFrom: str | None = None,
+    dateTo: str | None = None,
     hideArchived: bool = Query(default=False),
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    from app.services.pagination import date_preset_filter, page_payload, parse_pagination
+    from app.services.pagination import (
+        date_bounds_filter,
+        date_preset_filter,
+        page_payload,
+        parse_pagination,
+    )
 
     sk, lim, pg = parse_pagination(page=page, skip=skip, limit=limit)
     query: dict[str, Any] = {}
     if status == "abandoned":
-        # Abandoned carts: explicit abandoned status + unpaid payment-exit rows
-        # that have not been marked yet (Payment Pending / pending).
-        query["$or"] = [
-            {"status": "abandoned"},
-            {
-                "status": {"$in": ["order placed", "draft"]},
-                "paymentStatus": {
-                    "$nin": [
-                        "paid",
-                        "Paid",
-                        "PAID",
-                        "refunded",
-                        "partially_refunded",
-                        "refund_pending",
-                    ]
-                },
-                "shippingStatus": {"$regex": r"^payment pending$", "$options": "i"},
-            },
-        ]
+        # Until paid, every unpaid checkout/order is an Abandoned cart.
+        query.update(_abandoned_cart_orders_clause())
     else:
-        query["status"] = {"$nin": ["draft", "abandoned"]}
+        query["status"] = {"$nin": ["abandoned"]}
         if status:
             query["status"] = status
         if scope == "shipment":
@@ -1091,7 +1086,9 @@ async def admin_orders(
                 query, view=view, hide_archived=hideArchived
             )
 
-    date_filter = date_preset_filter(datePreset, field="createdAt")
+    date_filter = date_bounds_filter(dateFrom, dateTo, field="createdAt")
+    if date_filter is None:
+        date_filter = date_preset_filter(datePreset, field="createdAt")
     if date_filter:
         query.update(date_filter)
 
@@ -1177,7 +1174,7 @@ async def admin_orders(
 @router.get("/orders/counts")
 async def admin_order_counts(_: OrdersReader):
     """Lightweight badge counts for admin nav (Shopify-style unfulfilled)."""
-    query: dict[str, Any] = {"status": {"$nin": ["draft", "abandoned"]}}
+    query: dict[str, Any] = {"status": {"$nin": ["abandoned"]}}
     query = _apply_order_view_filters(query, view="unfulfilled", hide_archived=True)
     unfulfilled = await Order.find(query).count()
     return {"unfulfilled": int(unfulfilled or 0)}
@@ -1337,7 +1334,7 @@ async def admin_order_neighbors(order_id: str, _: OrdersReader):
         raise HTTPException(status_code=404, detail="Order not found")
 
     created = order.createdAt or datetime.utcnow()
-    base = {"status": {"$nin": ["draft", "abandoned"]}}
+    base = {"status": {"$nin": ["abandoned"]}}
     col = Order.get_pymongo_collection()
 
     # Newer = previous in newest-first list (↑)
@@ -2094,6 +2091,7 @@ async def ai_media_attach_product(job_id: str, body: dict, admin: AdminUser):
 @router.post("/aisensy/sync-customers")
 async def aisensy_sync_customers(_: AdminUser):
     from app.services import aisensy as aisensy_svc
+    from app.services.customers import customer_mongo_filter
 
     store = await aisensy_svc.get_settings()
     client = aisensy_svc.project_client_from_cfg(store)
@@ -2103,7 +2101,7 @@ async def aisensy_sync_customers(_: AdminUser):
             detail="Set AISENSY_PROJECT_ID and AISENSY_PROJECT_API_KEY in the API environment to sync contacts.",
         )
 
-    users = await User.find({"isAdmin": {"$ne": True}}).to_list()
+    users = await User.find(customer_mongo_filter()).to_list()
     imported = 0
     errors = 0
     for u in users:

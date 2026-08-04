@@ -42,6 +42,7 @@ class User(Document):
     password: Optional[str] = None
     addresses: list[Address] = Field(default_factory=list)
     cartId: Optional[Any] = None
+    # Legacy flags — staff live in `admins` now. Kept for migration / old docs only.
     isAdmin: bool = False
     roleId: Optional[str] = None
     gstin: Optional[str] = None
@@ -59,6 +60,29 @@ class User(Document):
             # Non-unique: imported/guest data has duplicate and null phones.
             IndexModel([("phone", 1)]),
             IndexModel([("customerUrlId", 1)], unique=True, sparse=True),
+        ]
+
+
+class AdminAccount(Document):
+    """Staff / admin panel accounts — separate from storefront customers (`users`)."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    name: str
+    email: Optional[Indexed(str, unique=True)] = None  # type: ignore[valid-type]
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    # True = owner / full Admin role (wildcard permissions)
+    isAdmin: bool = False
+    roleId: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "admins"
+        indexes = [
+            IndexModel([("email", 1)], unique=True, sparse=True),
+            IndexModel([("roleId", 1)]),
         ]
 
 
@@ -202,6 +226,8 @@ class Product(Document):
 
 class OrderItem(MongoModel):
     productId: Optional[Any] = None
+    productName: Optional[str] = None
+    image: Optional[str] = None
     color: str = ""
     size: str = ""
     quantity: int = 1
@@ -661,6 +687,7 @@ class MediaAsset(Document):
 
 ALL_DOCUMENTS = [
     User,
+    AdminAccount,
     Product,
     Order,
     Category,

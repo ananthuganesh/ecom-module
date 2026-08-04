@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Loader2,
   Package,
   Plus,
   Printer,
@@ -234,10 +235,11 @@ export default function AdminProductDetailPage() {
   const qtyInputRef = useRef(null);
 
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  /** null = product Media gallery; number = variant row index */
+  const [mediaPickerVariantIndex, setMediaPickerVariantIndex] = useState(null);
   const [selectedMedia, setSelectedMedia] = useState(() => new Set());
   const [addMediaOpen, setAddMediaOpen] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const addMediaInputRef = useRef(null);
   const mediaSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -405,23 +407,13 @@ export default function AdminProductDetailPage() {
     const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
     if (!nextUrls.length) return;
     setForm((prev) => {
-      const variantUrls = new Set(
-        (prev.variants || []).flatMap((v) =>
-          Array.isArray(v.images) ? v.images.filter(Boolean) : []
-        )
-      );
       const existing = Array.isArray(prev.thumbnails)
         ? prev.thumbnails.filter(Boolean)
         : [];
-      const imgs = [];
+      // Append new uploads after existing so gallery order stays stable.
+      const imgs = [...existing];
       for (const url of nextUrls) {
-        // Keep variant uploads out of the product Media area.
-        if (variantUrls.has(url) || imgs.includes(url)) continue;
-        imgs.push(url);
-      }
-      for (const url of existing) {
-        if (variantUrls.has(url) || imgs.includes(url)) continue;
-        imgs.push(url);
+        if (!imgs.includes(url)) imgs.push(url);
       }
       return { ...prev, thumbnails: imgs };
     });
@@ -441,11 +433,8 @@ export default function AdminProductDetailPage() {
       const existing = Array.isArray(list[idx]?.images)
         ? list[idx].images.filter(Boolean)
         : [];
-      const imgs = [];
+      const imgs = [...existing];
       for (const url of nextUrls) {
-        if (!imgs.includes(url)) imgs.push(url);
-      }
-      for (const url of existing) {
         if (!imgs.includes(url)) imgs.push(url);
       }
       list[idx] = {
@@ -495,7 +484,10 @@ export default function AdminProductDetailPage() {
     const files = Array.from(fileList || []).filter((f) =>
       String(f?.type || "").startsWith("image/")
     );
-    if (!files.length) return;
+    if (!files.length) {
+      toast.error("Choose a JPG, PNG, WEBP, or GIF image");
+      return;
+    }
     setUploadingMedia(true);
     try {
       const urls = [];
@@ -503,21 +495,44 @@ export default function AdminProductDetailPage() {
         const { url } = await adminProductService.uploadImage(file);
         if (url) urls.push(url);
       }
+      if (!urls.length) {
+        toast.error("Image upload failed");
+        return;
+      }
       if (variantIndex == null) attachProductMediaUrls(urls);
       else attachVariantMediaUrls(urls, variantIndex);
       toast.success(
         urls.length === 1 ? "Image uploaded" : `${urls.length} images uploaded`
       );
     } catch (e) {
-      toast.error(
+      const detail =
         e?.response?.data?.detail ||
-          e?.response?.data?.message ||
-          e?.message ||
-          "Image upload failed"
+        e?.response?.data?.message ||
+        e?.message ||
+        "Image upload failed";
+      toast.error(
+        e?.response?.status === 401
+          ? "Session expired — log in again, then retry upload"
+          : detail
       );
     } finally {
       setUploadingMedia(false);
     }
+  };
+
+  /** Same reliable picker path as variant thumbs (avoids broken label→hidden Input). */
+  const openImageFilePicker = (variantIndex = null) => {
+    if (uploadingMedia) return;
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/jpeg,image/png,image/webp,image/gif";
+    fileInput.multiple = true;
+    fileInput.onchange = (ev) => {
+      const files = ev.target?.files;
+      if (!files?.length) return;
+      void uploadImageFiles(files, variantIndex);
+    };
+    fileInput.click();
   };
 
   const handleDiscard = () => {
@@ -888,32 +903,31 @@ export default function AdminProductDetailPage() {
                     }}
                   >
                     <div className="flex flex-wrap items-center justify-center gap-3">
-                      <FieldLabel className="m-0 inline-flex h-8 cursor-pointer items-center rounded-lg border border-[#c9cccf] bg-white px-3 text-[13px] font-medium text-[#303030] hover:bg-[#f7f7f7]">
-                        {uploadingMedia ? "Uploading…" : "Upload new"}
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          disabled={uploadingMedia}
-                          className="hidden"
-                          onChange={(e) => {
-                            const files = e.target.files;
-                            e.target.value = "";
-                            if (!files?.length) return;
-                            void uploadImageFiles(files);
-                          }}
-                        />
-                      </FieldLabel>
                       <button
                         type="button"
-                        className="text-[13px] font-medium text-[#005bd3] hover:underline"
-                        onClick={() => setMediaPickerOpen(true)}
+                        disabled={uploadingMedia}
+                        className="m-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-3 text-[13px] font-medium text-[#303030] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => openImageFilePicker(null)}
+                      >
+                        {uploadingMedia ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        ) : null}
+                        {uploadingMedia ? "Uploading…" : "Upload new"}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[13px] font-medium text-[#005bd3] hover:underline disabled:opacity-50"
+                        disabled={uploadingMedia}
+                        onClick={() => {
+                          setMediaPickerVariantIndex(null);
+                          setMediaPickerOpen(true);
+                        }}
                       >
                         Select existing
                       </button>
                     </div>
                     <p className="text-[12px] text-[#616161]">
-                      Accepts images, videos
+                      JPG, PNG, WEBP, or GIF — up to 25 MB
                     </p>
                   </div>
                 ) : (
@@ -986,10 +1000,15 @@ export default function AdminProductDetailPage() {
                       <Popover open={addMediaOpen} onOpenChange={setAddMediaOpen}>
                         <PopoverTrigger
                           type="button"
-                          className="admin-media-tile admin-media-tile--add inline-flex shrink-0 items-center justify-center border border-dashed border-[#c9cccf] bg-[#fafafa] text-[#303030] hover:bg-[#f3f3f3]"
-                          aria-label="Add media"
+                          disabled={uploadingMedia}
+                          className="admin-media-tile admin-media-tile--add relative inline-flex shrink-0 items-center justify-center border border-dashed border-[#c9cccf] bg-[#fafafa] text-[#303030] hover:bg-[#f3f3f3] disabled:opacity-60"
+                          aria-label={uploadingMedia ? "Uploading media" : "Add media"}
                         >
-                          <Plus className="h-5 w-5" />
+                          {uploadingMedia ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : (
+                            <Plus className="h-5 w-5" />
+                          )}
                         </PopoverTrigger>
                         <PopoverContent
                           align="start"
@@ -1000,7 +1019,7 @@ export default function AdminProductDetailPage() {
                             className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
                             onClick={() => {
                               setAddMediaOpen(false);
-                              addMediaInputRef.current?.click();
+                              openImageFilePicker(null);
                             }}
                           >
                             Upload new
@@ -1010,6 +1029,7 @@ export default function AdminProductDetailPage() {
                             className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
                             onClick={() => {
                               setAddMediaOpen(false);
+                              setMediaPickerVariantIndex(null);
                               setMediaPickerOpen(true);
                             }}
                           >
@@ -1017,21 +1037,6 @@ export default function AdminProductDetailPage() {
                           </button>
                         </PopoverContent>
                       </Popover>
-
-                      <input
-                        ref={addMediaInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        disabled={uploadingMedia}
-                        className="hidden"
-                        onChange={(e) => {
-                          const files = e.target.files;
-                          e.target.value = "";
-                          if (!files?.length) return;
-                          void uploadImageFiles(files);
-                        }}
-                      />
                     </div>
                   </div>
                 )}
@@ -1126,18 +1131,11 @@ export default function AdminProductDetailPage() {
               updatePricing={updatePricing}
               focusPricing={focusPricing}
               blurPricing={blurPricing}
-              onUploadImage={(variantIndex) => {
-                if (uploadingMedia) return;
-                const fileInput = document.createElement("input");
-                fileInput.type = "file";
-                fileInput.accept = "image/*";
-                fileInput.multiple = true;
-                fileInput.onchange = (ev) => {
-                  const files = ev.target?.files;
-                  if (!files?.length) return;
-                  void uploadImageFiles(files, variantIndex);
-                };
-                fileInput.click();
+              uploadingMedia={uploadingMedia}
+              onUploadImage={(variantIndex) => openImageFilePicker(variantIndex)}
+              onSelectExistingImage={(variantIndex) => {
+                setMediaPickerVariantIndex(variantIndex);
+                setMediaPickerOpen(true);
               }}
             />
 
@@ -1362,9 +1360,23 @@ export default function AdminProductDetailPage() {
 
       <SelectExistingMediaDialog
         open={mediaPickerOpen}
-        onOpenChange={setMediaPickerOpen}
-        excludeUrls={[...uniqueMedia, ...variantMediaUrls]}
-        onSelect={attachProductMediaUrls}
+        onOpenChange={(open) => {
+          setMediaPickerOpen(open);
+          if (!open) setMediaPickerVariantIndex(null);
+        }}
+        excludeUrls={
+          mediaPickerVariantIndex == null
+            ? [...uniqueMedia, ...variantMediaUrls]
+            : variantMediaUrls
+        }
+        onSelect={(urls) => {
+          if (mediaPickerVariantIndex == null) {
+            attachProductMediaUrls(urls);
+          } else {
+            attachVariantMediaUrls(urls, mediaPickerVariantIndex);
+          }
+          setMediaPickerVariantIndex(null);
+        }}
       />
     </>
   );

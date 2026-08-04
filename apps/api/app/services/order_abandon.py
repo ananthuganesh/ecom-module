@@ -12,7 +12,7 @@ from app.documents import Order
 # Default 30m — aligned with STOCK_RESERVE_TTL_MINUTES. Separate from AiSensy
 # abandoned-cart WhatsApp delay (admin AiSensy abandonedMinutes, default 15).
 DEFAULT_ABANDONED_ORDER_MINUTES = 30
-ABANDONABLE_STATUSES = {"order placed", "draft"}
+ABANDONABLE_STATUSES = {"order placed"}
 PAID_LIKE = {"paid", "refunded", "partially_refunded", "refund_pending"}
 
 
@@ -122,6 +122,33 @@ async def mark_order_abandoned(
         except Exception as exc:
             print(f"[Orders] Stock release on abandon failed: {exc}")
     return True
+
+
+async def mark_checkouts_converted_for_order(order: Order, *, user=None) -> int:
+    """Mark matching AbandonedCheckout rows converted after payment succeeds."""
+    from app.documents import AbandonedCheckout
+
+    or_keys: list[dict[str, Any]] = []
+    guest_id = (order.transactionDetails or {}).get("guestId") or getattr(order, "guestId", None)
+    if guest_id:
+        or_keys.append({"guestId": guest_id})
+    customer_id = order.customerId or (getattr(user, "id", None) if user is not None else None)
+    if customer_id is not None:
+        or_keys.append({"userId": customer_id})
+        or_keys.append({"userId": str(customer_id)})
+    if not or_keys:
+        return 0
+
+    rows = await AbandonedCheckout.find({"status": "abandoned", "$or": or_keys}).to_list()
+    if not rows:
+        return 0
+    now = datetime.utcnow()
+    for checkout in rows:
+        checkout.status = "converted"
+        checkout.orderId = order.id
+        checkout.lastActivityAt = now
+        await checkout.save()
+    return len(rows)
 
 
 def revive_abandoned_on_payment(order: Order) -> None:

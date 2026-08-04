@@ -10,6 +10,7 @@ import {
 import { printHtml } from "@/utils/printHtml";
 import { buildMultiInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
 import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
 import { Download, FileText, Loader2, Search } from "lucide-react";
@@ -43,7 +44,7 @@ export default function AdminOrdersPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [datePreset, setDatePreset] = useState("all");
+  const [dateFilter, setDateFilter] = useState({ preset: "all" });
   const [viewFilter, setViewFilter] = useState("all");
   const [hideArchived, setHideArchived] = useState(false);
   const [sortBy, setSortBy] = useState("date");
@@ -58,6 +59,18 @@ export default function AdminOrdersPage() {
     () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
     [rowSelection]
   );
+
+  const handleDateFilterChange = (next) => {
+    if (typeof next === "string") {
+      setDateFilter({ preset: next });
+      return;
+    }
+    setDateFilter({
+      preset: next?.preset || (next?.from ? "custom" : "all"),
+      from: next?.from || undefined,
+      to: next?.to || undefined,
+    });
+  };
 
   // Legacy /admin/orders?scope=shipment → /admin/shipments
   useEffect(() => {
@@ -99,11 +112,16 @@ export default function AdminOrdersPage() {
       };
       if (viewFilter && viewFilter !== "all") params.view = viewFilter;
       if (hideArchived) params.hideArchived = true;
-      if (datePreset && datePreset !== "all") params.datePreset = datePreset;
+      if (dateFilter?.from && dateFilter?.to) {
+        params.dateFrom = dateFilter.from;
+        params.dateTo = dateFilter.to;
+      } else if (dateFilter?.preset && dateFilter.preset !== "all" && dateFilter.preset !== "custom") {
+        params.datePreset = dateFilter.preset;
+      }
       if (debouncedQ) params.q = debouncedQ;
       return params;
     },
-    [viewFilter, hideArchived, datePreset, debouncedQ]
+    [viewFilter, hideArchived, dateFilter, debouncedQ]
   );
 
   const fetchPage = useCallback(
@@ -115,7 +133,7 @@ export default function AdminOrdersPage() {
         const data = await adminOrderService.getAll(buildParams(pageNum));
         if (gen !== fetchGen.current) return;
         const { items, hasMore: more } = unwrapPage(data, { fallbackLimit: PAGE_SIZE });
-        const list = items.filter((o) => o.status !== "draft" && o.status !== "abandoned");
+        const list = items.filter((o) => o.status !== "abandoned");
         setOrders((prev) => {
           if (!append) return list;
           const seen = new Set(prev.map((o) => o._id));
@@ -230,13 +248,7 @@ export default function AdminOrdersPage() {
       );
       return {
         Order: formatOrderNumber(order) || order._id || "",
-        Date: order.createdAt
-          ? new Date(order.createdAt).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-          : "",
+        Date: formatAdminDateTime(order.createdAt),
         Customer: ship.name || order.customerId?.name || order.customerName || "",
         Email: order.customerId?.email || ship.email || "",
         Phone: order.customerId?.phone || ship.phone || "",
@@ -282,30 +294,51 @@ export default function AdminOrdersPage() {
         stateCode: companyRaw.stateCode,
       };
 
-      const entries = [];
+      const ids = [...selectedOrderIds];
+      const orderById = new Map(orders.map((o) => [o._id, o]));
+      const CONCURRENCY = 8;
+      let cursor = 0;
       let failed = 0;
-      for (const id of selectedOrderIds) {
-        const order =
-          orders.find((o) => o._id === id) ||
-          (await adminOrderService.getById(id).catch(() => null));
+      const collected = [];
+
+      const loadOne = async (id) => {
+        let order = orderById.get(id) || null;
         if (!order) {
-          failed += 1;
-          continue;
+          order = await adminOrderService.getById(id).catch(() => null);
         }
+        if (!order) return null;
+
         let invoice = null;
         try {
-          invoice =
-            (await adminErpService.salesInvoices.byOrder(id)) ||
-            (await adminErpService.salesInvoices.fromOrder(id));
+          invoice = await adminErpService.salesInvoices.byOrder(id);
+          // Only create when missing — avoids an extra POST on every bulk print.
+          if (!invoice) {
+            invoice = await adminErpService.salesInvoices.fromOrder(id);
+          }
         } catch {
           /* print from order lines if invoice create fails */
         }
-        if (!invoice && !(order.items || []).length) {
-          failed += 1;
-          continue;
+        if (!invoice && !(order.items || []).length) return null;
+        return { order, invoice, company };
+      };
+
+      const workers = Array.from(
+        { length: Math.min(CONCURRENCY, ids.length) },
+        async () => {
+          while (cursor < ids.length) {
+            const id = ids[cursor];
+            cursor += 1;
+            const entry = await loadOne(id);
+            if (entry) collected.push(entry);
+            else failed += 1;
+          }
         }
-        entries.push({ order, invoice, company });
-      }
+      );
+      await Promise.all(workers);
+
+      // Keep selection order for predictable print stack.
+      const byId = new Map(collected.map((e) => [e.order._id, e]));
+      const entries = ids.map((id) => byId.get(id)).filter(Boolean);
 
       if (!entries.length) {
         toast.error("No printable invoices in selection");
@@ -335,8 +368,8 @@ export default function AdminOrdersPage() {
       await printHtml(html, { title });
       toast.success(
         failed
-          ? `Printing ${entries.length} invoice${entries.length === 1 ? "" : "s"} (${failed} skipped)`
-          : `Printing ${entries.length} invoice${entries.length === 1 ? "" : "s"}`
+          ? `Downloaded ${entries.length} invoice${entries.length === 1 ? "" : "s"} (${failed} skipped)`
+          : `Downloaded ${entries.length} invoice${entries.length === 1 ? "" : "s"}`
       );
     } catch (error) {
       toast.error(error?.response?.data?.detail || error?.message || "Invoice print failed");
@@ -439,7 +472,11 @@ export default function AdminOrdersPage() {
                   className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder-gray-400 focus:border-border focus:outline-none"
                 />
               </form>
-              <AdminDateRangeButton value={datePreset} onChange={setDatePreset} />
+              <AdminDateRangeButton
+                value={dateFilter}
+                onChange={handleDateFilterChange}
+                allowCustom
+              />
             </>
           )
         }

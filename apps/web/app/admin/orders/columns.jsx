@@ -5,6 +5,7 @@ import { AdminStatusText } from "@/components/admin/list";
 import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
 import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 import { estimateDtdcSurfaceCost } from "@/utils/dtdcEstCost";
 
 const STATUS_LABELS = {
@@ -31,13 +32,18 @@ const STATUS_LABELS = {
 /**
  * Single source for list + detail fulfillment badge.
  * No AWB ⇒ Unfulfilled (stale "Awaiting Shipment" from import is ignored).
- * With AWB ⇒ DTDC shippingStatus label.
+ * With AWB ⇒ DTDC shippingStatus label; honor isDelivered / order status when ship field is empty.
  */
 export function resolveFulfillmentDisplay(order) {
   const awb = String(order?.awbCode || order?.awb || "").trim();
   const ship = String(order?.shippingStatus || "").trim();
   const shipKey = ship.toLowerCase();
   const orderStatus = String(order?.status || "").trim().toLowerCase();
+  const delivered =
+    Boolean(order?.isDelivered) ||
+    orderStatus === "delivered" ||
+    shipKey === "delivered" ||
+    shipKey.includes("delivered");
 
   if (orderStatus === "cancelled" || shipKey === "cancelled") {
     return {
@@ -47,19 +53,20 @@ export function resolveFulfillmentDisplay(order) {
     };
   }
 
+  if (delivered) {
+    return {
+      key: "Delivered",
+      label: "Delivered",
+      tone: "success",
+    };
+  }
+
   if (!awb) {
     if (shipKey === "payment pending") {
       return {
         key: "Payment Pending",
         label: "Payment pending",
         tone: "warning",
-      };
-    }
-    if (orderStatus === "delivered" || shipKey === "delivered") {
-      return {
-        key: "Delivered",
-        label: "Delivered",
-        tone: "success",
       };
     }
     return {
@@ -171,13 +178,7 @@ function customerName(order) {
 }
 
 function formatOrderDate(order) {
-  return order.createdAt
-    ? new Date(order.createdAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "";
+  return formatAdminDateTime(order.createdAt);
 }
 
 function orderCellMeta(order) {
