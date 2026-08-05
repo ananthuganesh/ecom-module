@@ -51,24 +51,12 @@ export default function ContactPage() {
             sizes="(max-width: 1024px) 100vw, 50vw"
             className="object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent lg:bg-gradient-to-r lg:from-transparent lg:via-transparent lg:to-black/10" />
-          <div className="absolute bottom-6 left-6 right-6 text-white lg:bottom-10 lg:left-10">
-            <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
-              Urban Aana
-            </p>
-            <p className="mt-2 max-w-xs text-lg font-medium leading-snug">
-              Crafted in India. Built for Kerala.
-            </p>
-          </div>
         </div>
 
         {/* Right — title + form */}
         <div className="flex items-center px-5 py-12 sm:px-10 md:px-14 lg:px-16 lg:py-16">
           <div className="mx-auto w-full max-w-md">
-            <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">
-              Get in touch
-            </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
               Contact
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-gray-500">

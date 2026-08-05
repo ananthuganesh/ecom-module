@@ -13,17 +13,9 @@ export default function WishlistPage() {
     <div className="min-h-[60vh] bg-white px-2 py-8 md:px-4 md:py-12 lg:px-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3 md:mb-8">
         <div>
-          <p className="text-[11px] font-bold tracking-[0.2em] text-[#DF1721] uppercase">
-            Saved
-          </p>
-          <h1 className="title-knewave mt-1 text-3xl leading-none tracking-tight normal-case md:text-4xl">
-            Wishlist
+          <h1 className="title-knewave text-3xl leading-none tracking-tight normal-case md:text-4xl">
+            My <span className="title-knewave-accent">Wishlist</span>
           </h1>
-          <p className="mt-2 text-sm text-gray-500">
-            {items.length
-              ? `${items.length} item${items.length === 1 ? "" : "s"} saved on this device`
-              : "Items you save appear here"}
-          </p>
         </div>
         {items.length > 0 ? (
           <button
@@ -31,7 +23,7 @@ export default function WishlistPage() {
             onClick={() => {
               if (window.confirm("Clear your entire wishlist?")) clear();
             }}
-            className="text-xs font-semibold tracking-wide text-gray-500 uppercase underline-offset-2 hover:text-[#DF1721] hover:underline"
+            className="text-xs font-semibold tracking-wide text-gray-500 underline-offset-2 hover:text-[#DF1721] hover:underline"
           >
             Clear all
           </button>
@@ -53,7 +45,7 @@ export default function WishlistPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 lg:gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6 lg:gap-4">
           {items.map((product) => (
             <ProductCard
               key={product._id || product.id}

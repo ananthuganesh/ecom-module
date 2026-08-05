@@ -40,7 +40,7 @@ export default function WhyUrbanAana({ className = "" }) {
   return (
     <section className={`w-full bg-[#ffffff] text-[#222222] ${className}`.trim()}>
       <div className="mx-auto flex max-w-7xl flex-col items-center px-6 py-14 md:py-20">
-        <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+        <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
           Why <span className="title-knewave-accent">Urban Aana</span>
         </h2>
 

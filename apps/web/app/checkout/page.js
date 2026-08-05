@@ -115,7 +115,6 @@ function CheckoutPageContent() {
   const [isPincodeLoading, setIsPincodeLoading] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
-  const [availableCoupons, setAvailableCoupons] = useState([]);
   const [couponError, setCouponError] = useState("");
   const [showCouponPanel, setShowCouponPanel] = useState(false);
   const [isCouponLoading, setIsCouponLoading] = useState(false);
@@ -159,7 +158,6 @@ function CheckoutPageContent() {
         setRazorpayConfigured(cfg?.razorpayConfigured !== false);
       })
       .catch(() => setRazorpayConfigured(false));
-    couponService.getAll().then(setAvailableCoupons).catch(() => {});
   }, [isBuyNow, syncBuyNowStock, syncStock]);
 
   useEffect(() => {
@@ -872,23 +870,6 @@ function CheckoutPageContent() {
                 </div>
                 {couponError && (
                   <p className="text-[12px] text-red-600">{couponError}</p>
-                )}
-                {availableCoupons.filter((c) => c?.code).length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {availableCoupons
-                      .filter((c) => c?.code)
-                      .slice(0, 4)
-                      .map((coupon) => (
-                        <button
-                          key={coupon._id || coupon.code}
-                          type="button"
-                          onClick={() => handleApplyCoupon(coupon.code)}
-                          className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:border-brand-red hover:text-brand-red"
-                        >
-                          {coupon.code}
-                        </button>
-                      ))}
-                  </div>
                 )}
               </div>
             )}

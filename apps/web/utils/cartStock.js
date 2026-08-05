@@ -68,3 +68,12 @@ export function isCartLineUnavailable(item) {
   const qty = Number(item?.qty || 1);
   return stock <= 0 || stock < qty;
 }
+
+/** Available items first; out-of-stock lines last. */
+export function sortCartByAvailability(items = []) {
+  return [...items].sort((a, b) => {
+    const aOut = isCartLineUnavailable(a) ? 1 : 0;
+    const bOut = isCartLineUnavailable(b) ? 1 : 0;
+    return aOut - bOut;
+  });
+}

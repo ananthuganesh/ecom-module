@@ -50,7 +50,7 @@ function ReelCard({ videoUrl, altText }) {
   return (
     <div
       ref={containerRef}
-      className="group relative block w-[calc((100vw-3rem)/5)] shrink-0 overflow-hidden rounded-xl bg-white md:w-[calc((100vw-5rem)/5)] lg:w-[calc((100vw-8rem)/5)] lg:rounded-2xl"
+      className="group relative block w-[calc((100vw-2rem-0.5rem)/2)] shrink-0 overflow-hidden rounded-xl bg-white sm:w-[calc((100vw-3rem-1.5rem)/4)] md:w-[calc((100vw-5rem)/5)] lg:w-[calc((100vw-8rem)/5)] lg:rounded-2xl"
       aria-label={altText || "Product showcase"}
     >
       <div
@@ -134,15 +134,17 @@ export default function InstagramReels() {
     return (
       <section className="scroll-mt-24 py-6 md:py-10">
         <header className="mb-3 w-full px-2 text-center md:mb-6 md:px-4 lg:px-8">
-          <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+          <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
             Product <span className="title-knewave-accent">Showcase</span>
           </h2>
         </header>
-        <div className="grid grid-cols-5 gap-2 px-2 md:gap-3 md:px-4 lg:gap-4 lg:px-8">
+        <div className="grid grid-cols-2 gap-2 px-2 sm:grid-cols-4 md:grid-cols-5 md:gap-3 md:px-4 lg:gap-4 lg:px-8">
           {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
+              className={`animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl ${
+                i > 1 ? "hidden sm:block" : ""
+              } ${i > 3 ? "sm:hidden md:block" : ""}`}
               style={{ aspectRatio: "2 / 3" }}
             />
           ))}
@@ -156,7 +158,7 @@ export default function InstagramReels() {
   return (
     <section className="scroll-mt-24 py-6 md:py-10">
       <header className="mb-3 w-full px-2 text-center md:mb-6 md:px-4 lg:px-8">
-        <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+        <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
           Product <span className="title-knewave-accent">Showcase</span>
         </h2>
       </header>

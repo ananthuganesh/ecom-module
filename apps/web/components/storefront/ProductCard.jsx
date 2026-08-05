@@ -150,7 +150,7 @@ export default function ProductCard({
               </Link>
 
               {badge ? (
-                <div className="pointer-events-none absolute top-2 left-2 z-10 rounded-sm bg-white px-1.5 py-1 lg:top-3 lg:left-3 lg:px-2">
+                <div className="pointer-events-none absolute top-1.5 left-1.5 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5 lg:top-3 lg:left-3 lg:h-6 lg:px-2">
                   <span
                     className={`text-[8px] font-medium uppercase leading-none tracking-wide lg:text-xs ${
                       badge.key === "sold_out"
@@ -168,7 +168,7 @@ export default function ProductCard({
               <WishlistButton
                 product={product}
                 iconSize={16}
-                className="absolute top-2 right-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-[#131814] shadow-sm ring-1 ring-black/5 transition-colors hover:bg-white lg:top-3 lg:right-3 lg:h-9 lg:w-9"
+                className="absolute top-1.5 right-1.5 z-20 inline-flex items-center justify-center text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition-opacity hover:opacity-80 lg:top-3 lg:right-3"
               />
 
               {!isOutOfStock && availableSizes.length > 0 ? (
@@ -224,20 +224,20 @@ export default function ProductCard({
             className="flex flex-col gap-1 px-2.5 pt-2.5 pb-2 sm:gap-1.5 sm:px-3 sm:pt-3"
             onClick={() => trackSelectItem(product, listName, listId)}
           >
-            <h3 className="w-full truncate text-[12px] font-medium uppercase tracking-wide text-[#131814] lg:text-sm">
+            <h3 className="w-full truncate text-[11px] font-medium uppercase tracking-wide text-[#131814] lg:text-sm">
               {productType ? `${title} ${productType}` : title}
             </h3>
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <span className="text-sm font-semibold text-[#131814] lg:text-base">
+              <span className="text-[13px] font-semibold text-[#131814] lg:text-base">
                 ₹{formatInr(price)}
               </span>
               {compareAt ? (
-                <span className="text-[11px] font-medium text-[#afb2b4] line-through lg:text-sm">
+                <span className="text-[10px] font-medium text-[#afb2b4] line-through lg:text-sm">
                   ₹{formatInr(compareAt)}
                 </span>
               ) : null}
               {discountPercent > 0 ? (
-                <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-1.5 py-1 text-[10px] font-semibold leading-none tracking-wide text-white uppercase lg:px-2 lg:py-1 lg:text-[11px]">
+                <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-1 py-0.5 text-[9px] font-semibold leading-none tracking-wide text-white uppercase lg:px-2 lg:py-1 lg:text-[11px]">
                   {discountPercent}% off
                 </span>
               ) : null}

@@ -27,7 +27,7 @@ export default async function Home() {
         className="scroll-mt-24 px-2 py-6 md:px-4 md:py-10 lg:px-8"
       >
         <header className="mb-3 w-full text-center md:mb-6">
-          <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+          <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
             Latest <span className="title-knewave-accent">Drops</span>
           </h2>
         </header>

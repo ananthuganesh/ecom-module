@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Heart } from "lucide-react";
 import { toast } from "sonner";
 import { useWishlistStore } from "@/store/useWishlistStore";
 
 /**
  * Toggle product on the local wishlist (persisted). Fires Meta add_to_wishlist on add.
+ * Renders a neutral (not wishlisted) state until persist hydrates to avoid SSR mismatch.
  */
 export default function WishlistButton({
   product,
@@ -13,12 +15,27 @@ export default function WishlistButton({
   iconSize = 18,
   showLabel = false,
 }) {
-  const wishlisted = useWishlistStore((s) =>
+  const [hydrated, setHydrated] = useState(false);
+  const wishlistedFromStore = useWishlistStore((s) =>
     product ? s.has(product) : false
   );
   const toggle = useWishlistStore((s) => s.toggle);
 
+  useEffect(() => {
+    const store = useWishlistStore;
+    if (store.persist?.hasHydrated?.()) {
+      setHydrated(true);
+      return;
+    }
+    const unsub = store.persist?.onFinishHydration?.(() => setHydrated(true));
+    // Fallback if persist API is unavailable.
+    if (!unsub) setHydrated(true);
+    return unsub;
+  }, []);
+
   if (!product) return null;
+
+  const wishlisted = hydrated ? wishlistedFromStore : false;
 
   const onClick = (e) => {
     e.preventDefault();

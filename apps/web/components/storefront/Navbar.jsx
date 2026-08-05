@@ -2,16 +2,9 @@
 
 import {
   AccountIcon,
-  BagIcon,
   CartIcon,
   CloseIcon,
-  HeartBagIcon,
-  InfoIcon,
-  LocationIcon,
-  LogOutIcon,
   MenuIcon,
-  OrdersIcon,
-  StoreIcon,
 } from "@/components/icons/storeIcons";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -27,16 +20,102 @@ import { Heart } from "lucide-react";
 
 const NAVBAR_HEIGHT = 56;
 
-function MenuLink({ href, onClick, icon: Icon, children }) {
+const MENU_LINKS = [
+  { href: "/all-products", label: "All Products" },
+  { href: "/about", label: "About Us" },
+  { href: "/contact", label: "Contact Us" },
+];
+
+function DrawerAccountCard({ onClose }) {
+  const userInfo = useAuthStore((s) => s.userInfo);
+  const logout = useAuthStore((s) => s.logout);
+  const isAuthenticated = Boolean(
+    userInfo?.authenticated ||
+      userInfo?.token ||
+      userInfo?._id ||
+      userInfo?.id ||
+      userInfo?.phone
+  );
+  const userName = userInfo?.name || "";
+  const userEmail = userInfo?.email || "";
+  const userPhone = userInfo?.phone || "";
+
+  if (isAuthenticated) {
+    return (
+      <div className="mx-2 mb-0 rounded-xl border border-gray-200 bg-[#F8F8F8] p-4">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-900">
+            {userName || "Customer"}
+          </p>
+          {userEmail ? (
+            <p className="mt-0.5 truncate text-xs text-gray-500">{userEmail}</p>
+          ) : null}
+          {userPhone ? (
+            <p className="mt-0.5 truncate text-xs text-gray-500">{userPhone}</p>
+          ) : null}
+        </div>
+        <div className="mt-3 space-y-1 border-t border-gray-100 pt-3">
+          <Link
+            href="/account/orders"
+            onClick={onClose}
+            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            My Orders
+          </Link>
+          <Link
+            href="/wishlist"
+            onClick={onClose}
+            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            Wishlist
+          </Link>
+          <Link
+            href="/account"
+            onClick={onClose}
+            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            My Account
+          </Link>
+          <Link
+            href="/account/settings"
+            onClick={onClose}
+            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            Settings
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              onClose();
+            }}
+            className="flex w-full items-center rounded-lg px-2 py-2 text-left text-sm text-[#DF1721] transition-colors hover:bg-red-50"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Link
-      href={href}
-      onClick={onClick}
-      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-800 transition-colors hover:bg-gray-100"
-    >
-      <Icon size={18} className="shrink-0 text-gray-500" />
-      <span>{children}</span>
-    </Link>
+    <div className="mx-2 mb-0 rounded-xl border border-gray-200 bg-[#F8F8F8] p-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-gray-900">Welcome</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
+          Sign in to track orders, manage addresses, and checkout faster.
+        </p>
+      </div>
+      <div className="mt-3">
+        <Link
+          href="/login"
+          onClick={onClose}
+          className="flex h-10 w-full items-center justify-center rounded-md bg-[#222222] text-[13px] font-semibold text-white transition-colors hover:bg-black"
+        >
+          Login
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -48,9 +127,13 @@ const Navbar = () => {
   const setDrawerOpen = useCartStore((s) => s.setDrawerOpen);
   const wishlistCount = useWishlistStore((s) => s.items.length);
   const userInfo = useAuthStore((s) => s.userInfo);
-  const logout = useAuthStore((s) => s.logout);
-
-  const isAuthenticated = Boolean(userInfo?.authenticated || userInfo?.token || userInfo?._id || userInfo?.id || userInfo?.phone);
+  const isAuthenticated = Boolean(
+    userInfo?.authenticated ||
+      userInfo?.token ||
+      userInfo?._id ||
+      userInfo?.id ||
+      userInfo?.phone
+  );
   const userName = userInfo?.name || "";
 
   const cartCount = cartItems.reduce((n, i) => n + (i.qty || 0), 0);
@@ -134,6 +217,7 @@ const Navbar = () => {
           <div className="flex items-center justify-end gap-0.5 sm:gap-1">
             {isAuthenticated ? (
               <button
+                type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
                 className={`inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
                   transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
@@ -146,8 +230,9 @@ const Navbar = () => {
                 </span>
               </button>
             ) : (
-              <Link
-                href="/login"
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
                 className={`inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
                   transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
                 }`}
@@ -155,7 +240,7 @@ const Navbar = () => {
               >
                 <AccountIcon size={18} />
                 <span className="hidden md:inline">Account</span>
-              </Link>
+              </button>
             )}
 
             <Link
@@ -225,9 +310,9 @@ const Navbar = () => {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "tween", duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-[#f7f7f5] shadow-2xl"
+              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-white shadow-2xl"
             >
-              <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3.5">
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3.5">
                 <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
                 <button
                   onClick={closeMenu}
@@ -238,132 +323,26 @@ const Navbar = () => {
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
-                <div className="rounded-xl bg-gray-900 p-4 text-white">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
-                      <AccountIcon size={20} className="text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">
-                        {isAuthenticated
-                          ? userName?.split(" ")[0] || "User"
-                          : "Guest User"}
-                      </p>
-                      <p className="truncate text-xs text-white/55">
-                        {isAuthenticated
-                          ? userInfo?.email || userInfo?.phone || "Your account"
-                          : "Sign in to your account"}
-                      </p>
-                    </div>
-                  </div>
-                  {!isAuthenticated ? (
-                    <Link
-                      href="/login"
-                      onClick={closeMenu}
-                      className="mt-3.5 block rounded-lg bg-white/10 py-2.5 text-center text-xs font-semibold tracking-wide transition-colors hover:bg-white/20"
-                    >
-                      Sign In
-                    </Link>
-                  ) : (
-                    <Link
-                      href="/account"
-                      onClick={closeMenu}
-                      className="mt-3.5 block rounded-lg bg-white/10 py-2.5 text-center text-xs font-semibold tracking-wide transition-colors hover:bg-white/20"
-                    >
-                      View Account
-                    </Link>
-                  )}
-                </div>
-
-                <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5">
-                  <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold tracking-[0.14em] text-gray-400 uppercase">
-                    Shop
-                  </p>
-                  <MenuLink href="/" onClick={closeMenu} icon={StoreIcon}>
-                    Home
-                  </MenuLink>
-                  <MenuLink
-                    href="/all-products"
-                    onClick={closeMenu}
-                    icon={BagIcon}
-                  >
-                    All Products
-                  </MenuLink>
-                  <MenuLink href="/wishlist" onClick={closeMenu} icon={HeartBagIcon}>
-                    Wishlist{wishlistCount ? ` (${wishlistCount})` : ""}
-                  </MenuLink>
-                </div>
-
-                {isAuthenticated ? (
-                  <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5">
-                    <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold tracking-[0.14em] text-gray-400 uppercase">
-                      Account
-                    </p>
-                    <MenuLink
-                      href="/account/orders"
-                      onClick={closeMenu}
-                      icon={OrdersIcon}
-                    >
-                      My Orders
-                    </MenuLink>
-                    <MenuLink
-                      href="/account"
-                      onClick={closeMenu}
-                      icon={AccountIcon}
-                    >
-                      Account
-                    </MenuLink>
-                    <MenuLink
-                      href="/account/addresses"
-                      onClick={closeMenu}
-                      icon={LocationIcon}
-                    >
-                      Addresses
-                    </MenuLink>
-                    <button
-                      onClick={() => {
-                        logout();
-                        closeMenu();
-                      }}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-brand-red transition-colors hover:bg-red-50"
-                    >
-                      <LogOutIcon size={18} className="shrink-0" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5">
-                  <p className="px-3 pb-1 pt-1.5 text-[11px] font-bold tracking-[0.14em] text-gray-400 uppercase">
-                    Help
-                  </p>
-                  <MenuLink href="/about" onClick={closeMenu} icon={InfoIcon}>
-                    Our Story
-                  </MenuLink>
-                  <MenuLink
-                    href="/contact"
-                    onClick={closeMenu}
-                    icon={LocationIcon}
-                  >
-                    Contact Us
-                  </MenuLink>
-                </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+                <nav>
+                  <ul className="divide-y divide-gray-100">
+                    {MENU_LINKS.map((item) => (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={closeMenu}
+                          className="block px-3 py-3.5 text-[15px] font-medium text-gray-900 transition-colors hover:bg-gray-50"
+                        >
+                          {item.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
               </div>
 
-              <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                <div className="flex flex-col items-center gap-2">
-                  <Image
-                    src="/brand/logo.png"
-                    alt="URBAN AANA"
-                    width={88}
-                    height={28}
-                    className="h-6 w-auto object-contain opacity-80"
-                  />
-                  <p className="text-center text-[11px] text-gray-400">
-                    © 2026 Urban Aana. All rights reserved.
-                  </p>
-                </div>
+              <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+                <DrawerAccountCard onClose={closeMenu} />
               </div>
             </motion.aside>
           </>

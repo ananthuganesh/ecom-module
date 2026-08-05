@@ -34,6 +34,7 @@ import { useRecentlyViewedStore } from "@/store/useRecentlyViewedStore";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { getProductSizeOptions } from "@/utils/productSizes";
 import { sanitizeProductHtml } from "@/utils/sanitizeProductHtml";
+import { resolveCardBadge } from "@/utils/urbanProductAdapter";
 
 const stockFor = (item, fallback = 0) => Number(item?.stock ?? item?.quantity ?? fallback ?? 0);
 
@@ -112,7 +113,10 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [pinError, setPinError] = useState("");
   const [deliveryLabel, setDeliveryLabel] = useState("");
   const [ctaPending, setCtaPending] = useState(null);
+  const [showStickyCta, setShowStickyCta] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const trackedViewIdRef = useRef(null);
+  const primaryCtaRef = useRef(null);
 
   useEffect(() => {
     if (!initialProduct?._id) return;
@@ -269,6 +273,18 @@ export default function ProductDetailPage({ initialProduct = null }) {
   }, [product, selectedSizeData, selectedVariant]);
 
   useEffect(() => {
+    setActiveImageIndex(0);
+  }, [product?._id, selectedSize]);
+
+  useEffect(() => {
+    if (!images.length) {
+      setActiveImageIndex(0);
+      return;
+    }
+    setActiveImageIndex((i) => Math.min(Math.max(0, i), images.length - 1));
+  }, [images.length]);
+
+  useEffect(() => {
     setLightboxIndex(null);
   }, [selectedSize, product?._id]);
   const availableStock = selectedSizeData
@@ -290,16 +306,19 @@ export default function ProductDetailPage({ initialProduct = null }) {
   );
   const displayTitle = productType ? `${title} ${productType}` : title;
   const soldLabel = formatSoldLabel(resolveSoldCount(product));
+  const productBadge = useMemo(
+    () => (product ? resolveCardBadge(product) : null),
+    [product]
+  );
   const isInCart = cartItems.some(
     (item) => item._id === product?._id && (item.size || "") === selectedSize
   );
 
-  const checkDeliveryPin = async () => {
-    const code = String(pinCode || "").trim();
+  const checkDeliveryPin = async (rawCode = pinCode) => {
+    const code = String(rawCode || "").trim();
     setPinError("");
     setDeliveryLabel("");
     if (!/^\d{6}$/.test(code)) {
-      setPinError("Enter a valid 6-digit PIN code");
       return;
     }
     setPinChecking(true);
@@ -322,12 +341,33 @@ export default function ProductDetailPage({ initialProduct = null }) {
   };
 
   useEffect(() => {
+    if (pinCode.length !== 6) return;
+    void checkDeliveryPin(pinCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinCode]);
+
+  useEffect(() => {
     setQuantity(1);
   }, [selectedSize]);
 
   useEffect(() => {
     setQuantity((current) => Math.max(1, Math.min(current, maxQuantity || 1)));
   }, [maxQuantity]);
+
+  useEffect(() => {
+    const target = primaryCtaRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Sticky bar only when the real CTAs are off-screen.
+        setShowStickyCta(!entry.isIntersecting);
+      },
+      { threshold: 0, rootMargin: "0px" }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [product?._id, loading]);
 
   const handleAddToCart = () => {
     if (!inStock || ctaPending) return;
@@ -410,10 +450,16 @@ export default function ProductDetailPage({ initialProduct = null }) {
 
   const ctaDisabled = !inStock || (sizes.length > 0 && !selectedSize);
   const addLabel =
-    sizes.length > 0 && !selectedSize ? "Select size" : "Add to bag";
+    sizes.length > 0 && !selectedSize ? "Select size" : "Add to cart";
 
   return (
-    <main className="min-h-screen bg-[#ffffff] pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
+    <main
+      className={`min-h-screen bg-[#ffffff] text-black lg:pb-0 ${
+        showStickyCta
+          ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))]"
+          : "pb-0"
+      }`}
+    >
       <section className="w-full px-2 py-5 md:px-4 md:py-8 lg:px-8 lg:py-10">
         <nav className="mb-4 text-[11px] font-medium text-gray-400 md:mb-5">
           <Link href="/all-products" className="transition-colors hover:text-black">
@@ -426,47 +472,125 @@ export default function ProductDetailPage({ initialProduct = null }) {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-10 xl:gap-14">
           {/* Gallery */}
           <div className="space-y-2.5">
-            <div className="grid grid-cols-2 gap-2">
-              {images.slice(0, 4).map((image, index) => (
+            {/* Mobile — full main image + square thumbs */}
+            <div className="space-y-2 lg:hidden">
+              <div className="relative">
                 <button
-                  key={`${image}-${index}`}
                   type="button"
-                  onClick={() => setLightboxIndex(index)}
-                  className="group relative aspect-[3/4] overflow-hidden rounded-lg bg-gray-100 text-left lg:rounded-xl"
+                  onClick={() => setLightboxIndex(activeImageIndex)}
+                  className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-gray-100"
                 >
-                  <SafeImage
-                    src={resolveImageUrl(image)}
-                    alt={`${title} ${index + 1}`}
-                    fill
-                    priority={index === 0}
-                    fetchPriority={index === 0 ? "high" : undefined}
-                    loading={index === 0 ? "eager" : undefined}
-                    sizes="(max-width: 1024px) 50vw, 35vw"
-                    className="object-cover transition duration-500 group-hover:scale-[1.03]"
-                  />
+                  {images[activeImageIndex] ? (
+                    <SafeImage
+                      src={resolveImageUrl(images[activeImageIndex])}
+                      alt={`${title} ${activeImageIndex + 1}`}
+                      fill
+                      priority
+                      fetchPriority="high"
+                      loading="eager"
+                      sizes="100vw"
+                      className="object-cover"
+                    />
+                  ) : null}
                 </button>
-              ))}
+
+                {productBadge ? (
+                  <div className="pointer-events-none absolute top-2 left-2 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
+                    <span
+                      className={`text-[8px] font-medium uppercase leading-none tracking-wide ${
+                        productBadge.key === "sold_out"
+                          ? "text-[#c70a24]"
+                          : productBadge.key === "low_stock"
+                            ? "text-[#b45309]"
+                            : "text-[#133b5f]"
+                      }`}
+                    >
+                      {productBadge.label}
+                    </span>
+                  </div>
+                ) : null}
+
+                <WishlistButton
+                  product={product}
+                  iconSize={18}
+                  className="absolute top-2 right-2 z-20 inline-flex items-center justify-center text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+                />
+              </div>
+              {images.length > 1 ? (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {images.map((image, index) => {
+                    const active = index === activeImageIndex;
+                    return (
+                      <button
+                        key={`m-${image}-${index}`}
+                        type="button"
+                        onClick={() => setActiveImageIndex(index)}
+                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md ${
+                          active
+                            ? "border-2 border-gray-400"
+                            : "border border-gray-200"
+                        }`}
+                        aria-label={`View image ${index + 1}`}
+                        aria-current={active ? "true" : undefined}
+                      >
+                        <SafeImage
+                          src={resolveImageUrl(image)}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="64px"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-            {images.length > 4 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {images.slice(4).map((image, index) => (
+
+            {/* Desktop — multi-image grid */}
+            <div className="hidden lg:block">
+              <div className="grid grid-cols-2 gap-2">
+                {images.slice(0, 4).map((image, index) => (
                   <button
                     key={`${image}-${index}`}
                     type="button"
-                    onClick={() => setLightboxIndex(index + 4)}
-                    className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-gray-200 hover:border-black"
+                    onClick={() => setLightboxIndex(index)}
+                    className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-gray-100 text-left"
                   >
                     <SafeImage
                       src={resolveImageUrl(image)}
-                      alt=""
+                      alt={`${title} ${index + 1}`}
                       fill
-                      className="object-cover"
-                      sizes="48px"
+                      priority={index === 0}
+                      fetchPriority={index === 0 ? "high" : undefined}
+                      loading={index === 0 ? "eager" : undefined}
+                      sizes="35vw"
+                      className="object-cover transition duration-500 group-hover:scale-[1.03]"
                     />
                   </button>
                 ))}
               </div>
-            ) : null}
+              {images.length > 4 ? (
+                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                  {images.slice(4).map((image, index) => (
+                    <button
+                      key={`${image}-${index}`}
+                      type="button"
+                      onClick={() => setLightboxIndex(index + 4)}
+                      className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-gray-200 hover:border-black"
+                    >
+                      <SafeImage
+                        src={resolveImageUrl(image)}
+                        alt=""
+                        fill
+                        className="object-cover"
+                        sizes="48px"
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {/* Buy box */}
@@ -478,7 +602,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
               <WishlistButton
                 product={product}
                 iconSize={20}
-                className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50"
+                className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50 lg:inline-flex"
               />
             </div>
             {soldLabel ? (
@@ -579,7 +703,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </div>
             </div>
 
-            <div className="mt-5 flex gap-2">
+            <div ref={primaryCtaRef} className="mt-5 flex gap-2">
               {isInCart && ctaPending !== "add" ? (
                 <button
                   type="button"
@@ -601,7 +725,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   ) : sizes.length > 0 && !selectedSize ? (
                     "Select size"
                   ) : (
-                    "Add to bag"
+                    "Add to cart"
                   )}
                 </button>
               )}
@@ -616,44 +740,32 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </button>
             </div>
 
-            <div className="mt-5 rounded-lg border border-gray-200 p-3">
+            <div className="mt-5 rounded-lg p-0">
               <p className="mb-2 text-[12px] font-medium text-gray-600">
                 Delivery check
               </p>
-              <div className="flex gap-2">
-                <label className="relative min-w-0 flex-1">
-                  <LocationIcon className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    value={pinCode}
-                    onChange={(e) => {
-                      const next = e.target.value.replace(/\D/g, "").slice(0, 6);
-                      setPinCode(next);
-                      setPinError("");
-                      setDeliveryLabel("");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void checkDeliveryPin();
-                      }
-                    }}
-                    placeholder="Enter pin code"
-                    className="h-10 w-full rounded-md border border-gray-200 bg-white pr-3 pl-8 text-sm outline-none focus:border-black"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void checkDeliveryPin()}
-                  disabled={pinChecking}
-                  aria-busy={pinChecking}
-                  className="flex h-10 w-[4.5rem] shrink-0 items-center justify-center rounded-md bg-black px-3 text-[13px] font-semibold text-white disabled:opacity-70"
-                >
-                  {pinChecking ? <CtaSpinner tone="light" /> : "Check"}
-                </button>
-              </div>
+              <label className="relative block">
+                <LocationIcon className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pinCode}
+                  onChange={(e) => {
+                    const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    setPinCode(next);
+                    setPinError("");
+                    setDeliveryLabel("");
+                  }}
+                  placeholder="Enter 6-digit PIN"
+                  className="h-10 w-full rounded-md border border-gray-200 bg-white pr-10 pl-8 text-sm outline-none focus:border-black"
+                />
+                {pinChecking ? (
+                  <span className="absolute top-1/2 right-3 -translate-y-1/2">
+                    <CtaSpinner tone="dark" />
+                  </span>
+                ) : null}
+              </label>
               {pinError ? (
                 <p className="mt-2 text-[12px] font-medium text-[#DF1721]">{pinError}</p>
               ) : null}
@@ -663,6 +775,37 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 </p>
               ) : null}
             </div>
+
+            {productSpecs.length > 0 ? (
+              <div className="mt-6 border-t border-gray-200 pt-5">
+                <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
+                  Product details
+                </h2>
+                <div className="grid grid-cols-2">
+                  {productSpecs.map((spec, index) => {
+                    const isLastRow =
+                      index >=
+                      productSpecs.length -
+                        (productSpecs.length % 2 === 0 ? 2 : 1);
+                    return (
+                      <div
+                        key={spec.label}
+                        className={`py-4 pr-4 ${
+                          index % 2 === 1 ? "pl-4" : ""
+                        } ${!isLastRow ? "border-b border-gray-200" : ""}`}
+                      >
+                        <p className="text-[12px] leading-snug text-gray-400">
+                          {spec.label}
+                        </p>
+                        <p className="mt-1.5 text-[14px] font-medium leading-snug text-[#222222]">
+                          {spec.value}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-6 border-t border-gray-200">
               {[
@@ -688,41 +831,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
                     )
                   ),
                 },
-                productSpecs.length > 0
-                  ? {
-                      id: "details",
-                      title: "Product details",
-                      body: (
-                        <div className="pb-5">
-                          <div className="grid grid-cols-2">
-                            {productSpecs.map((spec, index) => {
-                              const isLastRow =
-                                index >=
-                                productSpecs.length -
-                                  (productSpecs.length % 2 === 0 ? 2 : 1);
-                              return (
-                                <div
-                                  key={spec.label}
-                                  className={`py-4 pr-4 ${
-                                    index % 2 === 1 ? "pl-4" : ""
-                                  } ${
-                                    !isLastRow ? "border-b border-gray-200" : ""
-                                  }`}
-                                >
-                                  <p className="text-[12px] leading-snug text-gray-400">
-                                    {spec.label}
-                                  </p>
-                                  <p className="mt-1.5 text-[14px] font-medium leading-snug text-[#222222]">
-                                    {spec.value}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ),
-                    }
-                  : null,
                 {
                   id: "shipping",
                   title: "Shipping & returns",
@@ -974,20 +1082,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
         </div>
       ) : null}
 
-      {!showSizeGuide && lightboxIndex === null ? (
+      {!showSizeGuide && lightboxIndex === null && showStickyCta ? (
         <div className="fixed inset-x-0 bottom-0 z-[120] border-t border-gray-200 bg-white/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 shrink-0">
-              <p className="text-base font-bold tracking-tight text-black">
-                ₹{price.toLocaleString("en-IN")}
-              </p>
-              {hasCompareAt ? (
-                <p className="text-[11px] text-gray-400 line-through">
-                  ₹{originalPrice.toLocaleString("en-IN")}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex min-w-0 flex-1 gap-2">
+          <div className="flex gap-2">
               {isInCart && ctaPending !== "add" ? (
                 <button
                   type="button"
@@ -1016,7 +1113,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
               >
                 {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
               </button>
-            </div>
           </div>
         </div>
       ) : null}

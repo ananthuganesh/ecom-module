@@ -16,7 +16,7 @@ import SafeImage from "@/components/SafeImage";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { trackViewCart } from "@/lib/tracking";
 import productService from "@/api/services/user/productService";
-import { isCartLineUnavailable } from "@/utils/cartStock";
+import { isCartLineUnavailable, sortCartByAvailability } from "@/utils/cartStock";
 
 const formatPrice = (price) => `₹${Number(price || 0).toLocaleString("en-IN")}`;
 
@@ -58,6 +58,7 @@ export default function CartDrawer() {
   } = useCartStore();
 
   const availableItems = cartItems.filter((item) => !isCartLineUnavailable(item));
+  const displayItems = sortCartByAvailability(cartItems);
   const cartCount = availableItems.reduce((n, i) => n + (i.qty || 0), 0);
   const cartTotal = availableItems.reduce(
     (acc, item) => acc + (Number(item.price) || 0) * (item.qty || 1),
@@ -138,7 +139,7 @@ export default function CartDrawer() {
                 </div>
               ) : (
                 <ul className="divide-y divide-gray-100">
-                    {cartItems.map((item, index) => {
+                    {displayItems.map((item, index) => {
                       const qty = item.qty || 1;
                       const unitPrice = Number(item.price) || 0;
                       const name = item.name || item.productName || "Product";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense, useMemo, useRef } from "react";
-import { SearchX } from "lucide-react";
+import { ChevronDown, SearchX } from "lucide-react";
 import { FilterIcon } from "@/components/icons/storeIcons";
 import ProductCard from "@/components/storefront/ProductCard";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -27,6 +27,79 @@ const EMPTY_FACETS = {
   badges: [],
   priceRanges: [],
 };
+
+function SortDropdown({ value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = options.find((o) => o.value === value) || options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="inline-flex min-w-[11rem] items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-semibold text-black transition hover:border-black"
+      >
+        <span className="truncate">
+          <span className="mr-1 font-medium text-gray-500">Sort:</span>
+          {selected.label}
+        </span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {open ? (
+        <ul
+          role="listbox"
+          className="absolute right-0 z-30 mt-1.5 min-w-full overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+        >
+          {options.map((option) => {
+            const active = option.value === value;
+            return (
+              <li key={option.value} role="option" aria-selected={active}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full px-3 py-2 text-left text-[12px] transition-colors ${
+                    active
+                      ? "bg-gray-100 font-semibold text-black"
+                      : "font-medium text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 function AllProductsContent({
   initialProducts = [],
@@ -161,7 +234,7 @@ function AllProductsContent({
 
   return (
     <>
-      <section className="bg-[#F9F9F5] py-6 md:py-10">
+      <section className="bg-[#F9F9F5] pt-10 pb-5">
         <div className="w-full px-2 md:px-4 lg:px-8">
           <motion.header
             initial={{ opacity: 0, y: 16 }}
@@ -176,7 +249,7 @@ function AllProductsContent({
                 </>
               ) : (
                 <>
-                  All <span className="title-knewave-accent">Products</span>
+                  Our <span className="title-knewave-accent">Collection</span>
                 </>
               )}
             </h1>
@@ -202,20 +275,11 @@ function AllProductsContent({
                 ) : null}
               </button>
             </div>
-            <label className="flex items-center gap-2 text-[12px] text-gray-500">
-              <span className="hidden sm:inline">Sort</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-semibold text-black outline-none transition hover:border-black focus:border-black"
-              >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SortDropdown
+              value={sortBy}
+              onChange={setSortBy}
+              options={SORT_OPTIONS}
+            />
           </div>
 
           <div className="flex min-h-[480px] items-start gap-0 lg:gap-10 xl:gap-12">
