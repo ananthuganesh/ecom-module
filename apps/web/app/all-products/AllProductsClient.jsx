@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useEffect, Suspense, useMemo, useRef } from "react";
-import { ChevronDown, SearchX } from "lucide-react";
+import {
+  useState,
+  useEffect,
+  Suspense,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
+import { ChevronDown, Loader2, SearchX } from "lucide-react";
 import { FilterIcon } from "@/components/icons/storeIcons";
 import ProductCard from "@/components/storefront/ProductCard";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -10,6 +17,7 @@ import FilterSidebar from "@/components/FilterSidebar";
 import ProductSkeleton from "@/components/ProductSkeleton";
 import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { trackViewItemList, trackSearch } from "@/lib/tracking";
+import { normalizeProductPage } from "@/utils/normalizeProductPage";
 import { motion } from "framer-motion";
 
 const SORT_OPTIONS = [
@@ -56,7 +64,7 @@ function SortDropdown({ value, onChange, options }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="inline-flex min-w-[11rem] items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-semibold text-black transition hover:border-black"
+        className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 text-[12px] font-semibold text-black transition hover:border-black lg:min-w-[11rem] lg:w-auto"
       >
         <span className="truncate">
           <span className="mr-1 font-medium text-gray-500">Sort:</span>
@@ -103,6 +111,7 @@ function SortDropdown({ value, onChange, options }) {
 
 function AllProductsContent({
   initialProducts = [],
+  initialHasMore = false,
   initialFacets = EMPTY_FACETS,
   catalogPageSize = 40,
   cardPriorityCount = 4,
@@ -112,11 +121,17 @@ function AllProductsContent({
   const keyword = searchParams.get("search") || "";
 
   const [products, setProducts] = useState(initialProducts);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(initialHasMore);
   const [facets, setFacets] = useState(initialFacets);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
   const skipInitialFetch = useRef(true);
+  const fetchGen = useRef(0);
+  const loadMoreRef = useRef(null);
+  const loadMoreLockRef = useRef(false);
 
   const activeFilters = useMemo(() => {
     const next = {};
@@ -179,40 +194,75 @@ function AllProductsContent({
     }
   }, [initialFacets]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchProducts = async () => {
-      const hasExisting = products.length > 0;
-      if (!hasExisting) setLoading(true);
+  const buildParams = useCallback(
+    (pageNum) => {
+      const params = {
+        pageSize: catalogPageSize,
+        pageNum,
+        sort: sortBy,
+        ...activeFilters,
+      };
+      if (keyword) params.keyword = keyword;
+      return params;
+    },
+    [catalogPageSize, sortBy, activeFilters, keyword]
+  );
+
+  const fetchPage = useCallback(
+    async (pageNum, { append } = {}) => {
+      const gen = ++fetchGen.current;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
       try {
-        const params = { pageSize: catalogPageSize, ...activeFilters, sort: sortBy };
-        if (keyword) params.keyword = keyword;
-
-        const data = await productService.getProducts(params);
-        if (cancelled) return;
-        const list = Array.isArray(data?.products)
-          ? data.products
-          : Array.isArray(data)
-            ? data
-            : [];
-        setProducts(list);
-        if (keyword) trackSearch(keyword, list);
-        trackViewItemList(
-          list,
-          keyword ? "Search results" : "All products",
-          keyword ? "search" : "all-products"
-        );
+        const data = await productService.getProducts(buildParams(pageNum));
+        if (gen !== fetchGen.current) return;
+        const {
+          products: list,
+          hasMore: more,
+        } = normalizeProductPage(data, {
+          pageSize: catalogPageSize,
+          pageNum,
+        });
+        setProducts((prev) => {
+          if (!append) return list;
+          const seen = new Set(prev.map((p) => p._id));
+          return [...prev, ...list.filter((p) => p._id && !seen.has(p._id))];
+        });
+        setPage(pageNum);
+        setHasMore(more);
+        if (!append) {
+          if (keyword) trackSearch(keyword, list);
+          trackViewItemList(
+            list,
+            keyword ? "Search results" : "All products",
+            keyword ? "search" : "all-products"
+          );
+        }
       } catch (error) {
+        if (gen !== fetchGen.current) return;
         console.error("Error fetching products:", error);
+        if (!append) {
+          setProducts([]);
+          setHasMore(false);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (gen === fetchGen.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
-    };
+    },
+    [buildParams, catalogPageSize, keyword]
+  );
 
+  useEffect(() => {
     // Server already hydrated the first paint — avoid an immediate duplicate fetch.
     if (skipInitialFetch.current) {
       skipInitialFetch.current = false;
       if (initialProducts.length) {
+        setProducts(initialProducts);
+        setPage(1);
+        setHasMore(initialHasMore);
         if (keyword) trackSearch(keyword, initialProducts);
         trackViewItemList(
           initialProducts,
@@ -222,34 +272,58 @@ function AllProductsContent({
         return;
       }
     }
+    fetchPage(1, { append: false });
+  }, [fetchPage, initialProducts, initialHasMore, keyword]);
 
-    fetchProducts();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, sortBy, keyword, activeFilters]);
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || loading || loadingMore) return;
+    return fetchPage(page + 1, { append: true });
+  }, [hasMore, loading, loadingMore, page, fetchPage]);
+
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore) return;
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.some((e) => e.isIntersecting);
+        if (!hit) return;
+        if (loadMoreLockRef.current || loadingMore || loading || !hasMore) return;
+        loadMoreLockRef.current = true;
+        Promise.resolve(handleLoadMore())
+          .catch(() => {})
+          .finally(() => {
+            loadMoreLockRef.current = false;
+          });
+      },
+      { root: null, rootMargin: "240px", threshold: 0 }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, handleLoadMore, products.length]);
 
   const showSkeleton = loading && products.length === 0;
 
   return (
     <>
       <section className="bg-[#F9F9F5] pt-10 pb-5">
-        <div className="w-full px-2 md:px-4 lg:px-8">
+        <div className="w-full px-4 lg:px-8">
           <motion.header
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="w-full text-left"
+            className="w-full text-center"
           >
-            <h1 className="title-knewave w-full text-left text-3xl leading-none tracking-tight normal-case md:text-4xl">
+            <h1 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
               {keyword ? (
                 <>
                   Search <span className="title-knewave-accent">Results</span>
                 </>
               ) : (
                 <>
-                  Our <span className="title-knewave-accent">Collection</span>
+                  All <span className="title-knewave-accent">Products</span>
                 </>
               )}
             </h1>
@@ -258,28 +332,28 @@ function AllProductsContent({
       </section>
 
       <section className="bg-white pb-10 md:pb-14">
-        <div className="w-full px-2 md:px-4 lg:px-8">
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setIsFilterOpen(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-[12px] font-semibold text-black transition hover:border-black lg:hidden"
-              >
-                <FilterIcon className="h-3.5 w-3.5" />
-                Filters
-                {activeFilterCount > 0 ? (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-black px-1.5 text-[10px] font-bold text-white">
-                    {activeFilterCount}
-                  </span>
-                ) : null}
-              </button>
+        <div className="w-full px-4 lg:px-8">
+          <div className="mb-6 flex items-center gap-3 lg:mb-8 lg:justify-end">
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(true)}
+              className="inline-flex h-10 w-1/2 items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 text-[12px] font-semibold text-black transition hover:border-black lg:hidden"
+            >
+              <FilterIcon className="h-3.5 w-3.5" />
+              Filters
+              {activeFilterCount > 0 ? (
+                <span className="grid h-5 min-w-5 place-items-center rounded-full border border-black bg-transparent px-1.5 text-[10px] font-bold text-black">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </button>
+            <div className="w-1/2 lg:w-auto">
+              <SortDropdown
+                value={sortBy}
+                onChange={setSortBy}
+                options={SORT_OPTIONS}
+              />
             </div>
-            <SortDropdown
-              value={sortBy}
-              onChange={setSortBy}
-              options={SORT_OPTIONS}
-            />
           </div>
 
           <div className="flex min-h-[480px] items-start gap-0 lg:gap-10 xl:gap-12">
@@ -331,17 +405,35 @@ function AllProductsContent({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2 pb-8 md:grid-cols-3 md:gap-3 lg:gap-4 xl:grid-cols-4">
-                  {products.map((product, index) => (
-                    <ProductCard
-                      key={product._id}
-                      product={product}
-                      listName={keyword ? "Search results" : "All products"}
-                      listId={keyword ? "search" : "all-products"}
-                      priority={index < cardPriorityCount}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-2 gap-2 pb-4 md:grid-cols-3 md:gap-3 lg:gap-4 xl:grid-cols-4">
+                    {products.map((product, index) => (
+                      <ProductCard
+                        key={product._id}
+                        product={product}
+                        listName={keyword ? "Search results" : "All products"}
+                        listId={keyword ? "search" : "all-products"}
+                        priority={index < cardPriorityCount}
+                      />
+                    ))}
+                  </div>
+                  {hasMore || loadingMore ? (
+                    <div
+                      ref={loadMoreRef}
+                      className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500"
+                      aria-hidden={!loadingMore}
+                    >
+                      {loadingMore ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Loading more…</span>
+                        </>
+                      ) : (
+                        <span className="h-4" />
+                      )}
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </div>
@@ -353,6 +445,7 @@ function AllProductsContent({
 
 export default function AllProductsClient({
   initialProducts = [],
+  initialHasMore = false,
   initialFacets = EMPTY_FACETS,
   catalogPageSize = 40,
   cardPriorityCount = 4,
@@ -361,7 +454,7 @@ export default function AllProductsClient({
     <main className="min-h-screen bg-white">
       <Suspense
         fallback={
-          <div className="grid grid-cols-2 gap-2 px-2 py-10 md:grid-cols-3 md:px-4 lg:grid-cols-4 lg:px-8">
+          <div className="grid grid-cols-2 gap-2 px-4 py-10 md:grid-cols-3 md:px-4 lg:grid-cols-4 lg:px-8">
             {[...Array(8)].map((_, i) => (
               <ProductSkeleton key={i} />
             ))}
@@ -370,6 +463,7 @@ export default function AllProductsClient({
       >
         <AllProductsContent
           initialProducts={initialProducts}
+          initialHasMore={initialHasMore}
           initialFacets={initialFacets}
           catalogPageSize={catalogPageSize}
           cardPriorityCount={cardPriorityCount}

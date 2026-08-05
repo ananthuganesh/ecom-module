@@ -64,6 +64,13 @@ export default function CartDrawer() {
     (acc, item) => acc + (Number(item.price) || 0) * (item.qty || 1),
     0
   );
+  const totalSavings = availableItems.reduce((acc, item) => {
+    const price = Number(item.price) || 0;
+    const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
+    const qty = item.qty || 1;
+    if (mrp > price) return acc + (mrp - price) * qty;
+    return acc;
+  }, 0);
 
   useEffect(() => {
     if (isDrawerOpen) {
@@ -244,6 +251,11 @@ export default function CartDrawer() {
                       {formatPrice(cartTotal)}
                     </span>
                   </div>
+                  {totalSavings > 0 ? (
+                    <p className="-mt-2 text-[13px] font-medium text-emerald-700">
+                      You save {formatPrice(totalSavings)}
+                    </p>
+                  ) : null}
 
                   <button
                     onClick={handleCheckout}

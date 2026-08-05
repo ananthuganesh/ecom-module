@@ -63,6 +63,24 @@ class User(Document):
         ]
 
 
+class LoginOtp(Document):
+    """Hashed 6-digit email OTP for customer passwordless sign-in."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    email: Indexed(str, unique=True)  # type: ignore[valid-type]
+    codeHash: str
+    expiresAt: datetime
+    attempts: int = 0
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "login_otps"
+        indexes = [
+            IndexModel([("expiresAt", 1)], expireAfterSeconds=0),
+        ]
+
+
 class AdminAccount(Document):
     """Staff / admin panel accounts — separate from storefront customers (`users`)."""
 
@@ -146,8 +164,6 @@ class Product(Document):
     variants: list[Variant] = Field(default_factory=list)
     thumbnails: list[str] = Field(default_factory=list)
     totalStock: int = 0
-    # Units sold across paid / confirmed orders (denormalized for PDP)
-    soldCount: int = 0
     status: str = "active"
     # Storefront card badge: new_arrival | trending | best_seller
     badge: Optional[str] = None
@@ -687,6 +703,7 @@ class MediaAsset(Document):
 
 ALL_DOCUMENTS = [
     User,
+    LoginOtp,
     AdminAccount,
     Product,
     Order,

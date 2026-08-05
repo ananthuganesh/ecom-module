@@ -82,7 +82,6 @@ export default function RootLayout({ children }) {
     <html
       lang="en"
       suppressHydrationWarning
-      data-scroll-behavior="smooth"
       className={`${inter.variable} ${geistHeading.variable} ${lato.variable} ${archivoBlack.variable} ${notoMalayalam.variable}`}
     >
       <head>

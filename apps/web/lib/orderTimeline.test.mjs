@@ -113,6 +113,35 @@ describe("buildOrderTimeline", () => {
     );
   });
 
+  it("includes email sent rows from transactionDetails.resend", () => {
+    const steps = buildOrderTimeline({
+      orderNumber: "UA1271",
+      createdAt: "2026-08-05T07:00:00.000Z",
+      customerEmail: "justin@example.com",
+      paymentStatus: "paid",
+      status: "order placed",
+      finalPrice: 2198,
+      transactionDetails: {
+        paidAt: "2026-08-05T07:01:00.000Z",
+        resend: {
+          orderConfirmed: "2026-08-05T07:01:05.000Z",
+          orderShipped: { at: "2026-08-05T08:10:00.000Z", to: "justin@example.com" },
+          staffNewOrder: "2026-08-05T07:01:06.000Z",
+        },
+        dtdc: { createdAt: "2026-08-05T08:00:00.000Z" },
+      },
+      awb: "7X117566901",
+      shippingStatus: "Awaiting Shipment",
+    });
+    const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+    assert.equal(byId.email_orderConfirmed.title, "Confirmation email sent");
+    assert.equal(byId.email_orderConfirmed.subtitle, "To · justin@example.com");
+    assert.equal(byId.email_orderShipped.title, "Shipping email sent");
+    assert.equal(byId.email_staffNewOrder.title, "Staff new-order email sent");
+    assert.ok(steps.map((s) => s.id).includes("email_orderConfirmed"));
+    assert.ok(steps.map((s) => s.id).includes("email_orderShipped"));
+  });
+
   it("orders DTDC lifecycle Delivered → Shipped → AWB → Fulfilled", () => {
     const steps = buildOrderTimeline({
       orderNumber: "UA1",

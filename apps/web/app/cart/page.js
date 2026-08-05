@@ -41,8 +41,7 @@ function CartQtyControl({ qty, onChange, disabled = false }) {
 }
 
 export default function CartPage() {
-  const { cartItems, updateQuantity, removeItem, clearCart, syncStock } =
-    useCartStore();
+  const { cartItems, updateQuantity, removeItem, syncStock } = useCartStore();
 
   useEffect(() => {
     if (cartItems.length > 0) syncStock(productService);
@@ -61,24 +60,20 @@ export default function CartPage() {
     (total, item) => total + (Number(item.price) || 0) * (item.qty || 1),
     0
   );
+  const totalSavings = availableItems.reduce((acc, item) => {
+    const price = Number(item.price) || 0;
+    const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
+    const qty = item.qty || 1;
+    if (mrp > price) return acc + (mrp - price) * qty;
+    return acc;
+  }, 0);
 
   return (
-    <div className="mx-auto min-h-[60vh] w-full max-w-6xl bg-white px-2 py-8 md:px-4 md:py-12 lg:px-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3 md:mb-8">
-        <h1 className="title-knewave text-3xl leading-none tracking-tight normal-case md:text-4xl">
+    <div className="mx-auto min-h-[60vh] w-full max-w-6xl bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
+      <header className="mb-6 md:mb-8">
+        <h1 className="title-knewave text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
           Your <span className="title-knewave-accent">Cart</span>
         </h1>
-        {cartItems.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Clear your entire cart?")) clearCart();
-            }}
-            className="text-xs font-semibold tracking-wide text-gray-500 underline-offset-2 hover:text-[#DF1721] hover:underline"
-          >
-            Clear all
-          </button>
-        ) : null}
       </header>
 
       {!cartItems.length ? (
@@ -181,9 +176,6 @@ export default function CartPage() {
 
                       {!unavailable ? (
                         <div className="mt-1">
-                          <p className="mb-1 text-[11px] font-medium tracking-wide text-gray-400 uppercase">
-                            Qty
-                          </p>
                           <CartQtyControl
                             qty={qty}
                             onChange={(next) =>
@@ -230,6 +222,11 @@ export default function CartPage() {
                   {formatPrice(cartTotal)}
                 </span>
               </div>
+              {totalSavings > 0 ? (
+                <p className="pt-1 text-[13px] font-medium text-emerald-700">
+                  You save {formatPrice(totalSavings)}
+                </p>
+              ) : null}
             </div>
 
             <Link

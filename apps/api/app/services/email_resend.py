@@ -879,3 +879,48 @@ async def notify_abandoned_cart_email(checkout, *, cart_link: str, user=None) ->
         result["to"] = to
         result["type"] = "ABANDONED_CART"
     return result
+
+
+def build_login_otp_email_html(code: str, *, ttl_minutes: int = 10) -> tuple[str, str]:
+    """Customer sign-in OTP — same Shopify-style layout as order / cart emails."""
+    digits = tpl.esc(str(code or "").strip())
+    minutes = max(1, int(ttl_minutes or 10))
+    subject = "Your Urban Aana sign-in code"
+    preheader = f"Your sign-in code is {str(code or '').strip()} · expires in {minutes} minutes"
+    lead = (
+        "Use this code to sign in to your Urban Aana account. "
+        "It works once and expires soon."
+    )
+    code_block = f"""
+<table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0 8px;">
+  <tr>
+    <td align="center"
+      style="padding:16px 12px;border:1px solid {tpl.BORDER};border-radius:8px;background:#f6f6f7;">
+      <span style="display:block;font-family:{tpl.FONT_STACK};font-size:28px;font-weight:700;
+        letter-spacing:0.28em;line-height:1.2;color:{tpl.TEXT_PRIMARY};">
+        {digits}
+      </span>
+    </td>
+  </tr>
+</table>
+<p style="margin:8px 0 0;font-size:13px;line-height:18px;color:{tpl.TEXT_MUTED};text-align:center;">
+  Expires in {minutes} minutes. If you didn&apos;t request this, you can ignore this email.
+</p>"""
+    sections = "".join(
+        [
+            tpl.brand_header(),
+            tpl.content_block(
+                f"{tpl.section_heading('Sign-in code')}"
+                f"<p style='margin:0 0 4px;font-size:14px;line-height:20px;color:{tpl.TEXT_PRIMARY};'>"
+                f"{lead}</p>"
+                f"{code_block}"
+            ),
+            tpl.content_block(tpl.support_block(), top_border=True),
+        ]
+    )
+    html_body = tpl.render_shopify_email(
+        preheader=preheader,
+        sections_html=sections,
+        footer_note="Urban Aana · Account sign-in",
+    )
+    return subject, html_body

@@ -150,10 +150,10 @@ def brand_header() -> str:
     return f"""
 <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
   <tr>
-    <td align="center" style="padding:24px 24px 8px;">
+    <td align="center" style="padding:20px 24px 4px;">
       <a href="{esc(site_url())}" target="_blank" style="text-decoration:none;">
-        <img src="{esc(logo)}" alt="Urban Aana" width="140"
-          style="display:block;width:140px;max-width:60%;height:auto;margin:0 auto;" />
+        <img src="{esc(logo)}" alt="Urban Aana" width="96"
+          style="display:block;width:96px;max-width:40%;height:auto;margin:0 auto;" />
       </a>
     </td>
   </tr>

@@ -1,6 +1,6 @@
 import AllProductsClient from "./AllProductsClient";
 import { getCatalogConfig } from "@/lib/catalogConfig";
-import { fetchStoreFilters, fetchStoreProducts } from "@/lib/fetchProducts";
+import { fetchStoreFilters, fetchStoreProductsPage } from "@/lib/fetchProducts";
 
 export const revalidate = 60;
 
@@ -10,6 +10,7 @@ export default async function AllProductsPage({ searchParams }) {
   const keyword = typeof sp?.search === "string" ? sp.search : "";
   const params = {
     pageSize: catalogPageSize,
+    pageNum: 1,
     sort: "newest",
   };
   if (keyword) params.keyword = keyword;
@@ -17,14 +18,15 @@ export default async function AllProductsPage({ searchParams }) {
     if (typeof sp?.[key] === "string" && sp[key]) params[key] = sp[key];
   }
 
-  const [initialProducts, initialFacets] = await Promise.all([
-    fetchStoreProducts(params),
+  const [initialPage, initialFacets] = await Promise.all([
+    fetchStoreProductsPage(params),
     fetchStoreFilters(),
   ]);
 
   return (
     <AllProductsClient
-      initialProducts={initialProducts}
+      initialProducts={initialPage.products}
+      initialHasMore={initialPage.hasMore}
       initialFacets={initialFacets}
       catalogPageSize={catalogPageSize}
       cardPriorityCount={cardPriorityCount}

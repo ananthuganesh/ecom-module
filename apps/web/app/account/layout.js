@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
 
 export default function AccountLayout({ children }) {
     const { userInfo } = useAuthStore();
@@ -27,8 +26,8 @@ export default function AccountLayout({ children }) {
 
     if (isChecking) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#F9F9F5]">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-black border-t-transparent" />
+            <div className="flex min-h-screen items-center justify-center bg-white">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
             </div>
         );
     }

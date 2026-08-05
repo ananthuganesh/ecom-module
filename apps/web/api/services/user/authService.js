@@ -7,6 +7,12 @@ export const authService = {
   login: (email, password) =>
     client.post(e.login, { email, password }).then((res) => res.data),
 
+  requestOtp: (email) =>
+    client.post(e.otpRequest, { email }).then((res) => res.data),
+
+  verifyOtp: (email, code) =>
+    client.post(e.otpVerify, { email, code }).then((res) => res.data),
+
   adminLogin: (email, password) =>
     client.post(e.adminLogin, { email, password }).then((res) => res.data),
 

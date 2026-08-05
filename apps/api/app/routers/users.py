@@ -5,14 +5,17 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.documents import AdminAccount, User
 from app.deps import AdminUser, CustomersReader, CurrentUser, user_has_admin_access
-from app.documents import User
-from app.security import create_access_token, hash_password, verify_password
+from app.security import create_access_token, verify_password
 from app.serializers import user_public
 from app.services.auth_cookie import clear_auth_cookie, set_auth_cookie
 from app.services.customer_url_id import ensure_customer_url_id, next_customer_url_id
+from app.services.email_quality import QualityEmail
+from app.services.otp_auth import consume_login_otp, issue_login_otp
 from app.services.rate_limit import (
     assert_login_not_locked,
     clear_failed_login,
+    client_ip,
+    enforce_rate_limit,
     rate_limit_dependency,
     record_failed_login,
 )
@@ -29,13 +32,14 @@ class LoginBody(BaseModel):
 
 class RegisterBody(BaseModel):
     name: str
-    email: EmailStr
+    email: QualityEmail
     password: str = Field(min_length=_MIN_PASSWORD)
 
 
 class ProfileUpdate(BaseModel):
     name: str | None = None
-    email: EmailStr | None = None
+    email: QualityEmail | None = None
+    phone: str | None = None
     password: str | None = Field(default=None, min_length=_MIN_PASSWORD)
     currentPassword: str | None = None
     emailSubscribed: bool | None = None
@@ -43,7 +47,7 @@ class ProfileUpdate(BaseModel):
 
 
 class CheckoutEmailBody(BaseModel):
-    email: EmailStr
+    email: QualityEmail
     name: str | None = None
     emailSubscribed: bool | None = None
     whatsappSubscribed: bool | None = None
@@ -53,9 +57,31 @@ class SetPasswordBody(BaseModel):
     password: str = Field(min_length=_MIN_PASSWORD)
 
 
+class OtpRequestBody(BaseModel):
+    email: QualityEmail
+
+
+class OtpVerifyBody(BaseModel):
+    email: QualityEmail
+    code: str = Field(min_length=6, max_length=6)
+
+
+def _normalize_indian_mobile(value: str | None) -> str:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if digits.startswith("91") and len(digits) >= 12:
+        digits = digits[-10:]
+    elif digits.startswith("0") and len(digits) == 11:
+        digits = digits[1:]
+    return digits[:10]
+
+
 def _auth_payload(user: User, token: str) -> dict:
     """Include token for API clients/tests; browsers should prefer the HttpOnly cookie."""
     return user_public(user, token)
+
+
+async def _email_is_staff(email: str) -> bool:
+    return bool(await AdminAccount.find_one(AdminAccount.email == email))
 
 
 @router.post("/login")
@@ -65,13 +91,66 @@ async def login(
     response: Response,
     _: None = Depends(rate_limit_dependency("login", limit=10)),
 ):
+    """Customer password login is retired — use email OTP."""
+    raise HTTPException(
+        status_code=410,
+        detail="Password login is no longer available. Sign in with the email code instead.",
+    )
+
+
+@router.post("/otp/request")
+async def otp_request(
+    body: OtpRequestBody,
+    request: Request,
+    _: None = Depends(rate_limit_dependency("otp-request", limit=8, window_seconds=15 * 60)),
+):
     email = body.email.lower().strip()
-    await assert_login_not_locked(email)
+    # Extra per-email throttle (on top of IP limit).
+    await enforce_rate_limit(
+        f"otp-request-email:{email}:{client_ip(request)}",
+        limit=3,
+        window_seconds=15 * 60,
+    )
+    if await _email_is_staff(email):
+        # Anti-enumeration: same success shape; do not send OTP to staff emails.
+        return {"ok": True}
+    await issue_login_otp(email)
+    return {"ok": True}
+
+
+@router.post("/otp/verify")
+async def otp_verify(
+    body: OtpVerifyBody,
+    request: Request,
+    response: Response,
+    _: None = Depends(rate_limit_dependency("otp-verify", limit=20, window_seconds=15 * 60)),
+):
+    email = body.email.lower().strip()
+    code = str(body.code or "").strip()
+    await enforce_rate_limit(
+        f"otp-verify-email:{email}:{client_ip(request)}",
+        limit=10,
+        window_seconds=15 * 60,
+    )
+    if await _email_is_staff(email):
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+
+    await consume_login_otp(email, code)
+
     user = await User.find_one(User.email == email)
-    if not user or not user.password or not verify_password(body.password, user.password):
-        await record_failed_login(email)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    await clear_failed_login(email)
+    if not user:
+        user = User(
+            name=email.split("@")[0],
+            email=email,
+            password=None,
+            emailSubscribed=True,
+            whatsappSubscribed=True,
+        )
+        user.customerUrlId = await next_customer_url_id()
+        await user.insert()
+    else:
+        await ensure_customer_url_id(user)
+
     token = create_access_token(user.id)
     set_auth_cookie(response, token, scope="customer")
     return _auth_payload(user, token)
@@ -104,17 +183,10 @@ async def register(
     response: Response,
     _: None = Depends(rate_limit_dependency("register", limit=10)),
 ):
-    email = body.email.lower().strip()
-    exists = await User.find_one(User.email == email)
-    if exists:
-        # Uniform messaging to reduce account enumeration (CWE-204).
-        raise HTTPException(status_code=400, detail="Unable to create account")
-    user = User(name=body.name, email=email, password=hash_password(body.password))
-    user.customerUrlId = await next_customer_url_id()
-    await user.insert()
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token, scope="customer")
-    return _auth_payload(user, token)
+    raise HTTPException(
+        status_code=410,
+        detail="Password registration is no longer available. Sign in with the email code instead.",
+    )
 
 
 @router.post("/logout")
@@ -143,13 +215,36 @@ async def get_admin_profile(user: AdminUser):
 async def update_profile(body: ProfileUpdate, user: CurrentUser, response: Response):
     if body.name:
         user.name = body.name
-    if body.email:
-        user.email = body.email.lower().strip()
+    # Email is the OTP identity — never change from profile.
+    if body.email is not None:
+        incoming = str(body.email).lower().strip()
+        current = str(user.email or "").lower().strip()
+        if incoming and incoming != current:
+            raise HTTPException(
+                status_code=400,
+                detail="Email cannot be changed. Sign in with a different email to use another account.",
+            )
+    if body.phone is not None:
+        phone = _normalize_indian_mobile(body.phone)
+        existing = _normalize_indian_mobile(getattr(user, "phone", None))
+        if existing:
+            if phone and phone != existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Phone number cannot be changed once set.",
+                )
+        elif phone:
+            if len(phone) != 10 or phone[0] not in "6789":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Enter a valid 10-digit Indian mobile number.",
+                )
+            user.phone = phone
     if body.password:
-        if user.password:
-            if not body.currentPassword or not verify_password(body.currentPassword, user.password):
-                raise HTTPException(status_code=400, detail="Current password is required")
-        user.password = hash_password(body.password)
+        raise HTTPException(
+            status_code=410,
+            detail="Passwords are no longer used. Sign in with the email code instead.",
+        )
     if body.emailSubscribed is not None:
         user.emailSubscribed = bool(body.emailSubscribed)
     if body.whatsappSubscribed is not None:
@@ -238,12 +333,6 @@ def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
     }
 
 
-async def _email_is_staff(email: str) -> bool:
-    from app.documents import AdminAccount
-
-    return bool(await AdminAccount.find_one(AdminAccount.email == email))
-
-
 @router.post("/checkout-email")
 async def checkout_email(
     body: CheckoutEmailBody,
@@ -252,9 +341,8 @@ async def checkout_email(
 ):
     """Find or create a customer by email for checkout.
 
-    First checkout (new email): mint a short-lived session — no OTP.
-    Existing passwordless guest: mint / renew session on any device (conversion-first).
-    Existing passworded / staff: never mint a JWT from email alone — require login.
+    First checkout / existing customers: mint a short-lived session (no OTP).
+    Staff emails: never mint a JWT — require a different email.
     """
     email = body.email.lower().strip()
     if await _email_is_staff(email):
@@ -289,17 +377,14 @@ async def checkout_email(
             if not current_name or current_name in {"guest user", "guest", "customer"}:
                 user.name = str(body.name).strip()
                 changed = True
-        if opt_in is not None and not user.password:
-            # Guests can update marketing prefs at checkout without login.
+        if opt_in is not None:
+            # Marketing prefs at checkout without a separate login.
             user.emailSubscribed = opt_in
             user.whatsappSubscribed = opt_in
             changed = True
         if changed:
             user.updatedAt = datetime.utcnow()
             await user.save()
-
-        if user.password:
-            return _checkout_continue_payload(email=user.email, requires_login=True)
 
     token = create_access_token(user.id, hours=48)
     set_auth_cookie(response, token, hours=48, scope="customer")
@@ -318,12 +403,8 @@ async def set_password(
     response: Response,
     _: None = Depends(rate_limit_dependency("set-password", limit=10)),
 ):
-    """Set password on a passwordless customer record (post-purchase account setup)."""
-    if user.password:
-        raise HTTPException(status_code=400, detail="Password already set")
-    user.password = hash_password(body.password)
-    user.updatedAt = datetime.utcnow()
-    await user.save()
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token, scope="customer")
-    return _auth_payload(user, token)
+    """Password setup retired — customers sign in with email OTP."""
+    raise HTTPException(
+        status_code=410,
+        detail="Passwords are no longer used. Sign in with the email code instead.",
+    )

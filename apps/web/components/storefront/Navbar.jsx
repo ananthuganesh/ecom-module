@@ -56,6 +56,13 @@ function DrawerAccountCard({ onClose }) {
         </div>
         <div className="mt-3 space-y-1 border-t border-gray-100 pt-3">
           <Link
+            href="/account"
+            onClick={onClose}
+            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            My Account
+          </Link>
+          <Link
             href="/account/orders"
             onClick={onClose}
             className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
@@ -63,18 +70,18 @@ function DrawerAccountCard({ onClose }) {
             My Orders
           </Link>
           <Link
+            href="/account/addresses"
+            onClick={onClose}
+            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            Saved Addresses
+          </Link>
+          <Link
             href="/wishlist"
             onClick={onClose}
             className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
           >
             Wishlist
-          </Link>
-          <Link
-            href="/account"
-            onClick={onClose}
-            className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
-          >
-            My Account
           </Link>
           <Link
             href="/account/settings"
@@ -187,7 +194,7 @@ const Navbar = () => {
             : "border-gray-200 bg-white"
         }`}
       >
-        <div className="mx-auto grid h-14 w-full grid-cols-3 items-center px-2 md:px-4 lg:px-8">
+        <div className="mx-auto grid h-14 w-full grid-cols-3 items-center px-4 lg:px-8">
           <div className="flex items-center justify-start">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}

@@ -101,11 +101,6 @@ function RecoverContent() {
         if (data.session) {
           setUserInfo(data.session);
           persistAuth(data.session);
-        } else if (data.knownUser?.hasPassword && data.knownUser?.email) {
-          sessionStorage.setItem(
-            "recover_login_email",
-            String(data.knownUser.email)
-          );
         }
 
         const count = (data.items || []).reduce(

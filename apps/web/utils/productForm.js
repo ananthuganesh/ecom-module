@@ -9,17 +9,17 @@ export const PRODUCT_CLASSES = [
 ];
 
 /** Fixed catalog categories (admin Category dropdown). */
-export const PRODUCT_CATEGORIES = ["T-Shirts"];
+export const PRODUCT_CATEGORIES = ["T-Shirt"];
 
 /** Product Type options keyed by Category name. */
 export const PRODUCT_TYPES_BY_CATEGORY = {
-  "T-Shirts": [
-    "Graphic T-Shirts",
-    "Oversized T-Shirts",
-    "Plain T-Shirts",
-    "Polo T-Shirts",
-    "Full Sleeve T-Shirts",
-    "Tank Tops",
+  "T-Shirt": [
+    "Graphic T-Shirt",
+    "Oversized T-Shirt",
+    "Plain T-Shirt",
+    "Polo T-Shirt",
+    "Full Sleeve T-Shirt",
+    "Tank Top",
   ],
 };
 
@@ -209,7 +209,7 @@ export function defaultForm() {
     productId: generateProductId(),
     product: "",
     productName: "",
-    category: "T-Shirts",
+    category: "T-Shirt",
     type: "",
     brand: "",
     description: "",
@@ -266,7 +266,7 @@ export function productToForm(product) {
     productId: product.productId || generateProductId(),
     product: product.product || "",
     productName: name,
-    category: product.category || "T-Shirts",
+    category: product.category || "T-Shirt",
     type: product.type || product.subcategory || "",
     brand: product.brand || "",
     description: product.description || "",

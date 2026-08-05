@@ -23,6 +23,7 @@ import {
   authService,
 } from "@/api";
 import { isCartLineUnavailable } from "@/utils/cartStock";
+import { emailQualityError } from "@/utils/emailQuality";
 import CheckoutAccountPrompt from "@/components/CheckoutAccountPrompt";
 import { normalizeIndianState } from "@/components/storefront/StateSearchSelect";
 import { trackBeginCheckout, stashPurchaseEvent, trackSelectPromotion, trackAddPaymentInfo, trackAddShippingInfo } from "@/lib/tracking";
@@ -66,6 +67,176 @@ const formatCheckoutMoney = (amount) => {
     maximumFractionDigits: whole ? 0 : 2,
   })}`;
 };
+
+function CheckoutOrderSummary({
+  availableItems,
+  subtotal,
+  shippingPrice,
+  appliedCoupon,
+  discountAmount,
+  totalPrice,
+  totalSavings,
+  couponInput,
+  setCouponInput,
+  couponError,
+  showCouponPanel,
+  setShowCouponPanel,
+  isCouponLoading,
+  handleApplyCoupon,
+  removeCoupon,
+}) {
+  const itemCount = availableItems.reduce((acc, item) => acc + (item.qty || 1), 0);
+  const itemLabel = itemCount === 1 ? "Item" : "Items";
+
+  return (
+    <div className="lg:sticky lg:top-8">
+      <h2 className={`${SECTION} mb-5`}>
+        Order Summary ({itemCount} {itemLabel})
+      </h2>
+
+      <div className="mb-6 space-y-4">
+        {availableItems.map((item) => {
+          const img =
+            item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0];
+          const line = (Number(item.price) || 0) * (item.qty || 1);
+          return (
+            <div
+              key={`${item._id}-${item.color}-${item.size}`}
+              className="flex items-start gap-3"
+            >
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                <SafeImage
+                  src={img}
+                  alt={item.name || item.productName || "Product"}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <p className="truncate text-[13px] font-medium text-gray-900">
+                  {item.name || item.productName}
+                </p>
+                <p className="text-[12px] text-gray-500">
+                  {[item.size, item.color].filter(Boolean).join(" / ")}
+                  {[item.size, item.color].some(Boolean) ? " • " : ""}
+                  Qty {item.qty || 1}
+                </p>
+                <p className="mt-1 text-[13px] font-medium text-gray-900">
+                  {line === 0 ? "FREE" : formatCheckoutMoney(line)}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-2 border-t border-gray-200 pt-4 text-[13px]">
+        <div className="flex justify-between text-gray-600">
+          <span>Subtotal</span>
+          <span>{formatCheckoutMoney(subtotal)}</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Shipping</span>
+          <span>
+            {shippingPrice === 0 ? "FREE" : formatCheckoutMoney(shippingPrice)}
+          </span>
+        </div>
+        {appliedCoupon && discountAmount > 0 && (
+          <div className="flex justify-between text-emerald-700">
+            <span>Coupon ({appliedCoupon.code})</span>
+            <span>−{formatCheckoutMoney(discountAmount)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+          <span className="text-[16px] font-semibold text-gray-900">Total</span>
+          <span className="text-[16px] font-semibold text-gray-900">
+            {formatCheckoutMoney(totalPrice)}
+          </span>
+        </div>
+        {totalSavings > 0 && (
+          <p className="pt-1 text-[13px] font-medium text-emerald-700">
+            You save {formatCheckoutMoney(totalSavings)}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-5 border-t border-gray-200 pt-4">
+        {appliedCoupon ? (
+          <div className="flex w-full items-center justify-between rounded-md bg-emerald-600 px-3 py-2.5">
+            <span className="text-[13px] font-medium text-white">
+              {appliedCoupon.code} applied (−{formatCheckoutMoney(discountAmount)})
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                removeCoupon();
+                setShowCouponPanel(false);
+              }}
+              className="text-[12px] font-medium text-white/90 underline-offset-2 hover:text-white hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowCouponPanel((open) => !open)}
+              className="flex w-full items-center justify-between text-left text-[13px] text-gray-700"
+              aria-expanded={showCouponPanel}
+            >
+              <span>Have a discount code?</span>
+              <span className="inline-flex items-center gap-1 font-medium text-gray-900">
+                Apply Coupon
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${showCouponPanel ? "rotate-180" : ""}`}
+                />
+              </span>
+            </button>
+            {showCouponPanel ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    className={INPUT}
+                    placeholder="Discount code"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    value={couponInput}
+                    onChange={(e) =>
+                      setCouponInput(e.target.value.toUpperCase())
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleApplyCoupon();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleApplyCoupon()}
+                    disabled={isCouponLoading || !couponInput}
+                    className="shrink-0 rounded-md bg-gray-200 px-4 text-[13px] font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+                  >
+                    {isCouponLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Apply"
+                    )}
+                  </button>
+                </div>
+                {couponError ? (
+                  <p className="text-[12px] text-red-600">{couponError}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function CheckoutPage() {
   return (
@@ -390,8 +561,9 @@ function CheckoutPageContent() {
 
   const validateForm = () => {
     const errors = {};
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email || "")) {
-      errors.email = "Enter a valid email.";
+    const emailErr = emailQualityError(formData.email || "");
+    if (emailErr) {
+      errors.email = emailErr;
     }
     if (!formData.firstName?.trim() && !formData.name?.trim()) {
       errors.firstName = "Enter a first name.";
@@ -458,7 +630,11 @@ function CheckoutPageContent() {
 
   const resolveCheckoutEmail = async (emailOverride) => {
     const email = (emailOverride || formData.email || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+    const emailErr = emailQualityError(email);
+    if (emailErr) {
+      setFormErrors((prev) => ({ ...prev, email: emailErr }));
+      return null;
+    }
 
     const name =
       formData.name ||
@@ -484,10 +660,21 @@ function CheckoutPageContent() {
       setResolvedEmail(email);
       return data;
     } catch (err) {
-      const msg =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        "Could not verify email.";
+      const detail = err.response?.data?.detail;
+      let msg = err.response?.data?.message || "Could not verify email.";
+      if (typeof detail === "string") {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg =
+          detail
+            .map((d) => String(d?.msg || "").replace(/^Value error,\s*/i, ""))
+            .filter(Boolean)
+            .join(" ") || msg;
+      }
+      setFormErrors((prev) => ({
+        ...prev,
+        email: typeof msg === "string" ? msg : "Enter a valid email.",
+      }));
       setPaymentError(typeof msg === "string" ? msg : "Could not verify email.");
       return null;
     } finally {
@@ -500,7 +687,7 @@ function CheckoutPageContent() {
     if (!email || email === resolvedEmail) return;
     const data = await resolveCheckoutEmail(email);
     if (
-      (data?.requiresLogin || data?.hasPassword) &&
+      data?.requiresLogin &&
       data.authMethod === "checkout" &&
       !loginPromptSkipped
     ) {
@@ -510,9 +697,10 @@ function CheckoutPageContent() {
 
   const ensureCheckoutAccount = async (onReady) => {
     const email = (formData.email || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setPaymentError("Please enter a valid email.");
-      setFormErrors((prev) => ({ ...prev, email: "Enter a valid email." }));
+    const emailErr = emailQualityError(email);
+    if (emailErr) {
+      setPaymentError(emailErr);
+      setFormErrors((prev) => ({ ...prev, email: emailErr }));
       return;
     }
 
@@ -527,13 +715,13 @@ function CheckoutPageContent() {
 
     const hasSession = Boolean(data.token || (data._id && !data.requiresLogin));
 
-    if ((data.requiresLogin || data.hasPassword) && !hasSession) {
+    if (data.requiresLogin && !hasSession) {
       setShowLoginPrompt(true);
-      setPaymentError("Please log in to continue with this email.");
+      setPaymentError("Please use a different email to continue.");
       return;
     }
 
-    if ((data.requiresLogin || data.hasPassword) && data.authMethod === "checkout" && !loginPromptSkipped) {
+    if (data.requiresLogin && data.authMethod === "checkout" && !loginPromptSkipped) {
       setShowLoginPrompt(true);
       return;
     }
@@ -737,149 +925,6 @@ function CheckoutPageContent() {
     ensureCheckoutAccount(() => executePlaceOrder());
   };
 
-  const OrderSummary = ({ compact = false }) => {
-    const itemCount = availableItems.reduce((acc, item) => acc + (item.qty || 1), 0);
-    const itemLabel = itemCount === 1 ? "Item" : "Items";
-    return (
-    <div className={compact ? "" : "lg:sticky lg:top-8"}>
-      <h2 className={`${SECTION} mb-5`}>
-        Order Summary ({itemCount} {itemLabel})
-      </h2>
-
-      <div className="space-y-4 mb-6">
-        {availableItems.map((item) => {
-          const img =
-            item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0];
-          const line = (Number(item.price) || 0) * (item.qty || 1);
-          return (
-            <div
-              key={`${item._id}-${item.color}-${item.size}`}
-              className="flex items-start gap-3"
-            >
-              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
-                <SafeImage
-                  src={img}
-                  alt={item.name || item.productName || "Product"}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <p className="truncate text-[13px] font-medium text-gray-900">
-                  {item.name || item.productName}
-                </p>
-                <p className="text-[12px] text-gray-500">
-                  {[item.size, item.color].filter(Boolean).join(" / ")}
-                  {[item.size, item.color].some(Boolean) ? " • " : ""}
-                  Qty {item.qty || 1}
-                </p>
-                <p className="mt-1 text-[13px] font-medium text-gray-900">
-                  {line === 0 ? "FREE" : formatCheckoutMoney(line)}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="space-y-2 border-t border-gray-200 pt-4 text-[13px]">
-        <div className="flex justify-between text-gray-600">
-          <span>Subtotal</span>
-          <span>{formatCheckoutMoney(subtotal)}</span>
-        </div>
-        <div className="flex justify-between text-gray-600">
-          <span>Shipping</span>
-          <span>
-            {shippingPrice === 0 ? "FREE" : formatCheckoutMoney(shippingPrice)}
-          </span>
-        </div>
-        {appliedCoupon && discountAmount > 0 && (
-          <div className="flex justify-between text-emerald-700">
-            <span>Coupon ({appliedCoupon.code})</span>
-            <span>−{formatCheckoutMoney(discountAmount)}</span>
-          </div>
-        )}
-        <div className="flex items-center justify-between border-t border-gray-200 pt-3">
-          <span className="text-[16px] font-semibold text-gray-900">Total</span>
-          <span className="text-[16px] font-semibold text-gray-900">
-            {formatCheckoutMoney(totalPrice)}
-          </span>
-        </div>
-        {totalSavings > 0 && (
-          <p className="pt-1 text-[13px] font-medium text-emerald-700">
-            You save {formatCheckoutMoney(totalSavings)}
-          </p>
-        )}
-      </div>
-
-      <div className="mt-5 border-t border-gray-200 pt-4">
-        {appliedCoupon ? (
-          <div className="flex w-full items-center justify-between rounded-md bg-emerald-600 px-3 py-2.5">
-            <span className="text-[13px] font-medium text-white">
-              {appliedCoupon.code} applied (−{formatCheckoutMoney(discountAmount)})
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                removeCoupon();
-                setShowCouponPanel(false);
-              }}
-              className="text-[12px] font-medium text-white/90 underline-offset-2 hover:text-white hover:underline"
-            >
-              Remove
-            </button>
-          </div>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setShowCouponPanel((open) => !open)}
-              className="flex w-full items-center justify-between text-left text-[13px] text-gray-700"
-              aria-expanded={showCouponPanel}
-            >
-              <span>Have a discount code?</span>
-              <span className="inline-flex items-center gap-1 font-medium text-gray-900">
-                Apply Coupon
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform ${showCouponPanel ? "rotate-180" : ""}`}
-                />
-              </span>
-            </button>
-            {showCouponPanel && (
-              <div className="mt-3 space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    className={INPUT}
-                    placeholder="Discount code"
-                    value={couponInput}
-                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => e.key === "Enter" && handleApplyCoupon()}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleApplyCoupon()}
-                    disabled={isCouponLoading || !couponInput}
-                    className="shrink-0 rounded-md bg-gray-200 px-4 text-[13px] font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-300"
-                  >
-                    {isCouponLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Apply"
-                    )}
-                  </button>
-                </div>
-                {couponError && (
-                  <p className="text-[12px] text-red-600">{couponError}</p>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-    );
-  };
-
   if (!cartHydrated) {
     return (
       <main className="grid min-h-screen place-items-center bg-white">
@@ -945,16 +990,6 @@ function CheckoutPageContent() {
                   {showLoginPrompt && !loginPromptSkipped && (
                     <CheckoutAccountPrompt
                       email={formData.email.trim().toLowerCase()}
-                      onLogin={(user) => {
-                        user.authMethod = "password";
-                        setUserInfo(user);
-                        persistAuth(user);
-                        setShowLoginPrompt(false);
-                        applyUserToForm(user);
-                        const next = afterAccountRef.current;
-                        afterAccountRef.current = null;
-                        next?.(user);
-                      }}
                       onSkip={() => {
                         setLoginPromptSkipped(false);
                         setShowLoginPrompt(false);
@@ -1174,7 +1209,23 @@ function CheckoutPageContent() {
           {/* Summary — right edge matches nav “Return to Cart” */}
           <aside className="order-1 border-b border-gray-200 bg-[#F8F8F8] py-8 lg:order-2 lg:flex lg:justify-end lg:border-b-0 lg:bg-transparent lg:py-10 lg:pl-10">
             <div className="w-full max-w-xl">
-              <OrderSummary />
+              <CheckoutOrderSummary
+                availableItems={availableItems}
+                subtotal={subtotal}
+                shippingPrice={shippingPrice}
+                appliedCoupon={appliedCoupon}
+                discountAmount={discountAmount}
+                totalPrice={totalPrice}
+                totalSavings={totalSavings}
+                couponInput={couponInput}
+                setCouponInput={setCouponInput}
+                couponError={couponError}
+                showCouponPanel={showCouponPanel}
+                setShowCouponPanel={setShowCouponPanel}
+                isCouponLoading={isCouponLoading}
+                handleApplyCoupon={handleApplyCoupon}
+                removeCoupon={removeCoupon}
+              />
             </div>
           </aside>
         </div>

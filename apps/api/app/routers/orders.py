@@ -310,10 +310,39 @@ async def create_order(
     return remap_order(order)
 
 
+_CUSTOMER_VISIBLE_PAID = {
+    "paid",
+    "refunded",
+    "partially_refunded",
+    "refund_pending",
+    "captured",
+    "authorized",
+}
+
+
+def _is_customer_visible_order(order: Order) -> bool:
+    """Account history: real orders only — not unpaid Razorpay exits / abandoned carts.
+
+    Matches admin Orders list: unpaid gateway checkouts live under Abandoned, not as
+    customer “Unpaid” orders.
+    """
+    status = str(order.status or "").strip().lower()
+    if status in {"abandoned", "draft"}:
+        return False
+    pay = str(
+        order.paymentStatus
+        or (order.transactionDetails or {}).get("paymentStatus")
+        or ""
+    ).strip().lower()
+    if status == "order placed" and pay not in _CUSTOMER_VISIBLE_PAID:
+        return False
+    return True
+
+
 @router.get("/myorders")
 async def my_orders(user: CurrentUser):
     orders = await Order.find(Order.customerId == user.id).sort([("createdAt", -1)]).to_list()
-    return [remap_order(o) for o in orders]
+    return [remap_order(o) for o in orders if _is_customer_visible_order(o)]
 
 
 def _trend(current: float, previous: float) -> str:

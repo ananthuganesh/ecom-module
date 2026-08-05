@@ -10,7 +10,7 @@ export default function WishlistPage() {
   const clear = useWishlistStore((s) => s.clear);
 
   return (
-    <div className="min-h-[60vh] bg-white px-2 py-8 md:px-4 md:py-12 lg:px-8">
+    <div className="min-h-[60vh] bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3 md:mb-8">
         <div>
           <h1 className="title-knewave text-3xl leading-none tracking-tight normal-case md:text-4xl">

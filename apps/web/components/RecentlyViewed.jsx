@@ -63,35 +63,40 @@ export default function RecentlyViewed({ excludeId } = {}) {
 
   return (
     <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">
-      <div className="w-full px-2 md:px-4 lg:px-8">
-        <header className="mb-3 w-full text-center md:mb-6">
-          <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
-            Recently <span className="title-knewave-accent">Viewed</span>
-          </h2>
-        </header>
+      <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
+        <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+          Recently <span className="title-knewave-accent">Viewed</span>
+        </h2>
+      </header>
 
-        {loading && products.length === 0 ? (
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
-            {history.slice(0, 4).map((item) => (
-              <div
-                key={item._id}
-                className="aspect-[2/3] animate-pulse rounded-xl bg-gray-100 lg:rounded-2xl"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
-            {products.map((product) => (
+      {loading && products.length === 0 ? (
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1 md:gap-3 lg:gap-4 lg:px-8">
+          {history.slice(0, 6).map((item) => (
+            <div
+              key={item._id}
+              className="aspect-[2/3] w-[42%] shrink-0 animate-pulse rounded-xl bg-gray-100 sm:w-[30%] md:w-[22%] lg:w-[18%] lg:rounded-2xl"
+            />
+          ))}
+        </div>
+      ) : (
+        <div
+          className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1 md:gap-3 lg:gap-4 lg:px-8"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          {products.map((product) => (
+            <div
+              key={product._id}
+              className="w-[42%] shrink-0 sm:w-[30%] md:w-[22%] lg:w-[18%]"
+            >
               <ProductCard
-                key={product._id}
                 product={product}
                 listName="Recently viewed"
                 listId="recently-viewed"
               />
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -1,12 +1,6 @@
 import { getInternalApiBase } from "@/lib/siteUrl";
 import { getCatalogConfig } from "@/lib/catalogConfig";
-
-function normalizeProductList(data) {
-  if (Array.isArray(data?.products)) return data.products;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data)) return data;
-  return [];
-}
+import { normalizeProductPage } from "@/utils/normalizeProductPage";
 
 function buildQuery(params = {}) {
   const searchParams = new URLSearchParams();
@@ -22,11 +16,23 @@ function buildQuery(params = {}) {
 /**
  * Server-side product list fetch (RSC / sitemap-style).
  * Uses INTERNAL_BACKEND_URL so first paint can include cards.
+ * Returns products array only (home / category callers).
  */
 export async function fetchStoreProducts(params = {}, options = {}) {
-  const { revalidate: defaultRevalidate } = getCatalogConfig();
+  const page = await fetchStoreProductsPage(params, options);
+  return page.products;
+}
+
+/**
+ * Same as fetchStoreProducts but keeps page / pages / total / hasMore for infinite scroll.
+ */
+export async function fetchStoreProductsPage(params = {}, options = {}) {
+  const { revalidate: defaultRevalidate, catalogPageSize } = getCatalogConfig();
   const revalidate =
     options.revalidate != null ? options.revalidate : defaultRevalidate;
+  const pageSize = Number(params.pageSize) || catalogPageSize;
+  const pageNum = Number(params.pageNum) || 1;
+  const empty = normalizeProductPage(null, { pageSize, pageNum });
   const base = getInternalApiBase();
   const url = `${base}/api/products${buildQuery(params)}`;
   try {
@@ -34,11 +40,11 @@ export async function fetchStoreProducts(params = {}, options = {}) {
       next: { revalidate, tags: ["store-catalog"] },
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return [];
-    return normalizeProductList(await res.json());
+    if (!res.ok) return empty;
+    return normalizeProductPage(await res.json(), { pageSize, pageNum });
   } catch (err) {
-    console.error("fetchStoreProducts failed", err);
-    return [];
+    console.error("fetchStoreProductsPage failed", err);
+    return empty;
   }
 }
 

@@ -229,9 +229,66 @@ export function groupTimelineByDay(steps, now = new Date()) {
   return groups;
 }
 
+function customerEmail(order) {
+  const customer =
+    order?.customerId && typeof order.customerId === "object"
+      ? order.customerId
+      : order?.user && typeof order.user === "object"
+        ? order.user
+        : null;
+  const fromDetails = order?.transactionDetails?.customerDetails?.email;
+  const email =
+    [customer?.email, order?.customerEmail, order?.email, fromDetails]
+      .map((v) => String(v || "").trim())
+      .find((v) => v && v.includes("@")) || "";
+  return email;
+}
+
+function resendSentAt(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : value;
+  }
+  if (typeof value === "object") {
+    const raw = value.at || value.sentAt || value.timestamp;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : String(raw);
+  }
+  return null;
+}
+
+const EMAIL_ACTIVITY = [
+  {
+    key: "orderConfirmed",
+    id: "email_orderConfirmed",
+    title: "Confirmation email sent",
+    seq: 32,
+  },
+  {
+    key: "staffNewOrder",
+    id: "email_staffNewOrder",
+    title: "Staff new-order email sent",
+    seq: 33,
+  },
+  {
+    key: "orderShipped",
+    id: "email_orderShipped",
+    title: "Shipping email sent",
+    seq: 55,
+  },
+  {
+    key: "orderDelivered",
+    id: "email_orderDelivered",
+    title: "Delivery email sent",
+    seq: 85,
+  },
+];
+
 /**
  * Order activity timeline (ops-focused):
- * Order placed → Confirmation → Payment → Fulfilled → DTDC AWB →
+ * Order placed → Confirmation → Payment → Emails → Fulfilled → DTDC AWB →
  * DTDC shipped → DTDC delivered → Cancel / Refund
  */
 export function buildOrderTimeline(order) {
@@ -241,6 +298,7 @@ export function buildOrderTimeline(order) {
   const updatedAt = order.updatedAt || createdAt;
   const ref = orderRef(order);
   const customer = customerDisplayName(order);
+  const emailTo = customerEmail(order);
   const payStatus = payStatusOf(order);
   const amountText = formatMoneyINR(order.finalPrice ?? order.total ?? order.amount);
   const method = String(
@@ -312,6 +370,31 @@ export function buildOrderTimeline(order) {
       subtitle: amountText,
       at: createdAt,
       sortAt: createdAt,
+    });
+  }
+
+  // Email sends (from transactionDetails.resend timestamps)
+  const resend = { ...(order.transactionDetails?.resend || {}) };
+  // Prefer orderConfirmed; fall back to legacy keys used by older sends.
+  if (!resend.orderConfirmed && (resend.orderConfirmation || resend.orderPlaced)) {
+    resend.orderConfirmed = resend.orderConfirmation || resend.orderPlaced;
+  }
+  for (const evt of EMAIL_ACTIVITY) {
+    const raw = resend[evt.key];
+    const at = resendSentAt(raw);
+    if (!at) continue;
+    const recipient =
+      (typeof raw === "object" && raw?.to) ||
+      (evt.key === "staffNewOrder" ? null : emailTo);
+    steps.push({
+      id: evt.id,
+      type: "email",
+      seq: evt.seq,
+      title: evt.title,
+      subtitle: recipient ? `To · ${recipient}` : null,
+      at,
+      sortAt: at,
+      tone: "info",
     });
   }
 

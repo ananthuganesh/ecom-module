@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 
 export default function ProductDetailSkeleton() {
     return (
-        <div className="container mx-auto w-full px-2 md:px-4 lg:px-8 animate-pulse">
+        <div className="container mx-auto w-full px-4 lg:px-8 animate-pulse">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
                 {/* Left: Image Skeleton */}
                 <div className="space-y-3">

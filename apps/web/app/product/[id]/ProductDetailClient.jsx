@@ -6,11 +6,9 @@ import {
   ChevronRightIcon,
   CloseIcon,
   LocationIcon,
-  MinusIcon,
-  PlusIcon,
   RulerIcon,
 } from "@/components/icons/storeIcons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
@@ -18,7 +16,6 @@ import SafeImage from "@/components/SafeImage";
 import ProductCard from "@/components/storefront/ProductCard";
 import ProductDetailSkeleton from "@/components/ProductDetailSkeleton";
 import RecentlyViewed from "@/components/RecentlyViewed";
-import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
@@ -66,23 +63,6 @@ function toSentenceCase(value) {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-function formatSoldLabel(count) {
-  const n = Math.max(0, Number(count) || 0);
-  if (n <= 0) return "";
-  if (n >= 1000) {
-    const k = n / 1000;
-    const text = k >= 10 ? String(Math.round(k)) : k.toFixed(1).replace(/\.0$/, "");
-    return `${text}k sold`;
-  }
-  return `${n.toLocaleString("en-IN")} sold`;
-}
-
-function resolveSoldCount(product) {
-  const explicit = Number(product?.soldCount ?? product?.unitsSold);
-  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
-  return 0;
-}
-
 function estimateDeliveryWindow(from = new Date()) {
   const start = new Date(from);
   start.setDate(start.getDate() + 3);
@@ -103,7 +83,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [similarProducts, setSimilarProducts] = useState([]);
   const [loading, setLoading] = useState(!initialProduct);
   const [selectedSize, setSelectedSize] = useState("");
-  const [quantity, setQuantity] = useState(1);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [sizeGuideUnit, setSizeGuideUnit] = useState("in");
@@ -117,6 +96,26 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const trackedViewIdRef = useRef(null);
   const primaryCtaRef = useRef(null);
+  const mobileGalleryRef = useRef(null);
+  const mobileGalleryScrollLock = useRef(false);
+
+  // Next can leave the page mid-viewport when opening a product (sticky
+  // product column + preserved scroll from the previous listing page).
+  const productScrollKey = product?._id || params?.id;
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const toTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    };
+    toTop();
+    // Router scroll can run after first paint — re-assert top briefly.
+    const t0 = window.setTimeout(toTop, 0);
+    const t1 = window.setTimeout(toTop, 80);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [productScrollKey]);
 
   useEffect(() => {
     if (!initialProduct?._id) return;
@@ -287,10 +286,45 @@ export default function ProductDetailPage({ initialProduct = null }) {
   useEffect(() => {
     setLightboxIndex(null);
   }, [selectedSize, product?._id]);
+
+  useEffect(() => {
+    const el = mobileGalleryRef.current;
+    if (!el) return;
+    mobileGalleryScrollLock.current = true;
+    el.scrollTo({ left: 0, behavior: "auto" });
+    const t = window.setTimeout(() => {
+      mobileGalleryScrollLock.current = false;
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [product?._id, selectedSize, images.length]);
+
+  const scrollMobileGalleryTo = (index) => {
+    const el = mobileGalleryRef.current;
+    if (!el) return;
+    const width = el.clientWidth || 0;
+    if (!width) return;
+    mobileGalleryScrollLock.current = true;
+    el.scrollTo({ left: index * width, behavior: "smooth" });
+    window.setTimeout(() => {
+      mobileGalleryScrollLock.current = false;
+    }, 320);
+  };
+
+  const handleMobileGalleryScroll = () => {
+    if (mobileGalleryScrollLock.current) return;
+    const el = mobileGalleryRef.current;
+    if (!el) return;
+    const width = el.clientWidth || 0;
+    if (!width) return;
+    const next = Math.round(el.scrollLeft / width);
+    if (next >= 0 && next < images.length && next !== activeImageIndex) {
+      setActiveImageIndex(next);
+    }
+  };
+
   const availableStock = selectedSizeData
     ? stockFor(selectedSizeData, product?.totalStock)
     : Number(product?.totalStock || 0);
-  const maxQuantity = Math.min(5, availableStock);
   const inStock = availableStock > 0;
   const price = Number(product?.pricing?.sellingPrice ?? product?.price ?? 0);
   const mrp = Number(product?.pricing?.mrp ?? 0);
@@ -304,8 +338,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const productType = toSentenceCase(
     String(product?.type || product?.productType || product?.subcategory || "").trim()
   );
-  const displayTitle = productType ? `${title} ${productType}` : title;
-  const soldLabel = formatSoldLabel(resolveSoldCount(product));
   const productBadge = useMemo(
     () => (product ? resolveCardBadge(product) : null),
     [product]
@@ -347,14 +379,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
   }, [pinCode]);
 
   useEffect(() => {
-    setQuantity(1);
-  }, [selectedSize]);
-
-  useEffect(() => {
-    setQuantity((current) => Math.max(1, Math.min(current, maxQuantity || 1)));
-  }, [maxQuantity]);
-
-  useEffect(() => {
     const target = primaryCtaRef.current;
     if (!target || typeof IntersectionObserver === "undefined") return;
 
@@ -375,7 +399,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
     setCtaPending("add");
     addItem({
       ...product,
-      qty: quantity,
+      qty: 1,
       size: selectedSize,
       color: "",
       image: selectedVariant?.images?.[0] || product?.thumbnails?.[0],
@@ -391,7 +415,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
     setCtaPending("buy");
     const ok = useBuyNowStore.getState().setBuyNowItem({
       ...product,
-      qty: quantity,
+      qty: 1,
       size: selectedSize,
       color: "",
       image: selectedVariant?.images?.[0] || product?.thumbnails?.[0],
@@ -460,7 +484,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
           : "pb-0"
       }`}
     >
-      <section className="w-full px-2 py-5 md:px-4 md:py-8 lg:px-8 lg:py-10">
+      <section className="w-full px-4 py-5 md:px-4 md:py-8 lg:px-8 lg:py-10">
         <nav className="mb-4 text-[11px] font-medium text-gray-400 md:mb-5">
           <Link href="/all-products" className="transition-colors hover:text-black">
             All Products
@@ -472,27 +496,41 @@ export default function ProductDetailPage({ initialProduct = null }) {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-10 xl:gap-14">
           {/* Gallery */}
           <div className="space-y-2.5">
-            {/* Mobile — full main image + square thumbs */}
+            {/* Mobile — swipeable main gallery + square thumbs */}
             <div className="space-y-2 lg:hidden">
               <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setLightboxIndex(activeImageIndex)}
-                  className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-gray-100"
+                <div
+                  ref={mobileGalleryRef}
+                  onScroll={handleMobileGalleryScroll}
+                  className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain rounded-lg"
+                  style={{ WebkitOverflowScrolling: "touch" }}
                 >
-                  {images[activeImageIndex] ? (
-                    <SafeImage
-                      src={resolveImageUrl(images[activeImageIndex])}
-                      alt={`${title} ${activeImageIndex + 1}`}
-                      fill
-                      priority
-                      fetchPriority="high"
-                      loading="eager"
-                      sizes="100vw"
-                      className="object-cover"
-                    />
-                  ) : null}
-                </button>
+                  {images.length > 0 ? (
+                    images.map((image, index) => (
+                      <button
+                        key={`slide-${image}-${index}`}
+                        type="button"
+                        onClick={() => setLightboxIndex(index)}
+                        className="relative aspect-[3/4] w-full shrink-0 snap-center overflow-hidden bg-gray-100"
+                        aria-label={`View image ${index + 1} full screen`}
+                      >
+                        <SafeImage
+                          src={resolveImageUrl(image)}
+                          alt={`${title} ${index + 1}`}
+                          fill
+                          priority={index === 0}
+                          fetchPriority={index === 0 ? "high" : undefined}
+                          loading={index === 0 ? "eager" : "lazy"}
+                          sizes="100vw"
+                          className="pointer-events-none object-cover"
+                          draggable={false}
+                        />
+                      </button>
+                    ))
+                  ) : (
+                    <div className="relative aspect-[3/4] w-full shrink-0 bg-gray-100" />
+                  )}
+                </div>
 
                 {productBadge ? (
                   <div className="pointer-events-none absolute top-2 left-2 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
@@ -515,16 +553,34 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   iconSize={18}
                   className="absolute top-2 right-2 z-20 inline-flex items-center justify-center text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
                 />
+
+                {images.length > 1 ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center gap-1.5">
+                    {images.map((_, index) => (
+                      <span
+                        key={`dot-${index}`}
+                        className={`h-1.5 rounded-full transition-all ${
+                          index === activeImageIndex
+                            ? "w-4 bg-white"
+                            : "w-1.5 bg-white/55"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
               {images.length > 1 ? (
-                <div className="flex gap-2 overflow-x-auto pb-1">
+                <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
                   {images.map((image, index) => {
                     const active = index === activeImageIndex;
                     return (
                       <button
                         key={`m-${image}-${index}`}
                         type="button"
-                        onClick={() => setActiveImageIndex(index)}
+                        onClick={() => {
+                          setActiveImageIndex(index);
+                          scrollMobileGalleryTo(index);
+                        }}
                         className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md ${
                           active
                             ? "border-2 border-gray-400"
@@ -596,20 +652,22 @@ export default function ProductDetailPage({ initialProduct = null }) {
           {/* Buy box */}
           <div className="lg:sticky lg:top-24 lg:self-start lg:max-w-md xl:max-w-lg">
             <div className="flex items-start justify-between gap-3">
-              <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
-                {displayTitle}
-              </h1>
+              <div className="min-w-0">
+                <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
+                  {title}
+                </h1>
+                {productType ? (
+                  <p className="mt-1 text-[13px] font-medium text-gray-500">
+                    {productType}
+                  </p>
+                ) : null}
+              </div>
               <WishlistButton
                 product={product}
                 iconSize={20}
                 className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50 lg:inline-flex"
               />
             </div>
-            {soldLabel ? (
-              <p className="mt-1.5 text-[12px] font-medium text-gray-500">
-                {soldLabel}
-              </p>
-            ) : null}
 
             {product.shortDescription ? (
               <p className="mt-3 text-[13px] leading-relaxed text-gray-500">
@@ -623,14 +681,21 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </p>
               {hasCompareAt ? (
                 <>
-                  <p className="text-sm text-gray-400">
-                    MRP{" "}
-                    <span className="line-through">
-                      ₹{originalPrice.toLocaleString("en-IN")}
-                    </span>
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm text-gray-400">
+                      MRP{" "}
+                      <span className="line-through">
+                        ₹{originalPrice.toLocaleString("en-IN")}
+                      </span>
+                    </p>
+                    {savePercent > 0 ? (
+                      <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-2 py-1 text-[13px] font-semibold leading-none tracking-wide text-white uppercase">
+                        {savePercent}% OFF
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-[13px] font-semibold text-emerald-600">
-                    You save ₹{saveAmount.toLocaleString("en-IN")} ({savePercent}%)
+                    You save ₹{saveAmount.toLocaleString("en-IN")}
                   </p>
                 </>
               ) : null}
@@ -639,14 +704,14 @@ export default function ProductDetailPage({ initialProduct = null }) {
 
             {sizes.length > 0 ? (
               <div className="mt-6">
-                <div className="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="mb-2.5 flex items-center justify-between gap-3">
                   <p className="text-[12px] font-medium text-gray-600">
-                    Select size
+                    Size
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowSizeGuide(true)}
-                    className="flex items-center gap-1 text-[12px] font-medium text-[#DF1721] hover:underline"
+                    className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#DF1721] hover:underline"
                   >
                     <RulerIcon className="h-3 w-3" /> Find my size
                   </button>
@@ -654,21 +719,37 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 <div className="flex flex-wrap gap-1.5">
                   {sizes.map((size) => {
                     const unavailable = stockFor(size, 0) <= 0;
+                    const selected = selectedSize === size.size && !unavailable;
                     return (
                       <button
                         key={size.size}
                         type="button"
                         disabled={unavailable}
                         onClick={() => setSelectedSize(size.size)}
-                        className={`min-w-10 rounded-md border px-3 py-2 text-xs font-semibold transition ${
-                          selectedSize === size.size
+                        aria-label={
+                          unavailable
+                            ? `${size.size} sold out`
+                            : `Select size ${size.size}`
+                        }
+                        className={`relative min-w-10 overflow-hidden rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                          selected
                             ? "border-black bg-black text-white"
                             : unavailable
-                              ? "cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300 line-through"
-                              : "border-gray-200 hover:border-black"
+                              ? "cursor-not-allowed border-gray-200 bg-transparent text-gray-400"
+                              : "border-gray-200 text-black hover:border-black"
                         }`}
                       >
-                        {size.size}
+                        <span className="relative z-[1]">{size.size}</span>
+                        {unavailable ? (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 z-0"
+                            style={{
+                              background:
+                                "linear-gradient(to top right, transparent calc(50% - 0.6px), #c4c4c4 0, #c4c4c4 calc(50% + 0.6px), transparent 0)",
+                            }}
+                          />
+                        ) : null}
                       </button>
                     );
                   })}
@@ -676,39 +757,12 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </div>
             ) : null}
 
-            <div className="mt-5">
-              <p className="mb-2 text-[12px] font-medium text-gray-600">
-                Quantity
-              </p>
-              <div className="inline-flex h-10 items-center overflow-hidden rounded-md border border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((value) => Math.max(1, value - 1))}
-                  disabled={quantity <= 1}
-                  className="grid h-full w-9 place-items-center hover:bg-gray-50 disabled:opacity-30"
-                >
-                  <MinusIcon className="h-3.5 w-3.5" />
-                </button>
-                <span className="w-8 text-center text-sm font-semibold">{quantity}</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setQuantity((value) => Math.min(maxQuantity, value + 1))
-                  }
-                  disabled={quantity >= maxQuantity}
-                  className="grid h-full w-9 place-items-center hover:bg-gray-50 disabled:opacity-30"
-                >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
             <div ref={primaryCtaRef} className="mt-5 flex gap-2">
               {isInCart && ctaPending !== "add" ? (
                 <button
                   type="button"
                   onClick={() => useCartStore.getState().setDrawerOpen(true)}
-                  className="flex h-11 w-[40%] items-center justify-center rounded-lg border border-black text-[13px] font-semibold transition hover:bg-black hover:text-white"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[13px] font-semibold transition hover:bg-black hover:text-white"
                 >
                   View bag
                 </button>
@@ -718,7 +772,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   onClick={handleAddToCart}
                   disabled={ctaDisabled || Boolean(ctaPending)}
                   aria-busy={ctaPending === "add"}
-                  className="flex h-11 w-[40%] items-center justify-center rounded-lg border border-black text-[13px] font-semibold transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[13px] font-semibold transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
                 >
                   {ctaPending === "add" ? (
                     <CtaSpinner tone="dark" />
@@ -734,7 +788,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 onClick={handleBuyNow}
                 disabled={ctaDisabled || Boolean(ctaPending)}
                 aria-busy={ctaPending === "buy"}
-                className="flex h-11 w-[60%] items-center justify-center rounded-lg bg-black text-[13px] font-semibold text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-200"
+                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-black text-[13px] font-semibold text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-200"
               >
                 {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
               </button>
@@ -777,7 +831,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
             </div>
 
             {productSpecs.length > 0 ? (
-              <div className="mt-6 border-t border-gray-200 pt-5">
+              <div className="mt-6 pt-1">
                 <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
                   Product details
                 </h2>
@@ -807,7 +861,11 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </div>
             ) : null}
 
-            <div className="mt-6 border-t border-gray-200">
+            <div className="mt-6 pt-1">
+              <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
+                Information
+              </h2>
+              <div>
               {[
                 {
                   id: "description",
@@ -871,16 +929,19 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 },
               ]
                 .filter(Boolean)
-                .map((section) => {
+                .map((section, sectionIndex, sectionList) => {
                   const isOpen = openSection === section.id;
+                  const isLast = sectionIndex === sectionList.length - 1;
                   return (
-                    <div key={section.id} className="border-b border-gray-200">
-                      <button
+                    <div
+                      key={section.id}
+                      className={isLast ? "" : "border-b border-gray-200"}
+                    >                      <button
                         type="button"
                         aria-expanded={isOpen}
-                        onClick={() =>
-                          setOpenSection(isOpen ? null : section.id)
-                        }
+                        onClick={() => {
+                          if (!isOpen) setOpenSection(section.id);
+                        }}
                         className="flex w-full items-center justify-between py-3 text-left text-[13px] font-medium text-gray-700"
                       >
                         <span>{section.title}</span>
@@ -904,6 +965,41 @@ export default function ProductDetailPage({ initialProduct = null }) {
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="mt-6 grid grid-cols-4 gap-2 sm:gap-3">
+                {[
+                  {
+                    src: "/badge/premium-quality.png",
+                    alt: "Premium quality",
+                  },
+                  {
+                    src: "/badge/great-customer-service.png",
+                    alt: "Great customer service",
+                  },
+                  {
+                    src: "/badge/secure-payment.png",
+                    alt: "100% secure payment",
+                  },
+                  {
+                    src: "/badge/fast-free-shipping.png",
+                    alt: "Fast and free shipping",
+                  },
+                ].map((badge) => (
+                  <div
+                    key={badge.src}
+                    className="relative mx-auto aspect-square w-full max-w-[4.75rem] sm:max-w-[5.5rem] md:max-w-[6.25rem]"
+                  >
+                    <SafeImage
+                      src={badge.src}
+                      alt={badge.alt}
+                      fill
+                      className="object-contain"
+                      sizes="100px"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -911,27 +1007,31 @@ export default function ProductDetailPage({ initialProduct = null }) {
 
       {similarProducts.length > 0 ? (
         <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">
-          <div className="w-full px-2 md:px-4 lg:px-8">
-            <header className="mb-3 w-full text-center md:mb-6">
-              <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
-                Similar <span className="title-knewave-accent">Products</span>
-              </h2>
-            </header>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
-              {similarProducts.map((item) => (
+          <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
+            <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+              Similar <span className="title-knewave-accent">Products</span>
+            </h2>
+          </header>
+          <div
+            className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1 md:gap-3 lg:gap-4 lg:px-8"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            {similarProducts.map((item) => (
+              <div
+                key={item._id}
+                className="w-[42%] shrink-0 sm:w-[30%] md:w-[22%] lg:w-[18%]"
+              >
                 <ProductCard
-                  key={item._id}
                   product={item}
                   listName="Similar products"
                   listId="similar-products"
                 />
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </section>
       ) : null}
       <RecentlyViewed excludeId={product._id} />
-      <WhyUrbanAana />
 
       {lightboxIndex !== null ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4">
@@ -1089,7 +1189,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 <button
                   type="button"
                   onClick={() => useCartStore.getState().setDrawerOpen(true)}
-                  className="flex h-11 w-[40%] items-center justify-center rounded-lg border border-black text-[12px] font-semibold"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[12px] font-semibold"
                 >
                   View bag
                 </button>
@@ -1099,7 +1199,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   onClick={handleAddToCart}
                   disabled={ctaDisabled || Boolean(ctaPending)}
                   aria-busy={ctaPending === "add"}
-                  className="flex h-11 w-[40%] items-center justify-center rounded-lg border border-black text-[12px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[12px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
                 >
                   {ctaPending === "add" ? <CtaSpinner tone="dark" /> : addLabel}
                 </button>
@@ -1109,7 +1209,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 onClick={handleBuyNow}
                 disabled={ctaDisabled || Boolean(ctaPending)}
                 aria-busy={ctaPending === "buy"}
-                className="flex h-11 w-[60%] items-center justify-center rounded-lg bg-black text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-200"
+                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-black text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-200"
               >
                 {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
               </button>

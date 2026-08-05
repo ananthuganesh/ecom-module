@@ -28,7 +28,7 @@ export function resolveCategoryName(categories, value) {
   if (!id) return "";
   const match = (categories || []).find((c) => categoryId(c) === id);
   if (match) return String(match?.name || match?.title || "").trim();
-  // Fixed catalog strings (e.g. "T-Shirts") are stored directly
+  // Fixed catalog strings (e.g. "T-Shirt") are stored directly
   return id;
 }
 

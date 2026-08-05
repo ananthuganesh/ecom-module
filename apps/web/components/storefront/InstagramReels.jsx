@@ -133,12 +133,12 @@ export default function InstagramReels() {
   if (!loaded && reels.length === 0) {
     return (
       <section className="scroll-mt-24 py-6 md:py-10">
-        <header className="mb-3 w-full px-2 text-center md:mb-6 md:px-4 lg:px-8">
+        <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
           <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
             Product <span className="title-knewave-accent">Showcase</span>
           </h2>
         </header>
-        <div className="grid grid-cols-2 gap-2 px-2 sm:grid-cols-4 md:grid-cols-5 md:gap-3 md:px-4 lg:gap-4 lg:px-8">
+        <div className="grid grid-cols-2 gap-2 px-4 sm:grid-cols-4 md:grid-cols-5 md:gap-3 md:px-4 lg:gap-4 lg:px-8">
           {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -157,13 +157,13 @@ export default function InstagramReels() {
 
   return (
     <section className="scroll-mt-24 py-6 md:py-10">
-      <header className="mb-3 w-full px-2 text-center md:mb-6 md:px-4 lg:px-8">
+      <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
         <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
           Product <span className="title-knewave-accent">Showcase</span>
         </h2>
       </header>
 
-      <div className="ua-reels-strip relative w-full overflow-hidden px-2 md:px-4 lg:px-8">
+      <div className="ua-reels-strip relative w-full overflow-hidden px-4 lg:px-8">
         <div className="ua-reels-marquee flex w-max">
           <MarqueeHalf items={trackItems} copy={0} />
           <MarqueeHalf items={trackItems} copy={1} />

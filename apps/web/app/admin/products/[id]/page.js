@@ -1195,7 +1195,7 @@ export default function AdminProductDetailPage() {
                 <Field>
                   <FieldLabel>Category</FieldLabel>
                   <Select
-                    value={form.category || "T-Shirts"}
+                    value={form.category || "T-Shirt"}
                     onValueChange={(category) => {
                       const nextTypes = productTypesForCategory(category);
                       const keepType = nextTypes.includes(form.type)

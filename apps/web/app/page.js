@@ -4,6 +4,7 @@ import InstagramReels from "@/components/storefront/InstagramReels";
 import TwoColumnImages from "@/components/storefront/TwoColumnImages";
 import TwoColumnVideos from "@/components/storefront/TwoColumnVideos";
 import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
+import FaqSection from "@/components/storefront/FaqSection";
 import { getCatalogConfig } from "@/lib/catalogConfig";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
 
@@ -24,7 +25,7 @@ export default async function Home() {
 
       <section
         id="latest-drops"
-        className="scroll-mt-24 px-2 py-6 md:px-4 md:py-10 lg:px-8"
+        className="scroll-mt-24 px-4 py-6 md:px-4 md:py-10 lg:px-8"
       >
         <header className="mb-3 w-full text-center md:mb-6">
           <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
@@ -38,6 +39,7 @@ export default async function Home() {
       <TwoColumnImages />
       <TwoColumnVideos />
       <WhyUrbanAana />
+      <FaqSection />
     </div>
   );
 }

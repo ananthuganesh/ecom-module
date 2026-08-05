@@ -120,7 +120,7 @@ export default function ProductCard({
         <div className="relative flex flex-col">
           <div className="relative w-full p-0.5">
             <div
-              className="relative w-full overflow-hidden rounded-lg border-[0.5px] border-[#eee] bg-[#f5f5f5] lg:rounded-xl"
+              className="relative w-full overflow-hidden rounded-lg border-[0.5px] border-[#eee] bg-white lg:rounded-xl"
               style={{ aspectRatio: "2 / 3" }}
             >
               <Link
@@ -190,9 +190,9 @@ export default function ProductCard({
                         onClick={(e) =>
                           handleQuickAddSize(e, sizeLabel, stock)
                         }
-                        className={`min-w-[2rem] rounded border px-2 py-1.5 text-[11px] font-semibold uppercase shadow-sm transition-colors lg:min-w-[2.25rem] lg:text-xs ${
+                        className={`relative min-w-[2rem] overflow-hidden rounded border px-2 py-1.5 text-[11px] font-semibold uppercase shadow-sm transition-colors lg:min-w-[2.25rem] lg:text-xs ${
                           outOfStock
-                            ? "cursor-not-allowed border-[#eee] bg-white/80 text-[#c9cbcc] line-through"
+                            ? "cursor-not-allowed border-[#eee] bg-transparent text-[#c9cbcc]"
                             : busy
                               ? "border-[#131814] bg-[#131814] text-white"
                               : "border-[#e5e5e5] bg-white text-[#131814] hover:border-[#131814] hover:bg-[#131814] hover:text-white"
@@ -203,14 +203,26 @@ export default function ProductCard({
                             : `Add size ${sizeLabel} to cart`
                         }
                       >
-                        {busy ? (
-                          <Loader2
-                            size={12}
-                            className="mx-auto animate-spin"
+                        <span className="relative z-[1]">
+                          {busy ? (
+                            <Loader2
+                              size={12}
+                              className="mx-auto animate-spin"
+                            />
+                          ) : (
+                            sizeLabel
+                          )}
+                        </span>
+                        {outOfStock ? (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 z-0"
+                            style={{
+                              background:
+                                "linear-gradient(to top right, transparent calc(50% - 0.6px), #c9cbcc 0, #c9cbcc calc(50% + 0.6px), transparent 0)",
+                            }}
                           />
-                        ) : (
-                          sizeLabel
-                        )}
+                        ) : null}
                       </button>
                     );
                   })}
@@ -225,8 +237,13 @@ export default function ProductCard({
             onClick={() => trackSelectItem(product, listName, listId)}
           >
             <h3 className="w-full truncate text-[11px] font-medium uppercase tracking-wide text-[#131814] lg:text-sm">
-              {productType ? `${title} ${productType}` : title}
+              {title}
             </h3>
+            {productType ? (
+              <p className="w-full truncate text-[10px] font-medium text-[#8a8f93] lg:text-xs">
+                {productType}
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
               <span className="text-[13px] font-semibold text-[#131814] lg:text-base">
                 ₹{formatInr(price)}
@@ -327,7 +344,7 @@ export default function ProductCard({
                     const sizeLabel = sizeObj.size || sizeObj;
                     const stock =
                       sizeObj.stock ?? sizeObj.quantity ?? totalStock;
-                    const outOfStock = stock === 0;
+                    const outOfStock = stock <= 0;
                     const selected = selectedSize === sizeLabel;
                     return (
                       <button
@@ -337,15 +354,25 @@ export default function ProductCard({
                           !outOfStock && setSelectedSize(sizeLabel)
                         }
                         disabled={outOfStock}
-                        className={`min-w-[40px] rounded border px-2.5 py-1.5 text-xs font-semibold uppercase transition-all sm:min-w-[44px] sm:text-sm ${
+                        className={`relative min-w-[40px] overflow-hidden rounded border px-2.5 py-1.5 text-xs font-semibold uppercase transition-all sm:min-w-[44px] sm:text-sm ${
                           selected
                             ? "border-[#131814] bg-[#131814] text-white"
                             : outOfStock
-                              ? "cursor-not-allowed border-[#eee] bg-[#f7f7f7] text-[#c9cbcc] line-through"
+                              ? "cursor-not-allowed border-[#eee] bg-transparent text-[#c9cbcc]"
                               : "border-[#e5e5e5] text-[#131814] hover:border-[#131814]"
                         }`}
                       >
-                        {sizeLabel}
+                        <span className="relative z-[1]">{sizeLabel}</span>
+                        {outOfStock ? (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 z-0"
+                            style={{
+                              background:
+                                "linear-gradient(to top right, transparent calc(50% - 0.6px), #c9cbcc 0, #c9cbcc calc(50% + 0.6px), transparent 0)",
+                            }}
+                          />
+                        ) : null}
                       </button>
                     );
                   })}

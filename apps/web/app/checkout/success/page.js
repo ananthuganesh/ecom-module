@@ -13,7 +13,6 @@ import Link from "next/link";
 import { Suspense, useEffect } from "react";
 import { flushStashedPurchase, trackPurchaseOnce } from "@/lib/tracking";
 import { orderService } from "@/api";
-import CreatePasswordPrompt from "@/components/CreatePasswordPrompt";
 
 function SuccessContent() {
     const searchParams = useSearchParams();
@@ -71,8 +70,6 @@ function SuccessContent() {
                 <p className="text-gray-500 mb-8 max-w-sm mx-auto">
                     Thank you for your purchase. Your order <span className="text-black font-bold">#{orderId.slice(-8)}</span> has been placed successfully.
                 </p>
-
-                <CreatePasswordPrompt />
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
                     <Link 
