@@ -420,6 +420,23 @@ async def delete_user(user_id: str, actor: RoleManager):
         )
     if str(user.id) == str(actor.id):
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    order_count = await Order.find(
+        {
+            "customerId": user.id,
+            "status": {"$nin": ["abandoned", "cancelled"]},
+        }
+    ).count()
+    if order_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete a customer who has orders.",
+        )
+    # Detach abandoned checkouts so we don't leave dangling userIds.
+    ac_col = AbandonedCheckout.get_pymongo_collection()
+    await ac_col.update_many(
+        {"userId": user.id},
+        {"$set": {"userId": None}},
+    )
     await user.delete()
     return {"message": "User removed"}
 

@@ -307,6 +307,8 @@ async def update_user(user_id: str, body: dict, actor: AdminUser):
 async def delete_user(user_id: str, actor: AdminUser):
     from bson import ObjectId
 
+    from app.documents import AbandonedCheckout, Order
+
     user = await User.get(ObjectId(user_id))
     if not user:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -318,6 +320,22 @@ async def delete_user(user_id: str, actor: AdminUser):
             status_code=400,
             detail="Staff accounts are managed under Settings → Users",
         )
+    order_count = await Order.find(
+        {
+            "customerId": user.id,
+            "status": {"$nin": ["abandoned", "cancelled"]},
+        }
+    ).count()
+    if order_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete a customer who has orders.",
+        )
+    ac_col = AbandonedCheckout.get_pymongo_collection()
+    await ac_col.update_many(
+        {"userId": user.id},
+        {"$set": {"userId": None}},
+    )
     await user.delete()
     return {"message": "User removed"}
 
