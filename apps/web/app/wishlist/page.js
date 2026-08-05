@@ -39,7 +39,7 @@ export default function WishlistPage() {
           </p>
           <Link
             href="/all-products"
-            className="mt-6 inline-flex h-10 items-center justify-center bg-[#DF1721] px-6 text-xs font-bold tracking-[0.14em] text-white uppercase transition-colors hover:bg-black"
+            className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-black px-6 text-xs font-bold tracking-[0.14em] text-white uppercase transition-colors hover:bg-gray-800"
           >
             Browse products
           </Link>
