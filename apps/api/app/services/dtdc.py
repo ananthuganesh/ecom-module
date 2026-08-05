@@ -11,6 +11,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 
 from app.documents import Order, Product, Setting, User, Warehouse
+from app.services.dtdc_est_cost import chargeable_weight_kg, order_unit_count
 
 # Customer integration host (same as Urban Aana). app.shipsy.in rejects these API keys.
 DTDC_BASE = "https://dtdcapi.shipsy.io"
@@ -189,6 +190,30 @@ async def _package_defaults() -> dict[str, float]:
     }
 
 
+def _line_item_label(item: Any, product: Product | None, index: int) -> str:
+    """Human-readable line for DTDC product description (name + size/color + qty)."""
+    base = (
+        (getattr(item, "productName", None) or "").strip()
+        or (product.productName or product.name if product else None)
+        or f"Item-{index}"
+    )
+    variant_parts = [
+        p
+        for p in [
+            (getattr(item, "size", None) or "").strip(),
+            (getattr(item, "color", None) or "").strip(),
+        ]
+        if p
+    ]
+    label = str(base)
+    if variant_parts:
+        label = f"{label} ({' / '.join(variant_parts)})"
+    qty = int(getattr(item, "quantity", 1) or 1)
+    if qty > 1:
+        label = f"{label} x{qty}"
+    return label
+
+
 async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> dict[str, Any]:
     origin = await _origin_details()
     dest = _destination_details(order, user)
@@ -197,34 +222,52 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
     invoice_date = (order.createdAt or datetime.utcnow()).strftime("%Y-%m-%d")
     declared = float(order.finalPrice or order.total or 0)
     customer_ref = str(order.orderNumber or order.id)[:40]
+    # Shipsy rejects reusing the same customer_reference_number after cancel.
+    cancelled = (order.transactionDetails or {}).get("dtdcCancelled")
+    if isinstance(cancelled, dict) and cancelled.get("reference_number"):
+        base = str(order.orderNumber or order.id)[:30]
+        stamp = datetime.utcnow().strftime("%m%d%H%M")
+        customer_ref = f"{base}-R{stamp}"[:40]
 
-    pieces = []
+    # One physical package per consignment (not one piece per line item).
+    # Mapping items → pieces caused "001 OF 002" labels for multi-product orders.
+    units = order_unit_count(order)
+    weight_kg = max(float(dims["weight"]), chargeable_weight_kg(units) or 0.0)
+
+    item_labels: list[str] = []
+    first_sku = customer_ref
     for i, item in enumerate(order.items or [], start=1):
         product = None
         if item.productId and ObjectId.is_valid(str(item.productId)):
             product = await Product.get(ObjectId(str(item.productId)))
-        name = (product.productName or product.name if product else None) or f"Item-{i}"
-        sku = (product.productId if product and product.productId else None) or str(item.productId or i)
-        pieces.append(
-            {
-                "description": str(name)[:120],
-                "declared_value": str(round(float(item.price or 0) * int(item.quantity or 1), 2)),
-                "weight": str(dims["weight"]),
-                "height": str(dims["height"]),
-                "length": str(dims["length"]),
-                "width": str(dims["width"]),
-                "weight_unit": "kg",
-                "dimension_unit": "cm",
-                "piece_product_code": str(sku)[:40],
-            }
-        )
+        item_labels.append(_line_item_label(item, product, i))
+        if i == 1:
+            first_sku = (
+                (product.productId if product and product.productId else None)
+                or str(item.productId or customer_ref)
+            )
+
+    description = ", ".join(item_labels) if item_labels else "Order"
+    description = description[:120]
+
+    piece = {
+        "description": description,
+        "declared_value": str(round(declared, 2)),
+        "weight": str(weight_kg),
+        "height": str(dims["height"]),
+        "length": str(dims["length"]),
+        "width": str(dims["width"]),
+        "weight_unit": "kg",
+        "dimension_unit": "cm",
+        "piece_product_code": str(first_sku)[:40],
+    }
 
     payload: dict[str, Any] = {
         "action_type": "single_pickup",
         "consignment_type": "forward",
         "movement_type": "forward",
         "load_type": cfg.get("loadType") or "NON-DOCUMENT",
-        "description": pieces[0]["description"] if pieces else "Order",
+        "description": description,
         "customer_code": cfg.get("customerCode"),
         "service_type_id": cfg.get("serviceTypeId") or DEFAULT_SERVICE_TYPES[0],
         "dimension_unit": "cm",
@@ -232,8 +275,8 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
         "width": str(dims["width"]),
         "height": str(dims["height"]),
         "weight_unit": "kg",
-        "weight": str(dims["weight"]),
-        "num_pieces": max(1, sum(int(i.quantity or 1) for i in (order.items or [])) or 1),
+        "weight": str(weight_kg),
+        "num_pieces": 1,
         "customer_reference_number": customer_ref,
         "declared_value": declared,
         "invoice_amount": str(declared),
@@ -242,18 +285,7 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
         "origin_details": origin,
         "destination_details": dest,
         "return_details": origin,
-        "pieces_detail": pieces or [
-            {
-                "description": "Order",
-                "declared_value": str(declared),
-                "weight": str(dims["weight"]),
-                "height": str(dims["height"]),
-                "length": str(dims["length"]),
-                "width": str(dims["width"]),
-                "weight_unit": "kg",
-                "dimension_unit": "cm",
-            }
-        ],
+        "pieces_detail": [piece],
     }
 
     # Leave reference_number empty so Shipsy/DTDC assigns AWB (common pattern);
@@ -533,10 +565,21 @@ async def cancel_consignment(order: Order) -> dict:
                 detail=data.get("message") or data.get("failure_reason") or resp.text or "Cancel failed",
             )
 
+    # Clear AWB so admin can book a fresh softdata consignment (e.g. after payload fixes).
+    prev_dtdc = (order.transactionDetails or {}).get("dtdc")
+    order.awb = None
+    order.courier = None
     order.shippingStatus = "Cancelled"
     order.transactionDetails = {
         **(order.transactionDetails or {}),
+        "dtdc": None,
         "dtdcCancel": data,
+        "dtdcCancelled": {
+            "reference_number": str(ref),
+            "previous": prev_dtdc,
+            "cancelledAt": datetime.utcnow().isoformat(),
+            "response": data,
+        },
     }
     order.updatedAt = datetime.utcnow()
     await order.save()
