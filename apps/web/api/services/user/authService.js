@@ -42,6 +42,19 @@ export const authService = {
       })
       .then((res) => res.data),
 
+  listAddresses: () => client.get(e.addresses).then((res) => res.data),
+
+  addAddress: (data) => client.post(e.addresses, data).then((res) => res.data),
+
+  updateAddress: (id, data) =>
+    client.put(e.addressById(id), data).then((res) => res.data),
+
+  setDefaultAddress: (id) =>
+    client.post(e.addressDefault(id)).then((res) => res.data),
+
+  deleteAddress: (id) =>
+    client.delete(e.addressById(id)).then((res) => res.data),
+
   setPassword: (password) =>
     client.post(e.setPassword, { password }).then((res) => res.data),
 

@@ -25,6 +25,9 @@ import {
 import { isCartLineUnavailable } from "@/utils/cartStock";
 import { emailQualityError } from "@/utils/emailQuality";
 import CheckoutAccountPrompt from "@/components/CheckoutAccountPrompt";
+import CheckoutDeliveryAddress, {
+  savedAddressToFormPatch,
+} from "@/components/checkout/CheckoutDeliveryAddress";
 import { normalizeIndianState } from "@/components/storefront/StateSearchSelect";
 import { trackBeginCheckout, stashPurchaseEvent, trackSelectPromotion, trackAddPaymentInfo, trackAddShippingInfo } from "@/lib/tracking";
 import { getAttributionSnapshot } from "@/lib/attribution";
@@ -292,6 +295,9 @@ function CheckoutPageContent() {
   const [pendingOrderId, setPendingOrderId] = useState(null);
   const [paymentError, setPaymentError] = useState("");
   const [marketingOptIn, setMarketingOptIn] = useState(true);
+  const [deliveryMode, setDeliveryMode] = useState("new"); // "saved" | "new"
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [saveToAccount, setSaveToAccount] = useState(true);
 
   const checkoutItems = isBuyNow ? buyNowItems : cartItems;
 
@@ -344,24 +350,10 @@ function CheckoutPageContent() {
 
   useEffect(() => {
     if (!userInfo) return;
-    const parts = splitName(userInfo.name || "");
-    setFormData((prev) => ({
-      ...prev,
-      name: prev.name || userInfo.name || "",
-      firstName: prev.firstName || parts.firstName,
-      lastName: prev.lastName || parts.lastName,
-      phone: prev.phone || toIndianMobile(userInfo.phone),
-      email: prev.email || userInfo.email || "",
-    }));
-    if (
-      userInfo.emailSubscribed !== undefined ||
-      userInfo.whatsappSubscribed !== undefined
-    ) {
-      setMarketingOptIn(
-        Boolean(userInfo.emailSubscribed) && Boolean(userInfo.whatsappSubscribed)
-      );
-    }
-  }, [userInfo]);
+    applyUserToForm(userInfo);
+    // Only hydrate once when profile becomes available — avoid fighting user edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userInfo?._id]);
 
   useEffect(() => {
     if (!paymentMethod) savePaymentMethod("razorpay");
@@ -617,14 +609,54 @@ function CheckoutPageContent() {
         Boolean(user.emailSubscribed) && Boolean(user.whatsappSubscribed)
       );
     }
-    const defaultAddr = (user.addresses || []).find((a) => a.isDefault) || user.addresses?.[0];
-    if (defaultAddr) {
-      setFormData((prev) => ({
-        ...prev,
-        address: prev.address || defaultAddr.house || "",
-        postalCode: prev.postalCode || defaultAddr.pincode || "",
-        phone: prev.phone || toIndianMobile(defaultAddr.phone) || prev.phone,
-      }));
+    const list = Array.isArray(user.addresses) ? user.addresses : [];
+    if (!list.length) {
+      setDeliveryMode("new");
+      setSelectedAddressId("");
+      return;
+    }
+    const defaultAddr =
+      list.find((a) => a.isDefault) || list[0];
+    const defaultIndex = Math.max(
+      0,
+      list.findIndex((a) => a === defaultAddr)
+    );
+    const id = String(defaultAddr?.id || `legacy-${defaultIndex}`);
+    const patch = savedAddressToFormPatch(defaultAddr);
+    setDeliveryMode("saved");
+    setSelectedAddressId(id);
+    setFormData((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
+        Object.entries(patch).filter(([, v]) => v != null && v !== "")
+      ),
+      phone:
+        prev.phone ||
+        toIndianMobile(defaultAddr.phone) ||
+        toIndianMobile(user.phone) ||
+        prev.phone,
+      name: prev.name || defaultAddr.name || user.name || prev.name,
+    }));
+    const pin = String(patch.postalCode || "").trim();
+    if (pin.length === 6 && !(patch.city && patch.state)) {
+      // City/state filled asynchronously from India Post when missing on saved addr.
+      setTimeout(() => fetchPincodeDetails(pin), 0);
+    }
+  };
+
+  const selectSavedAddress = (addr, id) => {
+    const patch = savedAddressToFormPatch(addr);
+    setSelectedAddressId(id);
+    setDeliveryMode("saved");
+    setFormData((prev) => ({
+      ...prev,
+      ...patch,
+      phone: toIndianMobile(addr.phone) || prev.phone,
+      name: addr.name || prev.name,
+    }));
+    const pin = String(patch.postalCode || "").trim();
+    if (pin.length === 6 && !(patch.city && patch.state)) {
+      fetchPincodeDetails(pin);
     }
   };
 
@@ -861,6 +893,37 @@ function CheckoutPageContent() {
         // Non-blocking — order can still proceed if prefs update fails.
       }
 
+      // Save new delivery address to the account book when requested.
+      if (deliveryMode === "new" && saveToAccount) {
+        try {
+          const fullName =
+            formData.name ||
+            [formData.firstName, formData.lastName].filter(Boolean).join(" ").trim();
+          const updated = await authService.addAddress({
+            name: fullName,
+            phone: formData.phone,
+            house: formData.address,
+            city: formData.city,
+            state: formData.state,
+            pincode: formData.postalCode,
+            country: formData.country || "India",
+            isDefault: !(userInfo?.addresses || []).length,
+          });
+          if (updated) {
+            setUserInfo(updated);
+            persistAuth(updated);
+            const list = Array.isArray(updated.addresses) ? updated.addresses : [];
+            const last = list[list.length - 1];
+            if (last?.id) {
+              setSelectedAddressId(String(last.id));
+              setDeliveryMode("saved");
+            }
+          }
+        } catch (err) {
+          console.warn("Could not save address to account", err);
+        }
+      }
+
       let localOrderId = pendingOrderId;
       if (!localOrderId) {
         const orderData = {
@@ -1049,70 +1112,6 @@ function CheckoutPageContent() {
                   </div>
 
                   <div>
-                    <label className={LABEL}>Address</label>
-                    <input
-                      className={formErrors.address ? INPUT_ERR : INPUT}
-                      autoComplete="address-line1"
-                      placeholder="Street address"
-                      value={formData.address}
-                      onChange={(e) => updateField("address", e.target.value)}
-                    />
-                    {formErrors.address && (
-                      <p className="mt-1 text-[12px] text-red-600">{formErrors.address}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className={LABEL}>City</label>
-                      <input
-                        readOnly
-                        tabIndex={-1}
-                        className={`${formErrors.city ? INPUT_ERR : INPUT_READONLY}`}
-                        value={formData.city}
-                        placeholder="Auto-filled from PIN"
-                      />
-                      {formErrors.city && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.city}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className={LABEL}>State</label>
-                      <input
-                        readOnly
-                        tabIndex={-1}
-                        className={`${formErrors.state ? INPUT_ERR : INPUT_READONLY}`}
-                        value={formData.state}
-                        placeholder="Auto-filled from PIN"
-                      />
-                      {formErrors.state && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.state}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className={LABEL}>PIN code</label>
-                      <div className="relative">
-                        <input
-                          className={formErrors.postalCode ? INPUT_ERR : INPUT}
-                          maxLength={6}
-                          inputMode="numeric"
-                          autoComplete="postal-code"
-                          value={formData.postalCode}
-                          onChange={(e) =>
-                            updateField("postalCode", e.target.value.replace(/\D/g, ""))
-                          }
-                        />
-                        {isPincodeLoading && (
-                          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
-                        )}
-                      </div>
-                      {formErrors.postalCode && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.postalCode}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
                     <label className={LABEL}>Phone</label>
                     <div className="relative">
                       <span className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-[13px] text-gray-600">
@@ -1136,6 +1135,86 @@ function CheckoutPageContent() {
                       <p className="mt-1 text-[12px] text-red-600">{formErrors.phone}</p>
                     )}
                   </div>
+
+                  <CheckoutDeliveryAddress
+                    addresses={userInfo?.addresses || []}
+                    selectedId={selectedAddressId}
+                    deliveryMode={deliveryMode}
+                    onModeChange={(mode) => {
+                      setDeliveryMode(mode);
+                      if (mode === "new") setSelectedAddressId("");
+                    }}
+                    onSelectSaved={selectSavedAddress}
+                    saveToAccount={saveToAccount}
+                    onSaveToAccountChange={setSaveToAccount}
+                    showSaveToggle={Boolean(
+                      userInfo?._id || userInfo?.authenticated || resolvedEmail
+                    )}
+                  >
+                    <div>
+                      <label className={LABEL}>Address</label>
+                      <input
+                        className={formErrors.address ? INPUT_ERR : INPUT}
+                        autoComplete="address-line1"
+                        placeholder="Street address"
+                        value={formData.address}
+                        onChange={(e) => updateField("address", e.target.value)}
+                      />
+                      {formErrors.address && (
+                        <p className="mt-1 text-[12px] text-red-600">{formErrors.address}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className={LABEL}>City</label>
+                        <input
+                          readOnly
+                          tabIndex={-1}
+                          className={`${formErrors.city ? INPUT_ERR : INPUT_READONLY}`}
+                          value={formData.city}
+                          placeholder="Auto-filled from PIN"
+                        />
+                        {formErrors.city && (
+                          <p className="mt-1 text-[12px] text-red-600">{formErrors.city}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className={LABEL}>State</label>
+                        <input
+                          readOnly
+                          tabIndex={-1}
+                          className={`${formErrors.state ? INPUT_ERR : INPUT_READONLY}`}
+                          value={formData.state}
+                          placeholder="Auto-filled from PIN"
+                        />
+                        {formErrors.state && (
+                          <p className="mt-1 text-[12px] text-red-600">{formErrors.state}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className={LABEL}>PIN code</label>
+                        <div className="relative">
+                          <input
+                            className={formErrors.postalCode ? INPUT_ERR : INPUT}
+                            maxLength={6}
+                            inputMode="numeric"
+                            autoComplete="postal-code"
+                            value={formData.postalCode}
+                            onChange={(e) =>
+                              updateField("postalCode", e.target.value.replace(/\D/g, ""))
+                            }
+                          />
+                          {isPincodeLoading && (
+                            <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
+                          )}
+                        </div>
+                        {formErrors.postalCode && (
+                          <p className="mt-1 text-[12px] text-red-600">{formErrors.postalCode}</p>
+                        )}
+                      </div>
+                    </div>
+                  </CheckoutDeliveryAddress>
                 </div>
               </section>
 

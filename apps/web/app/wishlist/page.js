@@ -7,7 +7,6 @@ import { useWishlistStore } from "@/store/useWishlistStore";
 
 export default function WishlistPage() {
   const items = useWishlistStore((s) => s.items);
-  const clear = useWishlistStore((s) => s.clear);
 
   return (
     <div className="min-h-[60vh] bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
@@ -15,17 +14,6 @@ export default function WishlistPage() {
         <h1 className="title-knewave text-2xl leading-none tracking-tight normal-case md:text-4xl">
           My <span className="title-knewave-accent">Wishlist</span>
         </h1>
-        {items.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Clear your entire wishlist?")) clear();
-            }}
-            className="mt-3 text-xs font-semibold tracking-wide text-gray-500 underline-offset-2 hover:text-[#DF1721] hover:underline"
-          >
-            Clear all
-          </button>
-        ) : null}
       </header>
 
       {!items.length ? (

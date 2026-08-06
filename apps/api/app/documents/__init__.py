@@ -21,6 +21,8 @@ class MongoModel(BaseModel):
 
 
 class Address(MongoModel):
+    id: str = ""
+    label: str = ""
     name: str = ""
     phone: str = ""
     house: str = ""

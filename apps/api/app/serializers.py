@@ -36,11 +36,16 @@ def user_public(user, token: str | None = None, stats: dict | None = None) -> di
             last = " ".join(parts[1:]) if len(parts) > 1 else ""
     raw_addresses = getattr(user, "addresses", None) or []
     addresses = []
-    for a in raw_addresses:
+    for i, a in enumerate(raw_addresses):
         if hasattr(a, "model_dump"):
-            addresses.append(a.model_dump())
+            item = a.model_dump()
         elif isinstance(a, dict):
-            addresses.append(a)
+            item = dict(a)
+        else:
+            continue
+        if not str(item.get("id") or "").strip():
+            item["id"] = f"legacy-{i}"
+        addresses.append(item)
     data = {
         "_id": oid_str(user.id),
         "name": user.name,

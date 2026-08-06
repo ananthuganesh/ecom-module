@@ -233,7 +233,7 @@ export default function ProductCard({
 
           <Link
             href={href}
-            className="flex flex-col gap-1 px-2.5 pt-2.5 pb-2 sm:gap-1.5 sm:px-3 sm:pt-3"
+            className="flex flex-col gap-1 px-2 pt-2.5 pb-2 sm:gap-1.5 sm:px-3 sm:pt-3"
             onClick={() => trackSelectItem(product, listName, listId)}
           >
             <h3 className="w-full truncate text-[11px] font-medium uppercase tracking-wide text-[#131814] lg:text-sm">
@@ -244,17 +244,17 @@ export default function ProductCard({
                 {productType}
               </p>
             ) : null}
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <span className="text-[13px] font-semibold text-[#131814] lg:text-base">
+            <div className="flex flex-nowrap items-center gap-x-1 overflow-hidden">
+              <span className="shrink-0 text-[12px] font-semibold tabular-nums text-[#131814] lg:text-base">
                 ₹{formatInr(price)}
               </span>
               {compareAt ? (
-                <span className="text-[10px] font-medium text-[#afb2b4] line-through lg:text-sm">
+                <span className="shrink-0 text-[9px] font-medium tabular-nums text-[#afb2b4] line-through lg:text-sm">
                   ₹{formatInr(compareAt)}
                 </span>
               ) : null}
               {discountPercent > 0 ? (
-                <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-1 py-0.5 text-[9px] font-semibold leading-none tracking-wide text-white uppercase lg:px-2 lg:py-1 lg:text-[11px]">
+                <span className="inline-flex shrink-0 items-center rounded-sm bg-[#c70a24] px-1 py-0.5 text-[8px] font-semibold leading-none tracking-wide text-white uppercase lg:px-2 lg:py-1 lg:text-[11px]">
                   {discountPercent}% off
                 </span>
               ) : null}

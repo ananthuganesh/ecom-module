@@ -308,11 +308,12 @@ const Navbar = () => {
     const update = () => {
       const hero = document.querySelector("[data-home-hero]");
       if (!hero) {
-        setOverHero(false);
+        setOverHero((prev) => (prev === false ? prev : false));
         return;
       }
       const { bottom } = hero.getBoundingClientRect();
-      setOverHero(bottom > NAVBAR_HEIGHT);
+      const next = bottom > NAVBAR_HEIGHT;
+      setOverHero((prev) => (prev === next ? prev : next));
     };
 
     update();
@@ -324,7 +325,7 @@ const Navbar = () => {
     };
   }, [isHome]);
 
-  const transparent = isHome && overHero && !isMobileMenuOpen && !isSearchOpen;
+  const transparent = isHome && overHero && !isSearchOpen;
   const iconTone = transparent ? "text-white" : "text-gray-900";
   const navBtnClass = `inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
     transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
@@ -376,9 +377,8 @@ const Navbar = () => {
 
           <div className="flex items-center justify-end gap-0.5 sm:gap-1">
             {isAuthenticated ? (
-              <button
-                type="button"
-                onClick={() => setIsMobileMenuOpen(true)}
+              <Link
+                href="/account"
                 className={navBtnClass}
                 aria-label={userName?.split(" ")[0] || "Account"}
               >
@@ -386,7 +386,7 @@ const Navbar = () => {
                 <span className="hidden max-w-[5.5rem] truncate md:inline">
                   {userName?.split(" ")[0] || "Account"}
                 </span>
-              </button>
+              </Link>
             ) : (
               <button
                 type="button"
@@ -572,26 +572,29 @@ const Navbar = () => {
       </AnimatePresence>
 
       <AnimatePresence>
-        {isMobileMenuOpen && (
+        {isMobileMenuOpen ? (
           <>
             <motion.div
+              key="menu-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.15 }}
               onClick={closeMenu}
-              className="fixed inset-0 z-[150] bg-black/50 backdrop-blur-sm"
+              className="fixed inset-0 z-[150] bg-black/50"
             />
             <motion.aside
+              key="menu-drawer"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
-              transition={{ type: "tween", duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-white shadow-2xl"
+              transition={{ type: "tween", duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-white shadow-2xl will-change-transform"
             >
               <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3.5">
                 <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
                 <button
+                  type="button"
                   onClick={closeMenu}
                   className="rounded-full p-2 transition-colors hover:bg-gray-100"
                   aria-label="Close menu"
@@ -623,7 +626,7 @@ const Navbar = () => {
               </div>
             </motion.aside>
           </>
-        )}
+        ) : null}
       </AnimatePresence>
 
       <CartDrawer />

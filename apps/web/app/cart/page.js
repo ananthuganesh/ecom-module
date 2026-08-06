@@ -70,7 +70,7 @@ export default function CartPage() {
   return (
     <div className="mx-auto min-h-[60vh] w-full max-w-6xl bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
       <header className="mb-6 md:mb-8">
-        <h1 className="title-knewave text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+        <h1 className="title-knewave text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
           Your <span className="title-knewave-accent">Cart</span>
         </h1>
       </header>

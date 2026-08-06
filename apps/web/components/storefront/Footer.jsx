@@ -34,8 +34,8 @@ const Footer = () => {
   return (
     <footer className="w-full" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
       <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 pt-14 pb-10">
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-x-6 gap-y-10 lg:gap-x-12">
-          <div className="col-span-2 sm:col-span-2 lg:col-span-1 flex flex-col gap-5">
+        <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 sm:gap-x-6 lg:grid-cols-[2fr_1fr_1fr_1fr] lg:gap-x-12">
+          <div className="flex flex-col gap-5 sm:col-span-2 lg:col-span-1">
             <Link href="/" className="inline-block w-fit">
               <Image
                 src="/brand/logo-dark.png"
@@ -147,11 +147,11 @@ const Footer = () => {
       </div>
 
       <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 py-5">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-[12px] tracking-wide opacity-80 text-center sm:text-left">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <p className="text-[12px] tracking-wide opacity-80 text-left">
             © {new Date().getFullYear()} Urban Aana. All rights reserved.
           </p>
-          <p className="text-[12px] tracking-wide opacity-80 text-center sm:text-right">
+          <p className="text-[12px] tracking-wide opacity-80 text-left sm:text-right">
             Design &amp; Development by{" "}
             <a
               href="https://www.bridnetwork.com/"

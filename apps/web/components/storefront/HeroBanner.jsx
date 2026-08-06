@@ -57,7 +57,7 @@ const HeroBanner = () => {
       <div className="absolute inset-0 z-[1] bg-black/50" aria-hidden />
 
       <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4">
-        <h1 className="py-0 text-center font-knewave text-5xl leading-none tracking-tight text-white uppercase not-italic sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl">
+        <h1 className="py-0 text-center font-knewave text-3xl leading-none tracking-tight text-white uppercase not-italic sm:text-5xl md:text-7xl lg:text-8xl xl:text-9xl">
           Urban Aana
         </h1>
       </div>

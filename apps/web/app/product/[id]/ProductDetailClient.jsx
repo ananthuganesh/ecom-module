@@ -2,8 +2,6 @@
 
 import {
   CaretIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   CloseIcon,
   LocationIcon,
   RulerIcon,
@@ -83,7 +81,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [similarProducts, setSimilarProducts] = useState([]);
   const [loading, setLoading] = useState(!initialProduct);
   const [selectedSize, setSelectedSize] = useState("");
-  const [lightboxIndex, setLightboxIndex] = useState(null);
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [sizeGuideUnit, setSizeGuideUnit] = useState("in");
   const [openSection, setOpenSection] = useState("description");
@@ -283,32 +280,108 @@ export default function ProductDetailPage({ initialProduct = null }) {
     setActiveImageIndex((i) => Math.min(Math.max(0, i), images.length - 1));
   }, [images.length]);
 
-  useEffect(() => {
-    setLightboxIndex(null);
-  }, [selectedSize, product?._id]);
+  const mobileGalleryLoops = images.length > 1;
+
+  const mobileGallerySlides = useMemo(() => {
+    if (!images.length) return [];
+    if (!mobileGalleryLoops) {
+      return images.map((image, index) => ({
+        image,
+        realIndex: index,
+        key: `slide-${index}`,
+      }));
+    }
+    return [
+      {
+        image: images[images.length - 1],
+        realIndex: images.length - 1,
+        key: "clone-end",
+      },
+      ...images.map((image, index) => ({
+        image,
+        realIndex: index,
+        key: `slide-${index}`,
+      })),
+      {
+        image: images[0],
+        realIndex: 0,
+        key: "clone-start",
+      },
+    ];
+  }, [images, mobileGalleryLoops]);
 
   useEffect(() => {
     const el = mobileGalleryRef.current;
     if (!el) return;
     mobileGalleryScrollLock.current = true;
-    el.scrollTo({ left: 0, behavior: "auto" });
+    const width = el.clientWidth || 0;
+    // With infinite loop clones, real index 0 sits at slide 1.
+    const startLeft = mobileGalleryLoops && width ? width : 0;
+    el.scrollTo({ left: startLeft, behavior: "auto" });
     const t = window.setTimeout(() => {
       mobileGalleryScrollLock.current = false;
     }, 80);
     return () => window.clearTimeout(t);
-  }, [product?._id, selectedSize, images.length]);
+  }, [product?._id, selectedSize, images.length, mobileGalleryLoops]);
 
   const scrollMobileGalleryTo = (index) => {
     const el = mobileGalleryRef.current;
     if (!el) return;
     const width = el.clientWidth || 0;
     if (!width) return;
+    const slide = mobileGalleryLoops ? index + 1 : index;
     mobileGalleryScrollLock.current = true;
-    el.scrollTo({ left: index * width, behavior: "smooth" });
+    el.scrollTo({ left: slide * width, behavior: "smooth" });
     window.setTimeout(() => {
       mobileGalleryScrollLock.current = false;
     }, 320);
   };
+
+  const settleMobileGalleryLoop = () => {
+    const el = mobileGalleryRef.current;
+    if (!el || !mobileGalleryLoops) return;
+    const width = el.clientWidth || 0;
+    if (!width) return;
+    const slide = Math.round(el.scrollLeft / width);
+    const last = images.length;
+    if (slide <= 0) {
+      mobileGalleryScrollLock.current = true;
+      el.scrollTo({ left: last * width, behavior: "auto" });
+      setActiveImageIndex(last - 1);
+      window.requestAnimationFrame(() => {
+        mobileGalleryScrollLock.current = false;
+      });
+      return;
+    }
+    if (slide >= last + 1) {
+      mobileGalleryScrollLock.current = true;
+      el.scrollTo({ left: width, behavior: "auto" });
+      setActiveImageIndex(0);
+      window.requestAnimationFrame(() => {
+        mobileGalleryScrollLock.current = false;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const el = mobileGalleryRef.current;
+    if (!el || !mobileGalleryLoops) return undefined;
+
+    let settleTimer = 0;
+    const onScrollEnd = () => settleMobileGalleryLoop();
+    const onScroll = () => {
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(settleMobileGalleryLoop, 80);
+    };
+
+    el.addEventListener("scrollend", onScrollEnd);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.clearTimeout(settleTimer);
+      el.removeEventListener("scrollend", onScrollEnd);
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [mobileGalleryLoops, images.length, product?._id, selectedSize]);
 
   const handleMobileGalleryScroll = () => {
     if (mobileGalleryScrollLock.current) return;
@@ -316,9 +389,17 @@ export default function ProductDetailPage({ initialProduct = null }) {
     if (!el) return;
     const width = el.clientWidth || 0;
     if (!width) return;
-    const next = Math.round(el.scrollLeft / width);
-    if (next >= 0 && next < images.length && next !== activeImageIndex) {
-      setActiveImageIndex(next);
+    const slide = Math.round(el.scrollLeft / width);
+    if (mobileGalleryLoops) {
+      const last = images.length;
+      if (slide >= 1 && slide <= last) {
+        const next = slide - 1;
+        if (next !== activeImageIndex) setActiveImageIndex(next);
+      }
+      return;
+    }
+    if (slide >= 0 && slide < images.length && slide !== activeImageIndex) {
+      setActiveImageIndex(slide);
     }
   };
 
@@ -505,28 +586,37 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain rounded-lg"
                   style={{ WebkitOverflowScrolling: "touch" }}
                 >
-                  {images.length > 0 ? (
-                    images.map((image, index) => (
-                      <button
-                        key={`slide-${image}-${index}`}
-                        type="button"
-                        onClick={() => setLightboxIndex(index)}
-                        className="relative aspect-[3/4] w-full shrink-0 snap-center overflow-hidden bg-gray-100"
-                        aria-label={`View image ${index + 1} full screen`}
-                      >
-                        <SafeImage
-                          src={resolveImageUrl(image)}
-                          alt={`${title} ${index + 1}`}
-                          fill
-                          priority={index === 0}
-                          fetchPriority={index === 0 ? "high" : undefined}
-                          loading={index === 0 ? "eager" : "lazy"}
-                          sizes="100vw"
-                          className="pointer-events-none object-cover"
-                          draggable={false}
-                        />
-                      </button>
-                    ))
+                  {mobileGallerySlides.length > 0 ? (
+                    mobileGallerySlides.map(
+                      ({ image, realIndex, key }, slideIndex) => (
+                        <div
+                          key={key}
+                          className="relative aspect-[3/4] w-full shrink-0 snap-center overflow-hidden bg-gray-100"
+                        >
+                          <SafeImage
+                            src={resolveImageUrl(image)}
+                            alt={`${title} ${realIndex + 1}`}
+                            fill
+                            priority={
+                              slideIndex === (mobileGalleryLoops ? 1 : 0)
+                            }
+                            fetchPriority={
+                              slideIndex === (mobileGalleryLoops ? 1 : 0)
+                                ? "high"
+                                : undefined
+                            }
+                            loading={
+                              slideIndex === (mobileGalleryLoops ? 1 : 0)
+                                ? "eager"
+                                : "lazy"
+                            }
+                            sizes="100vw"
+                            className="pointer-events-none object-cover"
+                            draggable={false}
+                          />
+                        </div>
+                      )
+                    )
                   ) : (
                     <div className="relative aspect-[3/4] w-full shrink-0 bg-gray-100" />
                   )}
@@ -607,11 +697,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
             <div className="hidden lg:block">
               <div className="grid grid-cols-2 gap-2">
                 {images.slice(0, 4).map((image, index) => (
-                  <button
+                  <div
                     key={`${image}-${index}`}
-                    type="button"
-                    onClick={() => setLightboxIndex(index)}
-                    className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-gray-100 text-left"
+                    className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-gray-100"
                   >
                     <SafeImage
                       src={resolveImageUrl(image)}
@@ -623,26 +711,24 @@ export default function ProductDetailPage({ initialProduct = null }) {
                       sizes="35vw"
                       className="object-cover transition duration-500 group-hover:scale-[1.03]"
                     />
-                  </button>
+                  </div>
                 ))}
               </div>
               {images.length > 4 ? (
                 <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
                   {images.slice(4).map((image, index) => (
-                    <button
+                    <div
                       key={`${image}-${index}`}
-                      type="button"
-                      onClick={() => setLightboxIndex(index + 4)}
-                      className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-gray-200 hover:border-black"
+                      className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-gray-200"
                     >
                       <SafeImage
                         src={resolveImageUrl(image)}
-                        alt=""
+                        alt={`${title} ${index + 5}`}
                         fill
                         className="object-cover"
                         sizes="48px"
                       />
-                    </button>
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -1008,7 +1094,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
       {similarProducts.length > 0 ? (
         <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">
           <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
-            <h2 className="title-knewave mx-auto w-full text-center text-3xl leading-none tracking-tight normal-case md:text-4xl">
+            <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
               Similar <span className="title-knewave-accent">Products</span>
             </h2>
           </header>
@@ -1019,7 +1105,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
             {similarProducts.map((item) => (
               <div
                 key={item._id}
-                className="w-[42%] shrink-0 sm:w-[30%] md:w-[22%] lg:w-[18%]"
+                className="w-[48%] shrink-0 sm:w-[30%] md:w-[22%] lg:w-[18%]"
               >
                 <ProductCard
                   product={item}
@@ -1032,56 +1118,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
         </section>
       ) : null}
       <RecentlyViewed excludeId={product._id} />
-
-      {lightboxIndex !== null ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4">
-          <button
-            type="button"
-            onClick={() => setLightboxIndex(null)}
-            className="absolute right-4 top-4 rounded-full p-2 text-white hover:bg-white/10"
-            aria-label="Close image viewer"
-          >
-            <CloseIcon className="h-6 w-6" />
-          </button>
-          <div className="relative h-[82vh] w-full max-w-4xl">
-            <SafeImage
-              src={resolveImageUrl(images[lightboxIndex])}
-              alt={title}
-              fill
-              className="object-contain"
-              priority
-            />
-            {images.length > 1 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLightboxIndex((index) =>
-                      index === 0 ? images.length - 1 : index - 1
-                    )
-                  }
-                  className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full bg-white/15 p-3 text-white"
-                  aria-label="Previous image"
-                >
-                  <ChevronLeftIcon />
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLightboxIndex((index) =>
-                      index === images.length - 1 ? 0 : index + 1
-                    )
-                  }
-                  className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full bg-white/15 p-3 text-white"
-                  aria-label="Next image"
-                >
-                  <ChevronRightIcon />
-                </button>
-              </>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       {showSizeGuide ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -1182,7 +1218,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
         </div>
       ) : null}
 
-      {!showSizeGuide && lightboxIndex === null && showStickyCta ? (
+      {!showSizeGuide && showStickyCta ? (
         <div className="fixed inset-x-0 bottom-0 z-[120] border-t border-gray-200 bg-white/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
           <div className="flex gap-2">
               {isInCart && ctaPending !== "add" ? (

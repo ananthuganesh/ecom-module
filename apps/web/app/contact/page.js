@@ -81,7 +81,7 @@ export default function ContactPage() {
         {/* Right — title + form */}
         <div className="flex items-center px-5 py-12 sm:px-10 md:px-14 lg:px-16 lg:py-16">
           <div className="mx-auto w-full max-w-md">
-            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            <h1 className="text-2xl font-bold tracking-tight md:text-4xl">
               Contact
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-gray-500">

@@ -84,7 +84,7 @@ export default function TwoColumnImages() {
 
       <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-4">
         <div className="flex flex-col items-center text-center">
-          <h2 className="font-malayalam text-5xl font-bold leading-none tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)] sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl">
+          <h2 className="font-malayalam text-3xl font-bold leading-none tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)] sm:text-5xl md:text-7xl lg:text-8xl xl:text-9xl">
             കേരളത്തിനായി
           </h2>
           <p className="-mt-1 text-sm font-medium leading-none tracking-[0.08em] text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.45)] sm:-mt-1.5 sm:text-base md:text-lg">

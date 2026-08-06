@@ -12,7 +12,7 @@ export default function PolicyLayout({
     <main className="min-h-screen bg-white text-[#111111]">
       <div className="mx-auto w-full max-w-5xl px-4 py-12 md:px-8 md:py-16 lg:px-10 lg:py-20">
         <header className="mb-10 border-b border-gray-200 pb-8 md:mb-14 md:pb-10">
-          <h1 className="text-3xl font-bold tracking-tight text-black md:text-4xl">
+          <h1 className="text-2xl font-bold tracking-tight text-black md:text-4xl">
             {title}
           </h1>
           <p className="mt-4 text-sm text-gray-500">
