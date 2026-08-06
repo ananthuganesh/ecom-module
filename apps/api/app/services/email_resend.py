@@ -13,13 +13,14 @@ from app.services import email_templates as tpl
 from app.services.store_settings import get_notification_prefs
 
 RESEND_API = "https://api.resend.com/emails"
-EmailType = Literal["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED"]
+EmailType = Literal["PLACED", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]
 
 EVENT_BY_TYPE: dict[EmailType, str] = {
     "PLACED": "orderPlaced",
     "CONFIRMED": "orderConfirmed",
     "SHIPPED": "orderShipped",
     "DELIVERED": "orderDelivered",
+    "CANCELLED": "orderCancelled",
 }
 
 EMAIL_PREF_BY_TYPE: dict[EmailType, str] = {
@@ -27,6 +28,7 @@ EMAIL_PREF_BY_TYPE: dict[EmailType, str] = {
     "CONFIRMED": "emailOrderConfirmation",
     "SHIPPED": "emailOrderShipped",
     "DELIVERED": "emailOrderDelivered",
+    "CANCELLED": "emailOrderCancelled",
 }
 
 DTDC_TRACK_URL = (
@@ -586,6 +588,55 @@ async def build_order_email_html(order, *, email_type: EmailType, user=None) -> 
         )
         return subject, tpl.render_shopify_email(preheader=preheader, sections_html=sections)
 
+    if email_type == "CANCELLED":
+        subject = f"Order Cancelled – #{order_id}"
+        preheader = f"Order {order_id} has been cancelled"
+        lead = (
+            f"Hi {tpl.esc(name)}, your order <strong>{tpl.esc(order_id)}</strong> "
+            f"has been cancelled. If you paid online, a refund will be processed "
+            f"shortly to your original payment method."
+        )
+        raw_cancelled = (order.transactionDetails or {}).get("cancelledAt")
+        cancelled_dt = getattr(order, "updatedAt", None) or datetime.utcnow()
+        if isinstance(raw_cancelled, datetime):
+            cancelled_dt = raw_cancelled
+        elif isinstance(raw_cancelled, str) and raw_cancelled.strip():
+            try:
+                cancelled_dt = datetime.fromisoformat(raw_cancelled.replace("Z", "+00:00")).replace(
+                    tzinfo=None
+                )
+            except ValueError:
+                pass
+        meta = _kv_rows(
+            [
+                ("Order number", tpl.esc(order_id)),
+                ("Cancelled on", tpl.esc(_format_when(cancelled_dt))),
+                ("Payment status", tpl.esc(_payment_status_label(order))),
+                ("Payment method", tpl.esc(_payment_method_label(order))),
+            ]
+        )
+        sections = "".join(
+            [
+                tpl.brand_header(),
+                tpl.content_block(
+                    f"{lead}{tpl.mail_button(order_link, 'View Order')}"
+                ),
+                tpl.content_block(meta, top_border=True),
+                tpl.content_block(
+                    f"{tpl.section_heading('Order summary')}"
+                    f"{tpl.order_items_table(items_html)}"
+                    f"{money_html}",
+                    top_border=True,
+                ),
+                tpl.content_block(
+                    tpl.info_block("Shipping address", shipping_html),
+                    top_border=True,
+                ),
+                tpl.content_block(tpl.support_block(), top_border=True),
+            ]
+        )
+        return subject, tpl.render_shopify_email(preheader=preheader, sections_html=sections)
+
     # DELIVERED
     delivered_at = (
         getattr(order, "deliveredAt", None)
@@ -781,6 +832,7 @@ async def notify_order_email_once(email_type: EmailType, order, user=None) -> di
     - CONFIRMED on payment success
     - SHIPPED on fulfill (AWB) — invoice download + AWB + tracking
     - DELIVERED when delivered
+    - CANCELLED when admin cancels
     PLACED is never sent to customers (no COD / pay-later path).
     """
     if email_type == "PLACED":

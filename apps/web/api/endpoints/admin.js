@@ -20,6 +20,8 @@ const orders = {
   stats: "/orders/stats",
   byId: (id) => `/admin/orders/${id}`,
   status: (id) => `/admin/orders/${id}/status`,
+  cancel: (id) => `/admin/orders/${id}/cancel`,
+  refund: (id) => `/admin/orders/${id}/refund`,
   archive: (id) => `/admin/orders/${id}/archive`,
   bulkStatus: "/admin/orders/bulk-update",
   deliveryDate: (id) => `/admin/orders/${id}/delivery-date`,

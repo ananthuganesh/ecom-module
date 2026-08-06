@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { adminOrderService, adminErpService, adminShippingService, adminCompanyProfileService, adminTaxClassService } from "@/api";
-import { Package, ChevronUp, ChevronDown, Copy, Check, ShoppingBag as OrderIcon, X, Archive } from "lucide-react";
+import { Package, ChevronUp, ChevronDown, Copy, Check, ShoppingBag as OrderIcon, X, Archive, RotateCcw } from "lucide-react";
 import SafeImage from "@/components/SafeImage";
 import {
   buildOrderTimeline,
@@ -542,14 +542,67 @@ export default function AdminOrderDetailPage() {
       toast.message("Order is already cancelled");
       return;
     }
+    const hasShipment = Boolean(order.awbCode || order.awb || order.transactionDetails?.dtdc?.reference_number);
+    const message = hasShipment
+      ? "Cancel this order? DTDC consignment will be cancelled, stock restocked, and the order archived. Customer will be emailed."
+      : "Cancel this order? Stock will be restocked and the order archived. Customer will be emailed.";
+    if (!confirm(message)) return;
+
+    setUpdating(true);
+    try {
+      const updated = await adminOrderService.cancel(order._id);
+      setOrder((prev) => (prev ? { ...prev, ...(updated || {}), status: "cancelled", archived: true } : null));
+      const dtdcOk = updated?.cancelResult?.dtdcCancelled;
+      toast.success(
+        dtdcOk
+          ? "Order cancelled · DTDC consignment cancelled · stock restocked"
+          : "Order cancelled · stock restocked · archived"
+      );
+    } catch (e) {
+      console.error(e);
+      const msg = e.response?.data?.detail || e.message || "Cancel failed";
+      toast.error(typeof msg === "string" ? msg : "Cancel failed");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleRefundOrder = async () => {
+    if (!order) return;
+    if (String(order.status || "").toLowerCase() !== "cancelled") {
+      toast.message("Cancel the order before issuing a refund");
+      return;
+    }
+    const pay = String(order.paymentStatus || order.transactionDetails?.paymentStatus || "").toLowerCase();
+    if (pay === "refunded") {
+      toast.message("Order is already refunded");
+      return;
+    }
     if (
       !confirm(
-        "Cancel this order? It will be marked Cancelled and reserved stock will be released."
+        "Issue a full Razorpay refund to the customer’s original payment method?"
       )
     ) {
       return;
     }
-    await handleStatusChange("cancelled");
+    setUpdating(true);
+    try {
+      const updated = await adminOrderService.refund(order._id);
+      setOrder((prev) => (prev ? { ...prev, ...(updated || {}) } : null));
+      toast.success("Razorpay refund issued");
+    } catch (e) {
+      console.error(e);
+      const msg = e.response?.data?.detail || e.message || "Refund failed";
+      toast.error(typeof msg === "string" ? msg : "Refund failed");
+      try {
+        const refreshed = await adminOrderService.getById(order._id);
+        if (refreshed) setOrder(refreshed);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleArchiveOrder = async () => {
@@ -659,6 +712,14 @@ export default function AdminOrderDetailPage() {
     fulfillment.key === "Unfulfilled" || fulfillment.key === "Payment Pending";
   // Invoice print is the post-fulfillment document on this page (labels live under Shipments).
   const showPrintInvoice = !isUnfulfilled || hasAwb;
+  const canRefund =
+    isCancelled &&
+    !["refunded"].includes(payStatus) &&
+    Boolean(
+      order.razorpayPaymentId ||
+        order.transactionDetails?.razorpayPaymentId ||
+        order.transactionDetails?.paymentId
+    );
 
   return (
     <main className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
@@ -753,6 +814,22 @@ export default function AdminOrderDetailPage() {
                 </AdminHeaderButton>
               ) : null}
 
+              {canRefund ? (
+                <AdminHeaderButton
+                  onClick={handleRefundOrder}
+                  disabled={updating}
+                >
+                  {updating ? (
+                    <>
+                      <Spinner className="size-3.5 text-[#303030]" />
+                      Refunding…
+                    </>
+                  ) : (
+                    "Refund"
+                  )}
+                </AdminHeaderButton>
+              ) : null}
+
               <DropdownMenu>
                 <DropdownMenuTrigger
                   disabled={updating}
@@ -778,6 +855,15 @@ export default function AdminOrderDetailPage() {
                     <X className="size-3.5 text-[#616161]" />
                     Cancel order
                   </DropdownMenuItem>
+                  {canRefund ? (
+                    <DropdownMenuItem
+                      className="gap-2 text-[0.8125rem]"
+                      onClick={handleRefundOrder}
+                    >
+                      <RotateCcw className="size-3.5 text-[#616161]" />
+                      Refund via Razorpay
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem
                     className="gap-2 text-[0.8125rem]"
                     onClick={handleArchiveOrder}

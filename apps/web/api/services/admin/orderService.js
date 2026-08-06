@@ -22,6 +22,12 @@ export const adminOrderService = {
   updateStatus: (id, status) =>
     client.patch(e.status(id), { status }).then((res) => res.data),
 
+  cancel: (id, reason = "admin_cancel") =>
+    client.post(e.cancel(id), { reason }).then((res) => res.data),
+
+  refund: (id, reason = "admin_cancel_refund") =>
+    client.post(e.refund(id), { reason }).then((res) => res.data),
+
   archive: (id, archived = true) =>
     client.patch(e.archive(id), { archived }).then((res) => res.data),
 

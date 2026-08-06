@@ -12,6 +12,7 @@ NOTIFICATION_PREF_DEFAULTS = {
     "emailOrderConfirmation": True,  # placed + paid/confirmed customer emails
     "emailOrderShipped": True,
     "emailOrderDelivered": True,
+    "emailOrderCancelled": True,
     "emailAbandonedCart": True,
     "adminNewOrderAlert": True,  # staff new-order email
 }

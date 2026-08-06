@@ -23,6 +23,11 @@ const CUSTOMER_EMAIL_EVENTS = [
     description: "When delivery is complete",
   },
   {
+    key: "emailOrderCancelled",
+    label: "Order cancelled",
+    description: "When an admin cancels an order",
+  },
+  {
     key: "emailAbandonedCart",
     label: "Abandoned cart",
     description: "Recovery email for incomplete checkouts",

@@ -162,6 +162,7 @@ def remap_order(
     po["dtdcServiceType"] = details.get("dtdcServiceType") or dtdc.get("service_type_id")
     po["refundedAmount"] = details.get("refundedAmount") or 0
     po["refunds"] = details.get("refunds") or []
+    po["cancelledAt"] = details.get("cancelledAt")
     return po
 
 

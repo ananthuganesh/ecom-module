@@ -469,13 +469,28 @@ export function buildOrderTimeline(order) {
 
   // Cancel
   if (isCancelled(order)) {
-    const cancelledAt = order.cancelledAt || updatedAt || createdAt;
+    const cancelledAt =
+      order.cancelledAt ||
+      order.transactionDetails?.cancelledAt ||
+      updatedAt ||
+      createdAt;
+    const cancelledAwb =
+      order.transactionDetails?.dtdcCancelled?.reference_number ||
+      order.transactionDetails?.dtdcCancel?.reference_number ||
+      (hasAwb(order) ? awb : null);
+    const dtdcCancelled = Boolean(order.transactionDetails?.dtdcCancelled);
     steps.push({
       id: "cancelled",
       type: "cancelled",
       seq: SEQ.cancelled,
       title: "Order cancelled",
-      subtitle: hasAwb(order) ? `AWB ${awb}` : null,
+      subtitle: dtdcCancelled
+        ? cancelledAwb
+          ? `DTDC cancelled · AWB ${cancelledAwb}`
+          : "DTDC consignment cancelled"
+        : cancelledAwb
+          ? `AWB ${cancelledAwb}`
+          : "Stock restocked · order archived",
       at: cancelledAt,
       sortAt: cancelledAt,
       tone: "critical",
@@ -483,7 +498,7 @@ export function buildOrderTimeline(order) {
   }
 
   // Refund
-  if (payStatus === "refunded" || payStatus === "partially_refunded") {
+  if (payStatus === "refunded" || payStatus === "partially_refunded" || payStatus === "refund_pending") {
     const refundedAmount = formatMoneyINR(
       order.refundedAmount ?? order.transactionDetails?.refundedAmount
     );
@@ -496,8 +511,18 @@ export function buildOrderTimeline(order) {
       id: "refund",
       type: "refund",
       seq: SEQ.refund,
-      title: payStatus === "partially_refunded" ? "Partial refund issued" : "Refund issued",
-      subtitle: refundedAmount ? `${refundedAmount} refunded` : null,
+      title:
+        payStatus === "refund_pending"
+          ? "Refund pending"
+          : payStatus === "partially_refunded"
+            ? "Partial refund issued"
+            : "Refund issued",
+      subtitle:
+        payStatus === "refund_pending"
+          ? order.transactionDetails?.autoRefundError || "Razorpay refund in progress"
+          : refundedAmount
+            ? `${refundedAmount} refunded`
+            : null,
       at: refundAt,
       sortAt: refundAt,
       tone: "critical",

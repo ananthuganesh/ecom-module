@@ -64,64 +64,29 @@ async def _upgrade_guest_customer_from_order(order: Order) -> None:
 
 async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict:
     """Full refund when we cannot fulfill after capture. Never invents success."""
-    if not payment_id:
-        return {"ok": False, "error": "missing_payment_id"}
-    try:
-        key_id, key_secret = await _get_razorpay_creds()
-        import razorpay
+    from app.services.razorpay_refund import refund_razorpay_payment
 
-        client = razorpay.Client(auth=(key_id, key_secret))
-        payment = client.payment.fetch(payment_id)
-        amount_paid = int(payment.get("amount") or 0)
-        already_refunded = int(payment.get("amount_refunded") or 0)
-        remaining = amount_paid - already_refunded
-        if remaining <= 0:
-            return {
-                "ok": True,
-                "already_refunded": True,
-                "amount_refunded": already_refunded,
-            }
-        refund = client.payment.refund(
-            payment_id,
-            {
-                "amount": remaining,
-                "speed": "normal",
-                "notes": {"reason": reason[:200]},
-            },
-        )
-        return {
-            "ok": True,
-            "refund": refund if isinstance(refund, dict) else {"raw": refund},
-            "amount_refunded": remaining,
-        }
-    except Exception as exc:
-        print(f"[Payment] Auto-refund failed for {payment_id}: {exc}")
-        return {"ok": False, "error": str(exc)[:300]}
+    return await refund_razorpay_payment(payment_id, reason=reason)
 
 
 def _apply_auto_refund_to_order(order: Order, *, reason: str, result: dict) -> None:
     """Persist refund outcome. Only mark refunded when Razorpay confirms."""
+    from app.services.razorpay_refund import apply_refund_to_order
+
+    apply_refund_to_order(order, reason=reason, result=result)
+    # Keep legacy auto-refund keys for existing admin/ops views.
     details = dict(order.transactionDetails or {})
-    details["autoRefundReason"] = reason
     if result.get("ok"):
-        order.paymentStatus = "refunded"
-        details["paymentStatus"] = "refunded"
-        details.pop("autoRefundFailed", None)
-        details.pop("autoRefundError", None)
         refund = result.get("refund") or {}
         if isinstance(refund, dict) and refund.get("id"):
             details["autoRefundId"] = refund["id"]
         if result.get("amount_refunded") is not None:
             details["autoRefundAmount"] = result["amount_refunded"]
-        if result.get("already_refunded"):
-            details["autoRefundAlreadyDone"] = True
+        details["autoRefundReason"] = reason
+        order.transactionDetails = details
     else:
-        order.paymentStatus = "refund_pending"
-        details["paymentStatus"] = "refund_pending"
-        details["autoRefundFailed"] = True
-        details["autoRefundError"] = result.get("error") or "refund_failed"
-    order.transactionDetails = details
-    order.updatedAt = datetime.utcnow()
+        details["autoRefundReason"] = reason
+        order.transactionDetails = details
 
 
 async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dict, user: User | None = None) -> None:

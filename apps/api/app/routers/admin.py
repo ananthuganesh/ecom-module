@@ -1421,6 +1421,14 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     prev_status = (order.status or "").lower()
+    # Dedicated cancel flow handles DTDC + restock + archive + email.
+    if str(body.get("status") or "").lower() == "cancelled" and prev_status != "cancelled":
+        from app.services.order_cancel import cancel_order
+
+        result = await cancel_order(order, actor="admin", reason="admin_status_cancel")
+        payload = (await enrich_orders([order]))[0]
+        payload["cancelResult"] = result
+        return payload
     if "status" in body:
         order.status = body["status"]
         apply_shipping_status_from_order_status(order, body["status"])
@@ -1430,13 +1438,6 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
         await erp_ops.ensure_invoice_on_fulfillment(order, context=f"admin_status:{new_status}")
     except Exception:
         pass
-    if new_status == "cancelled" and prev_status != "cancelled":
-        try:
-            from app.services.stock import restock_order_stock
-
-            await restock_order_stock(order)
-        except Exception as exc:
-            print(f"[Admin] Stock restore on cancel failed for {order.id}: {exc}")
     if new_status == "delivered" and prev_status != "delivered":
         try:
             from app.services import aisensy as aisensy_svc
@@ -1458,6 +1459,48 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
         except Exception as exc:
             print(f"[Notify] admin shipped: {exc}")
     return remap_order(order)
+
+
+@router.post("/orders/{order_id}/cancel")
+async def order_cancel(
+    order_id: str,
+    admin: OrdersWriter,
+    body: dict = None,
+):
+    """Cancel order: DTDC cancel if AWB, restock, archive, customer email."""
+    from app.services.order_cancel import cancel_order
+
+    _ = admin
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payload_body = body if isinstance(body, dict) else {}
+    reason = str(payload_body.get("reason") or "admin_cancel").strip() or "admin_cancel"
+    result = await cancel_order(order, actor="admin", reason=reason)
+    payload = (await enrich_orders([order]))[0]
+    payload["cancelResult"] = result
+    return payload
+
+
+@router.post("/orders/{order_id}/refund")
+async def order_refund(
+    order_id: str,
+    admin: PaymentsWriter,
+    body: dict = None,
+):
+    """Razorpay refund after cancel. Full remaining amount."""
+    from app.services.razorpay_refund import refund_order_payment
+
+    _ = admin
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payload_body = body if isinstance(body, dict) else {}
+    reason = str(payload_body.get("reason") or "admin_cancel_refund").strip() or "admin_cancel_refund"
+    result = await refund_order_payment(order, reason=reason)
+    payload = (await enrich_orders([order]))[0]
+    payload["refundResult"] = result
+    return payload
 
 
 @router.patch("/orders/{order_id}/archive")
