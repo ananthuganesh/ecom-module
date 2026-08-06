@@ -557,6 +557,183 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const addLabel =
     sizes.length > 0 && !selectedSize ? "Select size" : "Add to cart";
 
+  // Product details / information sit in the buy column (not below the gallery)
+  // so the right side isn't blank while images scroll.
+  const productInfoBlock = (
+    <>
+      {productSpecs.length > 0 ? (
+        <div className="mt-6 pt-1">
+          <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
+            Product details
+          </h2>
+          <div className="grid grid-cols-2">
+            {productSpecs.map((spec, index) => {
+              const isLastRow =
+                index >=
+                productSpecs.length -
+                  (productSpecs.length % 2 === 0 ? 2 : 1);
+              return (
+                <div
+                  key={spec.label}
+                  className={`py-4 pr-4 ${
+                    index % 2 === 1 ? "pl-4" : ""
+                  } ${!isLastRow ? "border-b border-gray-200" : ""}`}
+                >
+                  <p className="text-[12px] leading-snug text-gray-400">
+                    {spec.label}
+                  </p>
+                  <p className="mt-1.5 text-[14px] font-medium leading-snug text-[#222222]">
+                    {spec.value}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-6 pt-1">
+        <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
+          Information
+        </h2>
+        <div>
+          {[
+            {
+              id: "description",
+              title: "Description",
+              body: /<\/?[a-z][\s\S]*>/i.test(
+                String(product.description || "")
+              ) ? (
+                <div
+                  className="prose prose-sm max-w-none pb-4 text-[13px] leading-relaxed text-gray-600 [&_a]:text-[#005bd3] [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeProductHtml(
+                      product.description || "No description available."
+                    ),
+                  }}
+                />
+              ) : (
+                <p className="whitespace-pre-line pb-4 text-[13px] leading-relaxed text-gray-600">
+                  {toSentenceCase(
+                    product.description || "No description available."
+                  )}
+                </p>
+              ),
+            },
+            {
+              id: "shipping",
+              title: "Shipping & returns",
+              body: (
+                <div className="space-y-3 pb-4 text-[13px] leading-relaxed text-gray-600">
+                  <p>
+                    Orders are packed and dispatched as quickly as stock
+                    allows. Delivery usually takes 3–6 business days after
+                    dispatch, depending on your pin code and courier
+                    serviceability.
+                  </p>
+                  <p>
+                    Easy returns and exchanges are available on eligible
+                    products within the return window, provided items are
+                    unused and in original condition with tags.
+                  </p>
+                  <Link
+                    href="/return-refund"
+                    className="inline-block font-medium text-[#DF1721] hover:underline"
+                  >
+                    View full shipping & returns policy
+                  </Link>
+                </div>
+              ),
+            },
+            {
+              id: "wash",
+              title: "Wash care",
+              body: (
+                <ul className="list-disc space-y-1.5 pb-4 pl-5 text-[13px] leading-relaxed text-gray-600">
+                  <li>Machine wash cold with similar colours</li>
+                  <li>Use mild detergent; avoid bleach</li>
+                  <li>Do not tumble dry — hang dry in shade</li>
+                  <li>Warm iron inside out if needed</li>
+                  <li>Do not dry clean</li>
+                </ul>
+              ),
+            },
+          ]
+            .filter(Boolean)
+            .map((section, sectionIndex, sectionList) => {
+              const isOpen = openSection === section.id;
+              const isLast = sectionIndex === sectionList.length - 1;
+              return (
+                <div
+                  key={section.id}
+                  className={isLast ? "" : "border-b border-gray-200"}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => {
+                      if (!isOpen) setOpenSection(section.id);
+                    }}
+                    className="flex w-full items-center justify-between py-3 text-left text-[13px] font-medium text-gray-700"
+                  >
+                    <span>{section.title}</span>
+                    <CaretIcon
+                      className={`h-3.5 w-3.5 transition-transform duration-300 ease-out ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      isOpen
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">{section.body}</div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        <div className="mt-6 grid grid-cols-4 gap-2 sm:gap-3">
+          {[
+            {
+              src: "/badge/premium-quality.png",
+              alt: "Premium quality",
+            },
+            {
+              src: "/badge/great-customer-service.png",
+              alt: "Great customer service",
+            },
+            {
+              src: "/badge/secure-payment.png",
+              alt: "100% secure payment",
+            },
+            {
+              src: "/badge/fast-free-shipping.png",
+              alt: "Fast and free shipping",
+            },
+          ].map((badge) => (
+            <div
+              key={badge.src}
+              className="relative mx-auto aspect-square w-full max-w-[4.75rem] sm:max-w-[5.5rem] md:max-w-[6.25rem]"
+            >
+              <SafeImage
+                src={badge.src}
+                alt={badge.alt}
+                fill
+                className="object-contain"
+                sizes="100px"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <main
       className={`min-h-screen bg-[#ffffff] text-black lg:pb-0 ${
@@ -574,7 +751,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
           <span>{categoryLabel}</span>
         </nav>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-10 xl:gap-14">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,0.7fr)] lg:gap-8 xl:gap-10">
           {/* Gallery */}
           <div className="space-y-2.5">
             {/* Mobile — swipeable main gallery + square thumbs */}
@@ -693,67 +870,113 @@ export default function ProductDetailPage({ initialProduct = null }) {
               ) : null}
             </div>
 
-            {/* Desktop — multi-image grid */}
+            {/* Desktop — sticky first image + scrolling stack (shared 3:4 ratio) */}
             <div className="hidden lg:block">
-              <div className="grid grid-cols-2 gap-2">
-                {images.slice(0, 4).map((image, index) => (
-                  <div
-                    key={`${image}-${index}`}
-                    className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-gray-100"
-                  >
+              {images.length <= 1 ? (
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100">
+                  {images[0] ? (
                     <SafeImage
-                      src={resolveImageUrl(image)}
-                      alt={`${title} ${index + 1}`}
+                      src={resolveImageUrl(images[0])}
+                      alt={`${title} 1`}
                       fill
-                      priority={index === 0}
-                      fetchPriority={index === 0 ? "high" : undefined}
-                      loading={index === 0 ? "eager" : undefined}
-                      sizes="35vw"
-                      className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                      priority
+                      fetchPriority="high"
+                      sizes="50vw"
+                      className="object-cover"
                     />
-                  </div>
-                ))}
-              </div>
-              {images.length > 4 ? (
-                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                  {images.slice(4).map((image, index) => (
-                    <div
-                      key={`${image}-${index}`}
-                      className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md border border-gray-200"
-                    >
-                      <SafeImage
-                        src={resolveImageUrl(image)}
-                        alt={`${title} ${index + 5}`}
-                        fill
-                        className="object-cover"
-                        sizes="48px"
-                      />
+                  ) : null}
+                  {productBadge ? (
+                    <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
+                      <span
+                        className={`text-[8px] font-medium uppercase leading-none tracking-wide ${
+                          productBadge.key === "sold_out"
+                            ? "text-[#c70a24]"
+                            : productBadge.key === "low_stock"
+                              ? "text-[#b45309]"
+                              : "text-[#133b5f]"
+                        }`}
+                      >
+                        {productBadge.label}
+                      </span>
                     </div>
-                  ))}
+                  ) : null}
                 </div>
-              ) : null}
+              ) : (
+                <div className="grid grid-cols-[1.35fr_1fr] gap-2">
+                  {/* Stretches with the stack so sticky primary can pin until the last image */}
+                  <div className="min-h-0">
+                    <div className="sticky top-24 z-[1]">
+                      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100">
+                        <SafeImage
+                          src={resolveImageUrl(images[0])}
+                          alt={`${title} 1`}
+                          fill
+                          priority
+                          fetchPriority="high"
+                          sizes="42vw"
+                          className="object-cover"
+                        />
+                        {productBadge ? (
+                          <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
+                            <span
+                              className={`text-[8px] font-medium uppercase leading-none tracking-wide ${
+                                productBadge.key === "sold_out"
+                                  ? "text-[#c70a24]"
+                                  : productBadge.key === "low_stock"
+                                    ? "text-[#b45309]"
+                                    : "text-[#133b5f]"
+                              }`}
+                            >
+                              {productBadge.label}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Document-flow stack — drives section height for sticky release */}
+                  <div className="flex flex-col gap-2">
+                    {images.slice(1).map((image, index) => (
+                      <div
+                        key={`${image}-${index + 1}`}
+                        className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100"
+                      >
+                        <SafeImage
+                          src={resolveImageUrl(image)}
+                          alt={`${title} ${index + 2}`}
+                          fill
+                          sizes="28vw"
+                          className="object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Buy box */}
-          <div className="lg:sticky lg:top-24 lg:self-start lg:max-w-md xl:max-w-lg">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
-                  {title}
-                </h1>
-                {productType ? (
-                  <p className="mt-1 text-[13px] font-medium text-gray-500">
-                    {productType}
-                  </p>
-                ) : null}
+          {/* Buy box — self-start so column isn't stretched to gallery height (no empty gap);
+              sticky on the column so it still pins until the last gallery image ends */}
+          <div className="min-w-0 lg:max-w-md xl:max-w-lg lg:sticky lg:top-24 lg:self-start">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
+                    {title}
+                  </h1>
+                  {productType ? (
+                    <p className="mt-1 text-[13px] font-medium text-gray-500">
+                      {productType}
+                    </p>
+                  ) : null}
+                </div>
+                <WishlistButton
+                  product={product}
+                  iconSize={20}
+                  className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50 lg:inline-flex"
+                />
               </div>
-              <WishlistButton
-                product={product}
-                iconSize={20}
-                className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50 lg:inline-flex"
-              />
-            </div>
 
             {product.shortDescription ? (
               <p className="mt-3 text-[13px] leading-relaxed text-gray-500">
@@ -916,177 +1139,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
               ) : null}
             </div>
 
-            {productSpecs.length > 0 ? (
-              <div className="mt-6 pt-1">
-                <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
-                  Product details
-                </h2>
-                <div className="grid grid-cols-2">
-                  {productSpecs.map((spec, index) => {
-                    const isLastRow =
-                      index >=
-                      productSpecs.length -
-                        (productSpecs.length % 2 === 0 ? 2 : 1);
-                    return (
-                      <div
-                        key={spec.label}
-                        className={`py-4 pr-4 ${
-                          index % 2 === 1 ? "pl-4" : ""
-                        } ${!isLastRow ? "border-b border-gray-200" : ""}`}
-                      >
-                        <p className="text-[12px] leading-snug text-gray-400">
-                          {spec.label}
-                        </p>
-                        <p className="mt-1.5 text-[14px] font-medium leading-snug text-[#222222]">
-                          {spec.value}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-6 pt-1">
-              <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
-                Information
-              </h2>
-              <div>
-              {[
-                {
-                  id: "description",
-                  title: "Description",
-                  body: (
-                    /<\/?[a-z][\s\S]*>/i.test(String(product.description || "")) ? (
-                      <div
-                        className="prose prose-sm max-w-none pb-4 text-[13px] leading-relaxed text-gray-600 [&_a]:text-[#005bd3] [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeProductHtml(
-                            product.description || "No description available."
-                          ),
-                        }}
-                      />
-                    ) : (
-                      <p className="whitespace-pre-line pb-4 text-[13px] leading-relaxed text-gray-600">
-                        {toSentenceCase(
-                          product.description || "No description available."
-                        )}
-                      </p>
-                    )
-                  ),
-                },
-                {
-                  id: "shipping",
-                  title: "Shipping & returns",
-                  body: (
-                    <div className="space-y-3 pb-4 text-[13px] leading-relaxed text-gray-600">
-                      <p>
-                        Orders are packed and dispatched as quickly as stock
-                        allows. Delivery usually takes 3–6 business days after
-                        dispatch, depending on your pin code and courier
-                        serviceability.
-                      </p>
-                      <p>
-                        Easy returns and exchanges are available on eligible
-                        products within the return window, provided items are
-                        unused and in original condition with tags.
-                      </p>
-                      <Link
-                        href="/return-refund"
-                        className="inline-block font-medium text-[#DF1721] hover:underline"
-                      >
-                        View full shipping & returns policy
-                      </Link>
-                    </div>
-                  ),
-                },
-                {
-                  id: "wash",
-                  title: "Wash care",
-                  body: (
-                    <ul className="list-disc space-y-1.5 pb-4 pl-5 text-[13px] leading-relaxed text-gray-600">
-                      <li>Machine wash cold with similar colours</li>
-                      <li>Use mild detergent; avoid bleach</li>
-                      <li>Do not tumble dry — hang dry in shade</li>
-                      <li>Warm iron inside out if needed</li>
-                      <li>Do not dry clean</li>
-                    </ul>
-                  ),
-                },
-              ]
-                .filter(Boolean)
-                .map((section, sectionIndex, sectionList) => {
-                  const isOpen = openSection === section.id;
-                  const isLast = sectionIndex === sectionList.length - 1;
-                  return (
-                    <div
-                      key={section.id}
-                      className={isLast ? "" : "border-b border-gray-200"}
-                    >                      <button
-                        type="button"
-                        aria-expanded={isOpen}
-                        onClick={() => {
-                          if (!isOpen) setOpenSection(section.id);
-                        }}
-                        className="flex w-full items-center justify-between py-3 text-left text-[13px] font-medium text-gray-700"
-                      >
-                        <span>{section.title}</span>
-                        <CaretIcon
-                          className={`h-3.5 w-3.5 transition-transform duration-300 ease-out ${
-                            isOpen ? "rotate-180" : ""
-                          }`}
-                        />
-                      </button>
-                      <div
-                        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
-                          isOpen
-                            ? "grid-rows-[1fr] opacity-100"
-                            : "grid-rows-[0fr] opacity-0"
-                        }`}
-                      >
-                        <div className="min-h-0 overflow-hidden">
-                          {section.body}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 grid grid-cols-4 gap-2 sm:gap-3">
-                {[
-                  {
-                    src: "/badge/premium-quality.png",
-                    alt: "Premium quality",
-                  },
-                  {
-                    src: "/badge/great-customer-service.png",
-                    alt: "Great customer service",
-                  },
-                  {
-                    src: "/badge/secure-payment.png",
-                    alt: "100% secure payment",
-                  },
-                  {
-                    src: "/badge/fast-free-shipping.png",
-                    alt: "Fast and free shipping",
-                  },
-                ].map((badge) => (
-                  <div
-                    key={badge.src}
-                    className="relative mx-auto aspect-square w-full max-w-[4.75rem] sm:max-w-[5.5rem] md:max-w-[6.25rem]"
-                  >
-                    <SafeImage
-                      src={badge.src}
-                      alt={badge.alt}
-                      fill
-                      className="object-contain"
-                      sizes="100px"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+            {productInfoBlock}
           </div>
         </div>
       </section>
