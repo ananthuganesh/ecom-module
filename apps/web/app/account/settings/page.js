@@ -1,12 +1,10 @@
 "use client";
 
-import { Camera, Mail, Phone } from "lucide-react";
+import { Mail, Phone } from "lucide-react";
 import {
-  AccountIcon,
   ChevronRightIcon,
-  InfoIcon,
 } from "@/components/icons/storeIcons";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { authService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
@@ -15,8 +13,33 @@ import { motion } from "framer-motion";
 const LABEL = "mb-1.5 block text-[13px] font-medium text-gray-700";
 const INPUT =
   "h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#222222] focus:outline-none focus:ring-1 focus:ring-[#222222]";
-const INPUT_LOCKED =
-  "h-10 w-full cursor-not-allowed rounded-md border border-gray-200 bg-gray-50 px-3 text-[14px] text-gray-600";
+
+const AVATAR_COLORS = [
+  "#DF1721",
+  "#1F4B99",
+  "#0F766E",
+  "#B45309",
+  "#7C3AED",
+  "#BE185D",
+  "#166534",
+  "#1E3A5F",
+  "#9A3412",
+  "#334155",
+];
+
+function avatarColorFor(seed) {
+  const text = String(seed || "U");
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function nameInitial(name) {
+  const letter = String(name || "").trim().charAt(0);
+  return letter ? letter.toUpperCase() : "?";
+}
 
 function toIndianMobile(value) {
   let digits = String(value || "").replace(/\D/g, "");
@@ -92,21 +115,27 @@ export default function SettingsPage() {
     }
   };
 
+  const displayName = profileForm.name || userInfo?.name || "";
+  const initial = useMemo(() => nameInitial(displayName), [displayName]);
+  const avatarBg = useMemo(
+    () => avatarColorFor(userInfo?.email || userInfo?._id || displayName),
+    [userInfo?.email, userInfo?._id, displayName]
+  );
+
   return (
     <DashboardLayout title="Account Settings" eyebrow="Profile">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
         <aside className="rounded-xl border border-gray-200 bg-[#F8F8F8] p-6 text-center sm:p-8 lg:col-span-1">
-          <div className="relative mx-auto mb-5 inline-block">
-            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white">
-              <AccountIcon className="h-12 w-12 text-gray-300" />
-            </div>
-            <button
-              type="button"
-              className="absolute right-0 bottom-0 rounded-full bg-[#DF1721] p-2 text-white transition-colors hover:bg-black"
-              aria-label="Update photo"
+          <div className="mx-auto mb-5 inline-block">
+            <div
+              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full text-white"
+              style={{ backgroundColor: avatarBg }}
+              aria-hidden
             >
-              <Camera className="h-3.5 w-3.5" />
-            </button>
+              <span className="text-3xl font-semibold leading-none tracking-tight">
+                {initial}
+              </span>
+            </div>
           </div>
           <h3 className="text-sm font-semibold text-gray-900">{userInfo?.name}</h3>
           <p className="mt-1 truncate text-[13px] text-gray-500">{userInfo?.email}</p>
@@ -154,42 +183,46 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className={LABEL}>Email address</label>
-                <input
-                  type="email"
-                  className={INPUT_LOCKED}
-                  value={profileForm.email}
-                  readOnly
-                  aria-readonly="true"
-                />
+                <p className={LABEL}>Email address</p>
+                <p className="truncate text-[14px] text-gray-900">
+                  {profileForm.email || "—"}
+                </p>
                 <p className="mt-1.5 text-[12px] text-gray-500">
                   Used to sign in. Cannot be changed.
                 </p>
               </div>
               <div className="md:col-span-2">
-                <label className={LABEL}>Phone number</label>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  className={phoneLocked ? INPUT_LOCKED : INPUT}
-                  value={profileForm.phone}
-                  placeholder={phoneLocked ? undefined : "10-digit mobile"}
-                  readOnly={phoneLocked}
-                  aria-readonly={phoneLocked ? "true" : undefined}
-                  maxLength={10}
-                  onChange={(e) => {
-                    if (phoneLocked) return;
-                    setProfileForm({
-                      ...profileForm,
-                      phone: toIndianMobile(e.target.value),
-                    });
-                  }}
-                />
-                <p className="mt-1.5 text-[12px] text-gray-500">
-                  {phoneLocked
-                    ? "Cannot be changed once set."
-                    : "Add a 10-digit Indian mobile number."}
-                </p>
+                <p className={LABEL}>Phone number</p>
+                {phoneLocked ? (
+                  <>
+                    <p className="text-[14px] text-gray-900">
+                      {profileForm.phone}
+                    </p>
+                    <p className="mt-1.5 text-[12px] text-gray-500">
+                      Cannot be changed once set.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      className={INPUT}
+                      value={profileForm.phone}
+                      placeholder="10-digit mobile"
+                      maxLength={10}
+                      onChange={(e) =>
+                        setProfileForm({
+                          ...profileForm,
+                          phone: toIndianMobile(e.target.value),
+                        })
+                      }
+                    />
+                    <p className="mt-1.5 text-[12px] text-gray-500">
+                      Add a 10-digit Indian mobile number.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -208,14 +241,6 @@ export default function SettingsPage() {
               )}
             </button>
           </form>
-
-          <div className="mt-6 flex items-start gap-3 rounded-md border border-gray-200 bg-[#F8F8F8] p-4">
-            <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-            <p className="text-[13px] leading-relaxed text-gray-600">
-              To use a different email, sign out and verify that address with a
-              new login code. Phone can only be added if it is missing.
-            </p>
-          </div>
         </div>
       </div>
     </DashboardLayout>

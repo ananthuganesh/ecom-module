@@ -231,7 +231,7 @@ export default function ProductVariantsCard({
   onSelectExistingImage,
   uploadingMedia = false,
 }) {
-  const variants = form?.variants || [];
+  const variants = useMemo(() => form?.variants || [], [form?.variants]);
   const sizes = useMemo(() => uniqueSizes(variants), [variants]);
   const customValues = useMemo(() => uniqueCustomValues(variants), [variants]);
   const customName =

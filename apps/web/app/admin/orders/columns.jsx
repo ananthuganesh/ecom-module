@@ -516,5 +516,4 @@ export {
   paymentLabel,
   attributionTag,
   STATUS_LABELS,
-  resolveFulfillmentDisplay,
 };

@@ -239,7 +239,7 @@ function OrderContent({ params: paramsPromise }) {
                                     <span>Gift Order</span>
                                 </h3>
                                 {order.giftMessage ? (
-                                    <p className="text-xs text-emerald-900 italic font-medium">"{order.giftMessage}"</p>
+                                    <p className="text-xs text-emerald-900 italic font-medium">&ldquo;{order.giftMessage}&rdquo;</p>
                                 ) : (
                                     <p className="text-[10px] text-emerald-600/70 italic uppercase tracking-widest font-bold">No message provided</p>
                                 )}

@@ -65,10 +65,6 @@ export default function AddressesPage() {
           })}
         </div>
       )}
-
-      <p className="mt-6 text-[13px] text-gray-500">
-        To change a delivery address, update it during checkout on your next order.
-      </p>
     </DashboardLayout>
   );
 }

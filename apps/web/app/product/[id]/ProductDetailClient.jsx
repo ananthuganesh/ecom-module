@@ -375,7 +375,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
   useEffect(() => {
     if (pinCode.length !== 6) return;
     void checkDeliveryPin(pinCode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [pinCode]);
 
   useEffect(() => {

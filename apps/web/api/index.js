@@ -17,6 +17,7 @@ export {
   abandonedCheckoutService,
   couponService,
   reelsService,
+  contactService,
   adminCouponService,
   adminTaxClassService,
   adminCompanyProfileService,

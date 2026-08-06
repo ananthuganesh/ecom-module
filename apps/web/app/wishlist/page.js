@@ -11,19 +11,17 @@ export default function WishlistPage() {
 
   return (
     <div className="min-h-[60vh] bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3 md:mb-8">
-        <div>
-          <h1 className="title-knewave text-3xl leading-none tracking-tight normal-case md:text-4xl">
-            My <span className="title-knewave-accent">Wishlist</span>
-          </h1>
-        </div>
+      <header className="mb-6 text-center md:mb-8">
+        <h1 className="title-knewave text-2xl leading-none tracking-tight normal-case md:text-4xl">
+          My <span className="title-knewave-accent">Wishlist</span>
+        </h1>
         {items.length > 0 ? (
           <button
             type="button"
             onClick={() => {
               if (window.confirm("Clear your entire wishlist?")) clear();
             }}
-            className="text-xs font-semibold tracking-wide text-gray-500 underline-offset-2 hover:text-[#DF1721] hover:underline"
+            className="mt-3 text-xs font-semibold tracking-wide text-gray-500 underline-offset-2 hover:text-[#DF1721] hover:underline"
           >
             Clear all
           </button>

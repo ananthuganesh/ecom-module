@@ -2,9 +2,7 @@
 
 import {
   BagIcon,
-  ChevronRightIcon,
   CloseIcon,
-  DeleteIcon,
 } from "@/components/icons/storeIcons";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -197,10 +195,10 @@ export default function CartDrawer() {
                                 onClick={() =>
                                   removeItem(item._id, item.size, item.color)
                                 }
-                                className="shrink-0 text-gray-400 transition-colors hover:text-red-500"
+                                className="shrink-0 text-[12px] font-medium text-gray-400 transition-colors hover:text-red-500"
                                 aria-label="Remove item"
                               >
-                                <DeleteIcon size={16} />
+                                Remove
                               </button>
                             </div>
 
@@ -263,7 +261,6 @@ export default function CartDrawer() {
                     className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3.5 text-sm font-medium text-white transition-all duration-200 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Proceed to Checkout
-                    <ChevronRightIcon size={18} />
                   </button>
                 </div>
               </div>

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { contactService } from "@/api";
 import {
   STORE_EMAIL,
   STORE_PHONE,
@@ -13,36 +14,60 @@ const CONTACT_IMAGE = "/images/44.jpg";
 const fieldClass =
   "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-3 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black";
 
+function apiErrorMessage(err, fallback) {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((d) => d?.msg).filter(Boolean).join(" ") || fallback;
+  }
+  return err?.response?.data?.message || fallback;
+}
+
 export default function ContactPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
-  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState({ type: "", text: "" });
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    const subject = encodeURIComponent(
-      name.trim() ? `Urban Aana inquiry from ${name.trim()}` : "Urban Aana inquiry"
-    );
-    const body = encodeURIComponent(
-      [
-        `Name: ${name.trim() || "—"}`,
-        `Email: ${email.trim() || "—"}`,
-        `Phone: ${phone.trim() || "—"}`,
-        "",
-        message.trim() || "—",
-      ].join("\n")
-    );
-    window.location.href = `mailto:${STORE_EMAIL}?subject=${subject}&body=${body}`;
-    setSent(true);
+    setSending(true);
+    setStatus({ type: "", text: "" });
+    try {
+      await contactService.submit({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        message: message.trim(),
+      });
+      setName("");
+      setEmail("");
+      setPhone("");
+      setMessage("");
+      setStatus({
+        type: "success",
+        text: "Message sent. We’ll get back to you soon.",
+      });
+    } catch (err) {
+      setStatus({
+        type: "error",
+        text: apiErrorMessage(
+          err,
+          "Could not send your message. Please try again or email us directly."
+        ),
+      });
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
     <main className="min-h-screen bg-white text-black">
       <section className="grid min-h-[calc(100vh-5rem)] lg:grid-cols-2">
         {/* Left — image */}
-        <div className="relative min-h-[42vh] overflow-hidden bg-gray-100 lg:min-h-full lg:sticky lg:top-0 lg:h-[calc(100vh-5rem)]">
+        <div className="relative min-h-[42vh] overflow-hidden bg-gray-100 lg:sticky lg:top-0 lg:h-[calc(100vh-5rem)] lg:min-h-full">
           <Image
             src={CONTACT_IMAGE}
             alt="Urban Aana"
@@ -68,7 +93,7 @@ export default function ContactPage() {
               <div>
                 <label
                   htmlFor="contact-name"
-                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
                 >
                   Name
                 </label>
@@ -87,7 +112,7 @@ export default function ContactPage() {
               <div>
                 <label
                   htmlFor="contact-email"
-                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
                 >
                   Email
                 </label>
@@ -106,7 +131,7 @@ export default function ContactPage() {
               <div>
                 <label
                   htmlFor="contact-phone"
-                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
                 >
                   Phone
                 </label>
@@ -124,7 +149,7 @@ export default function ContactPage() {
               <div>
                 <label
                   htmlFor="contact-message"
-                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
                 >
                   Message
                 </label>
@@ -134,21 +159,27 @@ export default function ContactPage() {
                   rows={5}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  className={`${fieldClass} resize-y min-h-[120px]`}
+                  className={`${fieldClass} min-h-[120px] resize-y`}
                   placeholder="Order number, question, or feedback…"
                 />
               </div>
 
               <button
                 type="submit"
-                className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-black px-5 py-3.5 text-[12px] font-bold uppercase tracking-[0.14em] text-white transition-colors hover:bg-[#DF1721]"
+                disabled={sending}
+                className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-black px-5 py-3.5 text-[12px] font-bold tracking-[0.14em] text-white uppercase transition-colors hover:bg-[#DF1721] disabled:opacity-60"
               >
-                Send message
+                {sending ? "Sending…" : "Send message"}
               </button>
 
-              {sent ? (
-                <p className="text-sm text-gray-500" role="status">
-                  Opening your email app to send to {STORE_EMAIL}…
+              {status.text ? (
+                <p
+                  className={`text-sm ${
+                    status.type === "success" ? "text-emerald-700" : "text-red-600"
+                  }`}
+                  role="status"
+                >
+                  {status.text}
                 </p>
               ) : null}
             </form>

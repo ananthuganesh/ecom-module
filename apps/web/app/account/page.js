@@ -1,11 +1,6 @@
 "use client";
 
-import { Clock } from "lucide-react";
-import {
-  BagIcon,
-  CheckBurstIcon,
-  ChevronRightIcon,
-} from "@/components/icons/storeIcons";
+import { ChevronRightIcon } from "@/components/icons/storeIcons";
 import { useState, useEffect } from "react";
 import { orderService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -55,9 +50,9 @@ export default function DashboardOverview() {
     <DashboardLayout title={`Welcome, ${firstName}`} eyebrow="Your account">
       <div className="mb-8 grid grid-cols-3 gap-2 sm:gap-4">
         {[
-          { label: "Total orders", value: stats.totalOrders, icon: BagIcon },
-          { label: "Pending", value: stats.pendingOrders, icon: Clock },
-          { label: "Delivered", value: stats.completedOrders, icon: CheckBurstIcon },
+          { label: "Total orders", value: stats.totalOrders },
+          { label: "Pending", value: stats.pendingOrders },
+          { label: "Delivered", value: stats.completedOrders },
         ].map((stat, idx) => (
           <motion.div
             key={stat.label}
@@ -66,14 +61,11 @@ export default function DashboardOverview() {
             transition={{ delay: idx * 0.06 }}
             className="rounded-xl border border-gray-200 bg-[#F8F8F8] p-3 sm:p-5"
           >
-            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-md bg-[#222222] text-white sm:mb-3 sm:h-9 sm:w-9">
-              <stat.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </div>
-            <p className="text-[11px] leading-tight text-gray-500 sm:text-[13px]">
-              {stat.label}
-            </p>
-            <p className="mt-1 text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl">
+            <p className="text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl">
               {stat.value}
+            </p>
+            <p className="mt-1 text-[11px] leading-tight text-gray-500 sm:text-[13px]">
+              {stat.label}
             </p>
           </motion.div>
         ))}

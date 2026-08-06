@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
+from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
 
 
 def _init_sentry() -> None:
@@ -102,8 +102,8 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     async def health():
         return {"status": "ok", "backend": "fastapi"}
 
-    # Verify Sentry capture: open /sentry-debug after deploy to confirm events.
-    if str(settings.sentry_dsn or "").strip():
+    # Dev-only Sentry smoke test — never expose in production.
+    if str(settings.sentry_dsn or "").strip() and not settings.is_production():
         @app.get("/sentry-debug")
         async def trigger_error():
             division_by_zero = 1 / 0  # noqa: F841
@@ -114,6 +114,7 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(payments.router)
     app.include_router(shipping.router)
     app.include_router(coupons.router)
+    app.include_router(contact.router)
     app.include_router(admin.router)
     app.include_router(media.router)
     app.include_router(media.public_router)

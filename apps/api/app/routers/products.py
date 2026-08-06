@@ -301,12 +301,50 @@ async def suggestions(
     q: str = "",
     _: None = Depends(rate_limit_dependency("product-search", limit=60)),
 ):
-    if not q:
+    needle = (q or "").strip()
+    if len(needle) < 1:
         return []
-    safe = re.escape(q.strip())[:80]
+    safe = re.escape(needle)[:80]
     rx = {"$regex": safe, "$options": "i"}
-    products = await Product.find({"$or": [{"productName": rx}, {"product": rx}]}).limit(8).to_list()
-    return [{"_id": str(p.id), "productName": p.productName or p.name, "slug": p.slug} for p in products]
+    products = (
+        await Product.find(
+            {
+                "status": {"$ne": "draft"},
+                "$or": [
+                    {"productName": rx},
+                    {"name": rx},
+                    {"product": rx},
+                    {"slug": rx},
+                ],
+            }
+        )
+        .limit(8)
+        .to_list()
+    )
+    out = []
+    for p in products:
+        thumbs = list(p.thumbnails or [])
+        if not thumbs and p.variants:
+            for v in p.variants:
+                imgs = list(getattr(v, "images", None) or [])
+                if imgs:
+                    thumbs = [imgs[0]]
+                    break
+        price = None
+        if p.pricing and p.pricing.sellingPrice is not None:
+            price = float(p.pricing.sellingPrice)
+        elif p.price is not None:
+            price = float(p.price)
+        out.append(
+            {
+                "_id": str(p.id),
+                "productName": p.productName or p.name or p.product or "Product",
+                "slug": p.slug,
+                "thumbnails": thumbs[:1],
+                "price": price,
+            }
+        )
+    return out
 
 
 @router.get("/slug/{slug}")

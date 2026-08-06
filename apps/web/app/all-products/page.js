@@ -25,6 +25,7 @@ export default async function AllProductsPage({ searchParams }) {
 
   return (
     <AllProductsClient
+      key={keyword || "all"}
       initialProducts={initialPage.products}
       initialHasMore={initialPage.hasMore}
       initialFacets={initialFacets}

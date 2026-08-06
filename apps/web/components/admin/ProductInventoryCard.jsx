@@ -5,7 +5,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 export default function ProductInventoryCard({ form, setForm }) {
-  const variants = form?.variants || [];
+  const variants = useMemo(() => form?.variants || [], [form?.variants]);
   const primaryIndex = 0;
   const primary = variants[primaryIndex] || {};
 

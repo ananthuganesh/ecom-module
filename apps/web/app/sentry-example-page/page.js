@@ -1,20 +1,15 @@
 "use client";
 
 import * as Sentry from "@sentry/nextjs";
-import { useEffect, useState } from "react";
 
 /**
  * Temporary verification page for Sentry Next.js setup.
  * Visit /sentry-example-page and click the button, then check Sentry Issues.
  */
 export default function SentryExamplePage() {
-  const [projectId, setProjectId] = useState("");
-
-  useEffect(() => {
-    const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN || "";
-    const match = dsn.match(/\/(\d+)\s*$/);
-    setProjectId(match?.[1] || "(missing DSN)");
-  }, []);
+  const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN || "";
+  const match = dsn.match(/\/(\d+)\s*$/);
+  const projectId = match?.[1] || "(missing DSN)";
 
   return (
     <main style={{ padding: 32, fontFamily: "system-ui, sans-serif" }}>
@@ -31,7 +26,6 @@ export default function SentryExamplePage() {
           );
           await Sentry.flush(3000);
           // Matches Sentry docs verify step
-          // eslint-disable-next-line no-undef
           myUndefinedFunction();
         }}
         style={{
@@ -39,6 +33,8 @@ export default function SentryExamplePage() {
           padding: "10px 16px",
           borderRadius: 8,
           border: "1px solid #ccc",
+          background: "#111",
+          color: "#fff",
           cursor: "pointer",
         }}
       >

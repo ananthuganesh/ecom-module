@@ -45,7 +45,6 @@ export default function CartPage() {
 
   useEffect(() => {
     if (cartItems.length > 0) syncStock(productService);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncStock, cartItems.length]);
 
   const availableItems = cartItems.filter(

@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
@@ -23,7 +24,9 @@ export default function StorefrontShell({ children }) {
 
   return (
     <div className="storefront-root flex flex-col min-h-screen bg-white text-black">
-      <Navbar />
+      <Suspense fallback={null}>
+        <Navbar />
+      </Suspense>
       <main className="flex-grow">{children}</main>
       <Footer />
     </div>

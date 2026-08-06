@@ -356,3 +356,71 @@ def order_total_row(label: str, amount: str) -> str:
 <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:8px;">
   {subtotal_row(label, amount, bold=True)}
 </table>"""
+
+
+def build_contact_inquiry_email_html(
+    *,
+    name: str,
+    email: str,
+    phone: str = "",
+    message: str = "",
+) -> tuple[str, str]:
+    """Staff inbox template for storefront contact form submissions."""
+    safe_name = (name or "").strip() or "Customer"
+    safe_email = (email or "").strip().lower()
+    safe_phone = (phone or "").strip() or "—"
+    safe_message = (message or "").strip() or "—"
+    subject = f"Contact inquiry from {safe_name}"
+    preheader = f"New message from {safe_name} via urbanaana.com"
+
+    details = f"""
+<table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+  <tr>
+    <td style="padding:0 0 8px;font-family:{FONT_STACK};font-size:14px;line-height:20px;color:{TEXT_MUTED};width:88px;vertical-align:top;">Name</td>
+    <td style="padding:0 0 8px;font-family:{FONT_STACK};font-size:14px;line-height:20px;color:{TEXT_PRIMARY};font-weight:600;">{esc(safe_name)}</td>
+  </tr>
+  <tr>
+    <td style="padding:0 0 8px;font-family:{FONT_STACK};font-size:14px;line-height:20px;color:{TEXT_MUTED};vertical-align:top;">Email</td>
+    <td style="padding:0 0 8px;font-family:{FONT_STACK};font-size:14px;line-height:20px;">
+      <a href="mailto:{esc(safe_email)}" style="color:{LINK};text-decoration:none;">{esc(safe_email)}</a>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 0 8px;font-family:{FONT_STACK};font-size:14px;line-height:20px;color:{TEXT_MUTED};vertical-align:top;">Phone</td>
+    <td style="padding:0 0 8px;font-family:{FONT_STACK};font-size:14px;line-height:20px;color:{TEXT_PRIMARY};">{esc(safe_phone)}</td>
+  </tr>
+</table>
+"""
+    message_block = f"""
+<div style="margin-top:4px;padding:14px 16px;border:1px solid {BORDER};border-radius:6px;background:#fafafa;">
+  <div style="white-space:pre-wrap;font-family:{FONT_STACK};font-size:14px;line-height:20px;color:{TEXT_PRIMARY};">{esc(safe_message)}</div>
+</div>
+"""
+    sections = "".join(
+        [
+            brand_header(),
+            content_block(
+                section_heading("New contact message")
+                + paragraph("Someone submitted the contact form on urbanaana.com.")
+                + details
+            ),
+            content_block(
+                section_heading("Message") + message_block,
+                top_border=True,
+            ),
+            content_block(
+                paragraph_html(
+                    f'Reply directly to this email, or write to '
+                    f'<a href="mailto:{esc(safe_email)}" style="color:{LINK};">{esc(safe_email)}</a>.'
+                )
+                + mail_button(f"mailto:{safe_email}", "Reply to customer"),
+                top_border=True,
+            ),
+        ]
+    )
+    html_body = render_shopify_email(
+        preheader=preheader,
+        sections_html=sections,
+        footer_note="Urban Aana · Website contact form",
+    )
+    return subject, html_body

@@ -11,6 +11,17 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // React Compiler lint is too aggressive for common hydration / mount /
+      // external-store sync patterns used across admin + storefront.
+      "react-hooks/set-state-in-effect": "off",
+      // TanStack Table returns unstable function identities by design.
+      "react-hooks/incompatible-library": "off",
+      // Many effects intentionally omit volatile callbacks / one-shot trackers.
+      "react-hooks/exhaustive-deps": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

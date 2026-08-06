@@ -129,7 +129,7 @@ function RecoverContent() {
       cancelled = true;
       if (redirectTimer) clearTimeout(redirectTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [tokenParam]);
 
   if (status === "loading") {

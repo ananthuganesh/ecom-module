@@ -7,6 +7,7 @@ export {
   shippingService,
   couponService,
   reelsService,
+  contactService,
 } from "./user/index.js";
 
 // Admin services

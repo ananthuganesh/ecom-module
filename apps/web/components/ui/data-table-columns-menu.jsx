@@ -136,20 +136,21 @@ export function DataTableColumnsMenu({
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
 
+  const columnOrder = table.getState().columnOrder;
+  const columnVisibility = table.getState().columnVisibility;
+
   const resolvedIds = useMemo(
     () => (columnIds?.length ? columnIds : defaultToggleableIds(table)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [table, columnIds, table.getState().columnOrder, table.getState().columnVisibility]
+    [table, columnIds, columnOrder, columnVisibility]
   );
 
   const managedIds = useMemo(() => {
-    const order = table.getState().columnOrder;
     const all = resolvedIds.filter((id) => table.getColumn(id)?.getCanHide());
-    if (!order?.length) return all;
-    const ordered = order.filter((id) => all.includes(id));
+    if (!columnOrder?.length) return all;
+    const ordered = columnOrder.filter((id) => all.includes(id));
     const missing = all.filter((id) => !ordered.includes(id));
     return [...ordered, ...missing];
-  }, [table, resolvedIds, table.getState().columnOrder]);
+  }, [table, resolvedIds, columnOrder]);
 
   const sortableOptions = useMemo(() => {
     if (sortOptions?.length) return sortOptions;

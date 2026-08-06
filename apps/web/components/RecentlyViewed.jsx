@@ -55,7 +55,7 @@ export default function RecentlyViewed({ excludeId } = {}) {
       cancelled = true;
     };
     // Re-run when history ids change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [history.map((item) => item._id).join("|"), excludeId]);
 
   if (!history.length) return null;

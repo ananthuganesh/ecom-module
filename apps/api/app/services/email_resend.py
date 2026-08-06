@@ -679,16 +679,25 @@ async def build_staff_new_order_email_html(order, user=None) -> tuple[str, str]:
     return subject, html_body
 
 
-async def send_email(*, to: str, subject: str, html_body: str) -> dict[str, Any]:
+async def send_email(
+    *,
+    to: str,
+    subject: str,
+    html_body: str,
+    reply_to: str | None = None,
+) -> dict[str, Any]:
     api_key = _resend_api_key()
     if not api_key:
         return {"skipped": True, "reason": "resend_not_configured"}
-    payload = {
+    payload: dict[str, Any] = {
         "from": _resend_from(),
         "to": [to],
         "subject": subject,
         "html": html_body,
     }
+    reply = str(reply_to or "").strip()
+    if reply:
+        payload["reply_to"] = [reply]
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -709,6 +718,41 @@ async def send_email(*, to: str, subject: str, html_body: str) -> dict[str, Any]
             return {"ok": True, "id": data.get("id"), "response": data}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)[:300]}
+
+
+def _contact_inbox() -> str:
+    return (
+        os.environ.get("CONTACT_INBOX_EMAIL")
+        or os.environ.get("STORE_CONTACT_EMAIL")
+        or "urbanaana2026@gmail.com"
+    ).strip()
+
+
+async def send_contact_inquiry(
+    *,
+    name: str,
+    email: str,
+    phone: str = "",
+    message: str = "",
+) -> dict[str, Any]:
+    to = _contact_inbox()
+    if not to:
+        return {"skipped": True, "reason": "no_contact_inbox"}
+    subject, html_body = tpl.build_contact_inquiry_email_html(
+        name=name,
+        email=email,
+        phone=phone,
+        message=message,
+    )
+    result = await send_email(
+        to=to,
+        subject=subject,
+        html_body=html_body,
+        reply_to=email,
+    )
+    if result.get("ok"):
+        result["to"] = to
+    return result
 
 
 async def notify_order_email(email_type: EmailType, order, user=None) -> dict[str, Any]:

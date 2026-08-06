@@ -939,7 +939,7 @@ export default function AdminOrderDetailPage() {
                     </CardTitle>
                     <p className="mb-1 admin-card-muted">Marked as Gift</p>
                     {order.giftMessage ? (
-                      <p className="admin-card-muted italic">"{order.giftMessage}"</p>
+                      <p className="admin-card-muted italic">&ldquo;{order.giftMessage}&rdquo;</p>
                     ) : (
                       <p className="admin-card-muted italic">No message provided</p>
                     )}

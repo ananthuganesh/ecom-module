@@ -51,7 +51,7 @@ export default function Invoice({ order }) {
             {order.isGift && order.giftMessage && (
                 <div className="mb-8 border border-gray-100 p-4 bg-gray-50">
                     <h3 className="text-[9px] uppercase tracking-widest font-black mb-2 border-b border-gray-200 pb-1">Gift Message</h3>
-                    <p className="text-xs font-serif italic text-gray-800">"{order.giftMessage}"</p>
+                    <p className="text-xs font-serif italic text-gray-800">&ldquo;{order.giftMessage}&rdquo;</p>
                 </div>
             )}
 
