@@ -1,132 +1,129 @@
 "use client";
 
-import {
-  ArrowIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-} from "@/components/icons/storeIcons";
-import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import { motion } from "framer-motion";
 import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 
-import { motion, AnimatePresence } from "framer-motion";
+const HERO_IMAGE = "/urban/about-1.jpg";
+const WHO_IMAGE = "/images/founders.png";
 
-const aboutImages = [
-  { src: "/urban/about-1.jpg" },
-  { src: "/urban/about-2.jpg" },
-  { src: "/urban/about-3.jpg" },
-  { src: "/urban/about-4.jpg" },
-];
-
-const slideVariants = {
-  enter: (dir) => ({ x: dir > 0 ? "100%" : "-100%", opacity: 0 }),
-  center: { x: 0, opacity: 1, transition: { duration: 0.5, ease: [0.32, 0.72, 0, 1] } },
-  exit: (dir) => ({ x: dir > 0 ? "-100%" : "100%", opacity: 0, transition: { duration: 0.4 } }),
+const fadeUp = {
+  initial: { opacity: 0, y: 24 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-10% 0px" },
+  transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
 };
-
-function ImageCarousel() {
-  const [[page, dir], setPage] = useState([0, 0]);
-  const idx = ((page % aboutImages.length) + aboutImages.length) % aboutImages.length;
-
-  const paginate = useCallback((newDir) => setPage(([p]) => [p + newDir, newDir]), []);
-
-  useEffect(() => {
-    const t = setInterval(() => paginate(1), 4000);
-    return () => clearInterval(t);
-  }, [paginate]);
-
-  return (
-    <div className="relative w-full max-w-md mx-auto lg:mx-0">
-      <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gray-100 shadow-xl">
-        <AnimatePresence initial={false} custom={dir}>
-          <motion.div
-            key={page}
-            custom={dir}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            className="absolute inset-0"
-          >
-            <Image src={aboutImages[idx].src} alt="Urban Aana" fill className="object-cover object-top" />
-          </motion.div>
-        </AnimatePresence>
-
-        <button
-          onClick={() => paginate(-1)}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-brand-red transition-all"
-          aria-label="Previous image"
-        >
-          <ChevronLeftIcon size={14} />
-        </button>
-        <button
-          onClick={() => paginate(1)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-brand-red transition-all"
-          aria-label="Next image"
-        >
-          <ChevronRightIcon size={14} />
-        </button>
-      </div>
-
-      <div className="flex justify-center gap-1.5 mt-3">
-        {aboutImages.map((_, i) => (
-          <div
-            key={i}
-            className={`h-1 rounded-full transition-all duration-300 ${
-              i === idx ? "w-6 bg-brand-red" : "w-1.5 bg-gray-200"
-            }`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 const AboutSection = () => {
   return (
-    <section className="w-full bg-white py-6 md:py-10 font-sans overflow-hidden">
-      <div className="max-w-[1280px] mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center mb-16">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="order-1 lg:order-2"
+    <div className="w-full bg-white text-[#222222] font-[family-name:var(--font-lato)]">
+      {/* Hero */}
+      <section className="relative isolate min-h-[72vh] overflow-hidden md:min-h-[78vh]">
+        <Image
+          src={HERO_IMAGE}
+          alt="Urban Aana"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/45 to-black/25" />
+        <div className="relative z-10 mx-auto flex min-h-[72vh] max-w-[1280px] flex-col justify-end px-6 pb-14 pt-28 md:min-h-[78vh] md:px-10 md:pb-20">
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="title-knewave text-2xl leading-none tracking-tight normal-case !text-white md:text-4xl"
           >
-            <ImageCarousel />
-          </motion.div>
-
-          <div className="space-y-5 order-2 lg:order-1">
-            <h4 className="text-[12px] font-bold tracking-[0.2em] text-gray-400 uppercase">Our Identity</h4>
-
-            <div className="space-y-1">
-              <h2 className="text-2xl md:text-4xl font-black tracking-tighter text-black uppercase leading-tight">
-                WE ARE <span className="text-brand-red">URBAN</span> AANA.
-              </h2>
-              <div className="w-12 h-1 bg-brand-red" />
-            </div>
-
-            <p className="text-gray-600 text-sm md:text-base leading-relaxed max-w-md">
-              Urban Aana blends modern city style with Kerala&apos;s cultural essence.
-              <span className="font-bold text-black ml-1">&ldquo;Aana&rdquo;</span> symbolizes strength and tradition.
-            </p>
-
-            <Link
-              href="/all-products"
-              className="group inline-flex items-center gap-2 px-6 py-3 bg-black text-white font-bold text-[12px] uppercase tracking-widest hover:bg-brand-red transition-all rounded-sm"
-            >
-              Shop Now <ArrowIcon size={14} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </div>
+            About <span className="title-knewave-accent">Us</span>
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="mt-5 max-w-xl text-base leading-relaxed text-white/85 md:text-lg"
+          >
+            Redefining street culture through authentic design and uncompromising
+            quality
+          </motion.p>
         </div>
-      </div>
+      </section>
 
-      <div className="mt-4">
-        <WhyUrbanAana />
-      </div>
-    </section>
+      {/* Who we are — two column */}
+      <section className="mx-auto grid max-w-[1280px] grid-cols-1 items-center gap-10 px-6 py-16 md:gap-14 md:px-10 md:py-24 lg:grid-cols-2">
+        <motion.div {...fadeUp} className="space-y-5">
+          <h2 className="title-knewave text-2xl leading-none tracking-tight normal-case md:text-4xl">
+            Who we <span className="title-knewave-accent">are</span>
+          </h2>
+          <div className="h-1 w-12 bg-brand-red" />
+          <div className="space-y-4 text-[15px] leading-relaxed text-gray-600 md:text-base">
+            <p>
+              Welcome to{" "}
+              <span className="font-bold text-[#222222]">URBAN AANA</span> a
+              premium streetwear brand inspired by the spirit of Kerala and the
+              energy of modern urban culture.
+            </p>
+            <p>
+              The name itself represents our identity:{" "}
+              <span className="font-bold text-[#222222]">URBAN</span> reflects
+              modern street fashion and lifestyle, while{" "}
+              <span className="font-bold text-[#222222]">AANA</span> (elephant)
+              symbolizes strength, tradition, and pride.
+            </p>
+            <p>
+              At Urban Aana, we believe clothing is more than fashion — it is a
+              way to express identity and tell stories. Our designs are inspired
+              by Kerala&apos;s culture and everyday life, transformed into
+              minimal streetwear for the bold.
+            </p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.98 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true, margin: "-10% 0px" }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          className="relative aspect-[1024/877] w-full overflow-hidden rounded-xl bg-[#f9f9f5] lg:rounded-2xl"
+        >
+          <Image
+            src={WHO_IMAGE}
+            alt="Meet the founders of Urban Aana"
+            fill
+            priority
+            unoptimized
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-contain object-center"
+          />
+        </motion.div>
+      </section>
+
+      {/* Mission */}
+      <section className="bg-[#222222]" style={{ color: "rgb(243, 241, 236)" }}>
+        <motion.div
+          {...fadeUp}
+          className="mx-auto max-w-[860px] px-6 py-16 text-center md:px-10 md:py-24"
+        >
+          <h2 className="title-knewave text-2xl leading-none tracking-tight normal-case !text-[rgb(243,241,236)] md:text-4xl">
+            Our <span className="title-knewave-accent">Mission</span>
+          </h2>
+          <div className="mx-auto mt-4 h-1 w-12 bg-brand-red" />
+          <p className="mt-6 text-base leading-relaxed text-[rgb(243,241,236)]/80 md:text-lg">
+            To create premium, culturally inspired streetwear that blends
+            comfort, creativity, and individuality.
+          </p>
+        </motion.div>
+      </section>
+
+      {/* Trust */}
+      <WhyUrbanAana
+        title={
+          <>
+            The <span className="title-knewave-accent">Trust</span>
+          </>
+        }
+      />
+    </div>
   );
 };
 

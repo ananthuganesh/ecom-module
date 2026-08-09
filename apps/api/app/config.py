@@ -4,7 +4,7 @@ from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _ENV_FILES = tuple(
     str(path)
     for path in (_REPO_ROOT / ".env", Path(".env"))

@@ -21,12 +21,16 @@ const BADGES = [
   },
 ];
 
-export default function WhyUrbanAana({ className = "" }) {
+export default function WhyUrbanAana({ className = "", title }) {
   return (
     <section className={`w-full bg-[#ffffff] text-[#222222] ${className}`.trim()}>
       <div className="mx-auto flex max-w-7xl flex-col items-center px-4 py-14 md:px-6 md:py-20 lg:px-8">
         <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
-          Why <span className="title-knewave-accent">Urban Aana</span>
+          {title ?? (
+            <>
+              Why <span className="title-knewave-accent">Urban Aana</span>
+            </>
+          )}
         </h2>
 
         <div className="mt-10 grid w-full grid-cols-4 gap-2 sm:mt-12 sm:gap-4 md:mt-14 md:gap-6">
