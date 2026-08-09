@@ -4,12 +4,33 @@ from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_ENV_FILES = tuple(
-    str(path)
-    for path in (_REPO_ROOT / ".env", Path(".env"))
-    if path.is_file()
-)
+_CONFIG_FILE = Path(__file__).resolve()
+
+
+def _env_file_candidates() -> tuple[Path, ...]:
+    """Resolve .env for monorepo (.../apps/api/app) and Docker (/app/app)."""
+    parents = _CONFIG_FILE.parents
+    candidates: list[Path] = []
+    # Package root: monorepo apps/api or Docker /app
+    if len(parents) > 1:
+        candidates.append(parents[1] / ".env")
+    # Monorepo repo root: .../ecom-module/.env
+    if len(parents) > 3:
+        candidates.append(parents[3] / ".env")
+    candidates.append(Path(".env"))
+    # Dedupe while preserving order
+    seen: set[str] = set()
+    out: list[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return tuple(out)
+
+
+_ENV_FILES = tuple(str(path) for path in _env_file_candidates() if path.is_file())
 
 
 class Settings(BaseSettings):
