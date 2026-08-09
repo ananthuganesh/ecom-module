@@ -2224,7 +2224,10 @@ async def aisensy_sync_catalog(_: AdminUser):
 
 @router.post("/abandoned-checkouts/{checkout_id}/send-recovery")
 async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
+    """Send abandoned-cart recovery via WhatsApp and/or email; persist per-channel status."""
     from app.services import aisensy as aisensy_svc
+    from app.services import cart_recovery
+    from app.services import email_resend as email_svc
 
     if not ObjectId.is_valid(checkout_id):
         raise HTTPException(status_code=400, detail="Invalid checkout id")
@@ -2234,25 +2237,85 @@ async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
     if checkout.status != "abandoned":
         raise HTTPException(status_code=400, detail="Checkout is no longer abandoned")
 
-    result = await aisensy_svc.notify_abandoned(checkout)
-    checkout.recoverySentAt = datetime.utcnow()
-    checkout.recoveryLastResult = {k: v for k, v in result.items() if k != "response"}
+    details = dict(checkout.customerDetails or {})
+    has_phone = bool(str(details.get("phone") or "").strip())
+    has_email = bool(str(details.get("email") or "").strip())
+
+    wa_result: dict = {"skipped": True, "reason": "no_phone"}
+    email_result: dict = {"skipped": True, "reason": "no_email"}
+
+    if has_phone:
+        try:
+            wa_result = await aisensy_svc.notify_abandoned(checkout)
+        except Exception as exc:
+            wa_result = {"ok": False, "error": str(exc)[:300]}
+
+    if has_email:
+        try:
+            await cart_recovery.ensure_recovery_token(checkout)
+            await checkout.save()
+            site = str(
+                os.environ.get("PUBLIC_WEB_URL")
+                or os.environ.get("NEXT_PUBLIC_SITE_URL")
+                or ""
+            ).rstrip("/")
+            token = checkout.recoveryToken
+            cart_link = (
+                f"{site}/cart/recover?token={token}" if site else f"/cart/recover?token={token}"
+            )
+            email_result = await email_svc.notify_abandoned_cart_email(
+                checkout, cart_link=cart_link
+            )
+        except Exception as exc:
+            email_result = {"ok": False, "error": str(exc)[:300]}
+
+    now = datetime.utcnow()
+    now_iso = now.isoformat()
+    prev = dict(checkout.recoveryLastResult or {})
+    # Preserve prior successful channel timestamps if this attempt skipped/failed that channel
+    email_sent_at = (
+        now_iso
+        if email_result.get("ok")
+        else prev.get("emailSentAt")
+    )
+    wa_sent_at = (
+        now_iso
+        if wa_result.get("ok")
+        else prev.get("whatsappSentAt")
+    )
+    checkout.recoveryLastResult = {
+        "whatsapp": {k: v for k, v in (wa_result or {}).items() if k != "response"},
+        "email": {k: v for k, v in (email_result or {}).items() if k != "response"},
+        **({"emailSentAt": email_sent_at} if email_sent_at else {}),
+        **({"whatsappSentAt": wa_sent_at} if wa_sent_at else {}),
+    }
+    if wa_result.get("ok") or email_result.get("ok"):
+        checkout.recoverySentAt = now
     await checkout.save()
 
-    if result.get("ok"):
-        from app.services import cart_recovery
-
+    if wa_result.get("ok") or email_result.get("ok"):
         return {
             "ok": True,
-            "result": {k: v for k, v in result.items() if k != "response"},
+            "result": {
+                "whatsapp": checkout.recoveryLastResult.get("whatsapp"),
+                "email": checkout.recoveryLastResult.get("email"),
+            },
             "checkout": cart_recovery.admin_checkout_dict(checkout),
         }
-    if result.get("skipped"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Recovery not sent: {result.get('reason')}. Map and enable the Abandoned campaign in AiSensy settings.",
-        )
-    raise HTTPException(status_code=502, detail="AiSensy send failed")
+
+    reasons = []
+    if wa_result.get("skipped"):
+        reasons.append(f"whatsapp: {wa_result.get('reason')}")
+    elif wa_result.get("error"):
+        reasons.append(f"whatsapp: {wa_result.get('error')}")
+    if email_result.get("skipped"):
+        reasons.append(f"email: {email_result.get('reason')}")
+    elif email_result.get("error"):
+        reasons.append(f"email: {email_result.get('error')}")
+    raise HTTPException(
+        status_code=400 if (wa_result.get("skipped") or email_result.get("skipped")) else 502,
+        detail="Recovery not sent: " + ("; ".join(reasons) or "unknown"),
+    )
 
 
 @router.get("/tax-classes")

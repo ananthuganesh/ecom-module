@@ -34,22 +34,45 @@ export function channelTone(status) {
   return "neutral";
 }
 
+function normalizeStoredStatus(stored) {
+  if (stored == null || stored === "") return null;
+  const s = String(stored).toLowerCase();
+  if (s === "sent" || s === "ok") return "Sent";
+  if (s === "failed" || s === "error") return "Failed";
+  if (s === "skipped") return "Skipped";
+  return null;
+}
+
+function nestedChannel(result, key) {
+  if (!result || typeof result !== "object") return null;
+  const nested = result[key];
+  return nested && typeof nested === "object" ? nested : null;
+}
+
 export function whatsappStatus(row) {
-  const fromResult = channelFromResult(row?.recoveryLastResult);
-  if (fromResult) return fromResult;
-  if (row?.recoverySentAt) return "Sent";
+  const last = row?.recoveryLastResult;
+  const nested = channelFromResult(nestedChannel(last, "whatsapp"));
+  if (nested) return nested;
+  // Legacy flat WhatsApp-only payload from POST send-recovery
+  if (last && !nestedChannel(last, "whatsapp") && !nestedChannel(last, "email")) {
+    const flat = channelFromResult(last);
+    if (flat) return flat;
+  }
+  const stored = normalizeStoredStatus(row?.whatsappStatus);
+  if (stored) return stored;
+  if (row?.whatsappSentAt) return "Sent";
   return "Not sent";
 }
 
 export function emailStatus(row) {
-  const stored = row?.emailStatus || row?.recoveryLastResult?.emailStatus;
-  if (stored) {
-    const s = String(stored).toLowerCase();
-    if (s === "sent" || s === "ok") return "Sent";
-    if (s === "failed") return "Failed";
-    if (s === "skipped") return "Skipped";
-  }
-  if (row?.emailSentAt) return "Sent";
+  const last = row?.recoveryLastResult;
+  const nested = channelFromResult(nestedChannel(last, "email"));
+  if (nested) return nested;
+  const stored = normalizeStoredStatus(
+    row?.emailStatus || last?.emailStatus
+  );
+  if (stored) return stored;
+  if (row?.emailSentAt || last?.emailSentAt) return "Sent";
   return "Not sent";
 }
 

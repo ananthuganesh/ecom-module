@@ -64,8 +64,16 @@ function mapCheckoutToRow(checkout) {
     status: checkout.status || "abandoned",
     recoverySentAt: checkout.recoverySentAt || null,
     recoveryLastResult: checkout.recoveryLastResult || null,
-    emailSentAt: checkout.emailSentAt || null,
+    emailSentAt:
+      checkout.emailSentAt ||
+      checkout.recoveryLastResult?.emailSentAt ||
+      null,
     emailStatus: checkout.emailStatus || null,
+    whatsappSentAt:
+      checkout.whatsappSentAt ||
+      checkout.recoveryLastResult?.whatsappSentAt ||
+      null,
+    whatsappStatus: checkout.whatsappStatus || null,
   };
 }
 

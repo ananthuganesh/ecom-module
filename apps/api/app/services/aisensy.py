@@ -816,10 +816,12 @@ async def process_due_abandoned_recoveries() -> dict[str, Any]:
             email_result = {"ok": False, "error": str(exc)[:300]}
 
         ok = bool(wa_result.get("ok") or email_result.get("ok"))
+        now_iso = datetime.utcnow().isoformat()
         checkout.recoveryLastResult = {
             "whatsapp": {k: v for k, v in (wa_result or {}).items() if k != "response"},
             "email": {k: v for k, v in (email_result or {}).items() if k != "response"},
-            **({"emailSentAt": datetime.utcnow().isoformat()} if email_result.get("ok") else {}),
+            **({"emailSentAt": now_iso} if email_result.get("ok") else {}),
+            **({"whatsappSentAt": now_iso} if wa_result.get("ok") else {}),
         }
         if ok:
             sent += 1

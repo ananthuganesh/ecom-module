@@ -964,7 +964,8 @@ async def notify_abandoned_cart_email(checkout, *, cart_link: str, user=None) ->
         return {"skipped": True, "reason": "no_email"}
 
     sent_meta = dict(getattr(checkout, "recoveryLastResult", None) or {})
-    if sent_meta.get("emailSentAt"):
+    email_ch = sent_meta.get("email") if isinstance(sent_meta.get("email"), dict) else {}
+    if sent_meta.get("emailSentAt") or email_ch.get("ok"):
         return {"skipped": True, "reason": "already_sent"}
 
     subject, html_body = await build_abandoned_cart_email_html(
