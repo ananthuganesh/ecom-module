@@ -3,108 +3,154 @@
 import {
   ArrowIcon,
   BagIcon,
-  CheckBurstIcon,
-  StoreIcon
 } from "@/components/icons/storeIcons";
-import { useSearchParams, useRouter } from "next/navigation";
+import BrandLogo from "@/components/BrandLogo";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { flushStashedPurchase, trackPurchaseOnce } from "@/lib/tracking";
 import { orderService } from "@/api";
 
+const REDIRECT_SECONDS = 6;
+
 function SuccessContent() {
-    const searchParams = useSearchParams();
-    const router = useRouter();
-    const orderId = searchParams.get("orderId");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const orderId = searchParams.get("orderId");
+  const [secondsLeft, setSecondsLeft] = useState(REDIRECT_SECONDS);
 
-    useEffect(() => {
-        if (!orderId) return;
-        const fromStash = flushStashedPurchase();
-        if (fromStash) return;
-        (async () => {
-            try {
-                const order = await orderService.getById(orderId);
-                if (!order) return;
-                const items = (order.orderItems || order.items || []).map((i) => ({
-                    _id: i.product || i.productId || i._id,
-                    productName: i.name || i.productName,
-                    price: i.price,
-                    qty: i.qty || i.quantity || 1,
-                    category: i.category,
-                    brand: i.brand || "Urban Aana",
-                }));
-                trackPurchaseOnce({
-                    transactionId: order._id || orderId,
-                    value: order.finalPrice ?? order.totalPrice ?? order.total,
-                    items,
-                });
-            } catch {
-                /* ignore */
-            }
-        })();
-    }, [orderId]);
+  useEffect(() => {
+    if (!orderId) return;
+    const fromStash = flushStashedPurchase();
+    if (fromStash) return;
+    (async () => {
+      try {
+        const order = await orderService.getById(orderId);
+        if (!order) return;
+        const items = (order.orderItems || order.items || []).map((i) => ({
+          _id: i.product || i.productId || i._id,
+          productName: i.name || i.productName,
+          price: i.price,
+          qty: i.qty || i.quantity || 1,
+          category: i.category,
+          brand: i.brand || "Urban Aana",
+        }));
+        trackPurchaseOnce({
+          transactionId: order._id || orderId,
+          value: order.finalPrice ?? order.totalPrice ?? order.total,
+          items,
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [orderId]);
 
-    if (!orderId) {
-        return (
-            <div className="text-center py-20">
-                <h1 className="text-2xl font-bold uppercase tracking-widest mb-4">No Order Found</h1>
-                <Link href="/all-products" className="btn-primary inline-block">Back to All Products</Link>
-            </div>
-        );
-    }
+  useEffect(() => {
+    if (!orderId) return;
 
+    const interval = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [orderId]);
+
+  useEffect(() => {
+    if (!orderId || secondsLeft > 0) return;
+    router.replace("/");
+  }, [orderId, secondsLeft, router]);
+
+  if (!orderId) {
     return (
-        <div className="max-w-2xl mx-auto px-6">
-            <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-white p-12 shadow-sm border border-gray-50 text-center"
-            >
-                <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-8">
-                    <CheckBurstIcon className="w-10 h-10 text-emerald-500" />
-                </div>
-
-                <h1 className="text-3xl font-bold uppercase tracking-tight mb-4">Order Successful!</h1>
-                <p className="text-gray-500 mb-8 max-w-sm mx-auto">
-                    Thank you for your purchase. Your order <span className="text-black font-bold">#{orderId.slice(-8)}</span> has been placed successfully.
-                </p>
-
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                    <Link 
-                        href={`/order/${orderId}`}
-                        className="btn-primary w-full sm:w-auto flex items-center justify-center space-x-2 px-8"
-                    >
-                        <span>View Order Details</span>
-                        <ArrowIcon className="w-4 h-4" />
-                    </Link>
-                    <Link 
-                        href="/all-products"
-                        className="btn-outline w-full sm:w-auto flex items-center justify-center space-x-2 px-8"
-                    >
-                        <BagIcon className="w-4 h-4" />
-                        <span>Continue Shopping</span>
-                    </Link>
-                </div>
-
-                <div className="mt-12 pt-12 border-t border-gray-100 flex items-center justify-center space-x-2 text-[10px] uppercase tracking-widest font-bold text-gray-400">
-                    <StoreIcon className="w-3 h-3" />
-                    <Link href="/" className="hover:text-primary transition-colors">Back to Home</Link>
-                </div>
-            </motion.div>
+      <div className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo href="/" height={32} priority />
         </div>
+        <h1 className="text-[18px] font-semibold tracking-tight text-gray-900 sm:text-2xl">
+          No order found
+        </h1>
+        <p className="mt-3 text-sm text-gray-500">
+          We couldn&apos;t find an order to show.
+        </p>
+        <Link
+          href="/all-products"
+          className="mt-8 inline-flex items-center justify-center rounded-md bg-[#222222] px-6 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-black"
+        >
+          Back to all products
+        </Link>
+      </div>
     );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="rounded-xl border border-gray-200 bg-white p-6 text-center sm:p-10"
+    >
+      <div className="mb-6 flex justify-center">
+        <BrandLogo href="/" height={32} priority />
+      </div>
+      <h1 className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
+        Order successful
+      </h1>
+      <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-gray-500">
+        Thank you for your purchase. Your order{" "}
+        <span className="font-semibold text-gray-900">#{orderId.slice(-8)}</span>{" "}
+        has been placed successfully.
+      </p>
+
+      <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+        <Link
+          href={`/order/${orderId}`}
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#222222] px-6 py-3.5 text-[15px] font-semibold text-white transition-colors hover:bg-black"
+        >
+          <span>View order details</span>
+          <ArrowIcon className="h-4 w-4" />
+        </Link>
+        <Link
+          href="/all-products"
+          className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-6 py-3.5 text-[15px] font-semibold text-gray-900 transition-colors hover:border-gray-900"
+        >
+          <BagIcon className="h-4 w-4" />
+          <span>Continue shopping</span>
+        </Link>
+      </div>
+
+      <p className="mt-8 text-sm text-gray-500">
+        Redirecting to home in{" "}
+        <span className="font-semibold text-gray-900">{secondsLeft}s</span>
+      </p>
+    </motion.div>
+  );
 }
 
 export default function OrderSuccessPage() {
-    return (
-        <main className="min-h-screen bg-[#fcfcfc]">
-            <section className="pt-32 pb-20">
-                <Suspense fallback={<div className="text-center py-20 uppercase tracking-widest text-[10px] font-bold">Loading...</div>}>
-                    <SuccessContent />
-                </Suspense>
-            </section>
-        </main>
-    );
+  return (
+    <main className="min-h-screen bg-[#F9F9F5]">
+      <section className="flex min-h-screen items-center justify-center px-4 py-24">
+        <div className="w-full max-w-lg">
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-gray-200 bg-white px-6 py-16 text-center text-sm text-gray-500">
+                Loading…
+              </div>
+            }
+          >
+            <SuccessContent />
+          </Suspense>
+        </div>
+      </section>
+    </main>
+  );
 }

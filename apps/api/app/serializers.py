@@ -114,18 +114,35 @@ def remap_order(
         if customer_id
         else None
     )
+    from app.services.variants import find_variant
+
     items = []
     enriched_items = []
     for it in order.items or []:
         pid = oid_str(it.productId)
-        name = "Product"
-        image = None
+        # Prefer values snapshotted on the line item so deleted/changed products
+        # still show the correct name/image on order pages.
+        name = (getattr(it, "productName", None) or "").strip() or "Product"
+        image = (getattr(it, "image", None) or "").strip() or None
         product = product_map.get(pid) if product_map and pid else None
         if product:
-            name = product.productName or product.product or product.name or "Product"
-            image = (product.thumbnails[0] if product.thumbnails else None) or (
-                product.variants[0].images[0] if product.variants and product.variants[0].images else None
+            live_name = (
+                product.productName or product.product or product.name or ""
+            ).strip()
+            if live_name and (not name or name.lower() == "product"):
+                name = live_name
+            matched = find_variant(
+                product, color=getattr(it, "color", "") or "", size=getattr(it, "size", "") or ""
             )
+            variant_image = None
+            if matched and getattr(matched, "images", None):
+                variant_image = next((img for img in matched.images if img), None)
+            catalog_image = (product.thumbnails[0] if product.thumbnails else None) or (
+                product.variants[0].images[0]
+                if product.variants and product.variants[0].images
+                else None
+            )
+            image = image or variant_image or catalog_image
         items.append(
             {
                 "name": name,
@@ -138,10 +155,14 @@ def remap_order(
             }
         )
         item = _jsonify(it.model_dump(mode="python"))
+        if not item.get("productName"):
+            item["productName"] = name
+        if not item.get("image"):
+            item["image"] = image
         item["productId"] = (
             product_dict(product)
             if product
-            else {"_id": pid, "productId": pid, "productName": "Product", "thumbnails": []}
+            else {"_id": pid, "productId": pid, "productName": name, "thumbnails": []}
         )
         enriched_items.append(item)
     po["items"] = enriched_items
