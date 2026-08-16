@@ -40,7 +40,11 @@ from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
 from app.services import erp_ops
 from app.services.rate_limit import rate_limit_dependency
 from app.services.shipping_settings import get_shipping_settings as load_shipping_settings
-from app.services.stock import apply_order_commitments, reserve_order_stock
+from app.services.stock import (
+    apply_catalog_quantities_to_ledger,
+    apply_order_commitments,
+    reserve_order_stock,
+)
 from app.services.store_settings import (
     get_notification_prefs,
     get_payment_methods,
@@ -666,6 +670,12 @@ async def admin_create_product(body: dict, _: AdminUser):
         )
     except Exception:
         pass
+    try:
+        product = await apply_catalog_quantities_to_ledger(product) or product
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     return doc_to_dict(product)
 
 
@@ -758,6 +768,8 @@ async def admin_update_product(product_id: str, body: dict, _: AdminUser):
         )
     except Exception:
         pass
+    if "variants" in body or "totalStock" in body:
+        product = await apply_catalog_quantities_to_ledger(product) or product
     return doc_to_dict(product)
 
 
@@ -824,6 +836,8 @@ async def bulk_products(body: dict, _: AdminUser):
 
             product.updatedAt = datetime.utcnow()
             await product.save()
+            if entry.get("variants") is not None:
+                await apply_catalog_quantities_to_ledger(product)
             count += 1
         return {"updated": count}
 

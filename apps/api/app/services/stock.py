@@ -70,14 +70,25 @@ async def ensure_balance_seeded_from_product(
     warehouse_id: str,
     variant_sku: str = "",
 ) -> StockBalance:
-    """If warehouse balance is empty, copy opening qty from product/variant once."""
-    bal = await get_or_create_balance(product_id, warehouse_id, variant_sku)
+    """If warehouse balance is empty, copy opening qty from product/variant once.
+
+    Sold-out rows are quantity=0/reserved=0 with prior movements — never treat
+    those as "unseeded" or a later order will resurrect catalog qty.
+    """
+    sku = (variant_sku or "").strip()
+    bal = await get_or_create_balance(product_id, warehouse_id, sku)
     if int(bal.quantity or 0) > 0 or int(bal.reserved or 0) > 0:
+        return bal
+    prior = await StockMovement.find_one(
+        StockMovement.productId == product_id,
+        StockMovement.warehouseId == warehouse_id,
+        StockMovement.variantSku == sku,
+    )
+    if prior:
         return bal
     product = await Product.get(ObjectId(product_id)) if ObjectId.is_valid(product_id) else None
     if not product:
         return bal
-    sku = (variant_sku or "").strip()
     seed = 0
     if sku and product.variants:
         for v in product.variants:
@@ -138,6 +149,66 @@ async def sync_product_stock(product_id: str) -> Product | None:
     product.updatedAt = datetime.utcnow()
     await product.save()
     return product
+
+
+async def apply_catalog_quantities_to_ledger(
+    product: Product,
+    *,
+    reason: str = "Product catalog quantity update",
+    created_by: str | None = None,
+) -> Product | None:
+    """Write variant Available counts onto the warehouse ledger.
+
+    Sales, payment capture, and inventory sync call sync_product_stock(), which
+    overwrites Product.variants[].quantity from StockBalance. The product form
+    used to save only the catalog copy — after a sell-out the ledger stayed at
+    0, so the next sync snapped Available back to 0.
+    """
+    if not product or not getattr(product, "id", None):
+        return product
+
+    wh = await ensure_default_warehouse()
+    wh_id = str(wh.id)
+    pid = str(product.id)
+    variants = list(product.variants or [])
+
+    sku_targets: list[tuple[str, int]] = []
+    seen: set[str] = set()
+    for variant in variants:
+        sku = (getattr(variant, "sku", None) or "").strip()
+        if not sku or sku in seen:
+            continue
+        seen.add(sku)
+        sku_targets.append((sku, max(0, int(getattr(variant, "quantity", 0) or 0))))
+
+    if sku_targets:
+        targets = sku_targets
+    else:
+        desired = max(0, int(product.totalStock or 0))
+        if desired <= 0 and variants:
+            desired = sum(max(0, int(getattr(v, "quantity", 0) or 0)) for v in variants)
+        targets = [("", desired)]
+
+    for sku, desired_available in targets:
+        bal = await get_or_create_balance(pid, wh_id, sku)
+        reserved = int(bal.reserved or 0)
+        unavailable = int(getattr(bal, "unavailable", 0) or 0)
+        desired_on_hand = desired_available + reserved + unavailable
+        current_on_hand = int(bal.quantity or 0)
+        delta = desired_on_hand - current_on_hand
+        if delta == 0:
+            continue
+        await apply_stock_change(
+            product_id=pid,
+            warehouse_id=wh_id,
+            quantity_delta=delta,
+            movement_type="adjustment",
+            variant_sku=sku,
+            reason=reason,
+            created_by=created_by,
+        )
+
+    return await Product.get(product.id)
 
 
 async def reserve_stock(
