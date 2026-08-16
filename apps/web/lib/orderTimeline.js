@@ -1,3 +1,5 @@
+import { ADMIN_TIME_ZONE, parseAdminDate } from "@/utils/formatAdminDateTime";
+
 function touchKey(t) {
   if (!t) return "";
   return [t.source, t.medium, t.campaign, t.content, t.term, t.gclid, t.fbclid]
@@ -114,43 +116,56 @@ function isInTransitLike(order) {
   );
 }
 
-/** Local calendar day key YYYY-MM-DD for grouping. */
+/** India calendar day key YYYY-MM-DD for grouping. */
 export function timelineDayKey(iso) {
-  if (!iso) return "unknown";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "unknown";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const d = parseAdminDate(iso);
+  if (!d) return "unknown";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ADMIN_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 /** Shopify-style day label: Today / Yesterday / July 26 */
 export function formatTimelineDayLabel(iso, now = new Date()) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = parseAdminDate(iso);
+  if (!d) return "";
 
-  const startOf = (date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dayMs = 24 * 60 * 60 * 1000;
-  const diffDays = Math.round((startOf(now) - startOf(d)) / dayMs);
+  const dayKey = (date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: ADMIN_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  const todayKey = dayKey(now);
+  const thatKey = dayKey(d);
+  if (thatKey === todayKey) return "Today";
+
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (thatKey === dayKey(yesterday)) return "Yesterday";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: ADMIN_TIME_ZONE,
+  }).format(d);
 }
 
 /** Time only, e.g. 9:55 PM */
 export function formatTimelineTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("en-US", {
+  const d = parseAdminDate(iso);
+  if (!d) return "";
+  return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  });
+    timeZone: ADMIN_TIME_ZONE,
+  })
+    .format(d)
+    .replace(/\u202f/g, " ");
 }
 
 /**
@@ -162,8 +177,8 @@ export function groupTimelineByDay(steps, now = new Date()) {
   const timeOf = (step) => {
     const raw = step?.sortAt || step?.at;
     if (!raw) return Number.NEGATIVE_INFINITY;
-    const t = new Date(raw).getTime();
-    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+    const t = parseAdminDate(raw)?.getTime();
+    return t == null || Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
   };
 
   const withIndex = (steps || []).map((step, index) => ({ step, index }));

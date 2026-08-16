@@ -10,7 +10,7 @@ import {
 import { printHtml } from "@/utils/printHtml";
 import { buildMultiInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
 import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
-import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
+import { formatAdminDateTime, parseAdminDate } from "@/utils/formatAdminDateTime";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
 import { Download, FileText, Loader2, Search } from "lucide-react";
@@ -193,8 +193,8 @@ export default function AdminOrdersPage() {
           resolveFulfillmentDisplay(b).label
         );
       }
-      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const at = parseAdminDate(a.createdAt)?.getTime() || 0;
+      const bt = parseAdminDate(b.createdAt)?.getTime() || 0;
       return bt - at;
     });
     return sorted;

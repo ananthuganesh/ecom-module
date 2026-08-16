@@ -20,6 +20,7 @@ import { gstRateForUnitPrice, roundMoney, splitInclusiveGst } from "@/utils/gstR
 import { displayCustomerName } from "@/utils/displayCustomerName";
 import { formatOrderNumber, adminOrderHref, orderUrlKey } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
+import { formatAdminLongDateTime } from "@/utils/formatAdminDateTime";
 import { formatPhone } from "@/utils/formatPhone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -153,22 +154,7 @@ function formatInstrumentLabel(order) {
 }
 
 function formatOrderDateTime(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const datePart = d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-  const timePart = d
-    .toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
-    .toLowerCase();
-  return `${datePart} at ${timePart}`;
+  return formatAdminLongDateTime(iso);
 }
 
 function CopyableValue({ value, uppercase = false }) {

@@ -1,3 +1,4 @@
+from datetime import date, datetime, timezone
 from typing import Any
 
 from bson import ObjectId
@@ -16,6 +17,14 @@ def _jsonify(value: Any) -> Any:
         return None
     if isinstance(value, ObjectId):
         return str(value)
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        iso = dt.isoformat()
+        if iso.endswith("+00:00"):
+            iso = f"{iso[:-6]}Z"
+        return iso
+    if isinstance(value, date):
+        return value.isoformat()
     if isinstance(value, list):
         return [_jsonify(v) for v in value]
     if isinstance(value, dict):
