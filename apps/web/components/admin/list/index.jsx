@@ -57,8 +57,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
-export function AdminListLayout({ title, actions, metrics, filters, children, aside, fill = true }) {
-  const showHeader = Boolean(title) || Boolean(actions);
+export function AdminListLayout({
+  title,
+  description,
+  actions,
+  metrics,
+  filters,
+  children,
+  aside,
+  fill = true,
+}) {
+  const showHeader = Boolean(title) || Boolean(actions) || Boolean(description);
 
   return (
     <div
@@ -85,11 +94,20 @@ export function AdminListLayout({ title, actions, metrics, filters, children, as
           {showHeader || metrics || filters ? (
             <div className="shrink-0">
               {showHeader ? (
-                <div className="mb-5 flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  {title ? (
-                    <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
-                      {title}
-                    </h1>
+                <div className="mb-5 flex w-full flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  {title || description ? (
+                    <div className="min-w-0">
+                      {title ? (
+                        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+                          {title}
+                        </h1>
+                      ) : null}
+                      {description ? (
+                        <p className="mt-1 max-w-[42rem] text-[13px] leading-5 text-[#616161]">
+                          {description}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : (
                     <div />
                   )}

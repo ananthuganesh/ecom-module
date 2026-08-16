@@ -47,7 +47,7 @@ export default function ProductInventoryCard({ form, setForm }) {
             <tbody>
               <tr>
                 <td className="px-3 py-2.5 text-[13px] text-[#303030]">
-                  Store default
+                  Main Warehouse
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   {multiVariant ? (
@@ -73,11 +73,11 @@ export default function ProductInventoryCard({ form, setForm }) {
           </table>
         </div>
 
-        {multiVariant ? (
-          <p className="text-[12px] text-[#8a8a8a]">
-            Stock for optioned products is managed per variant below.
-          </p>
-        ) : null}
+        <p className="text-[12px] text-[#8a8a8a]">
+          {multiVariant
+            ? "Total available across sizes. Edit each variant below, or use Products → Inventory to adjust a SKU."
+            : "Available at Main Warehouse. Saving this product updates warehouse stock; you can also adjust SKUs in Products → Inventory."}
+        </p>
       </CardContent>
     </Card>
   );
