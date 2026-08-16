@@ -28,6 +28,7 @@ import {
   resolveFulfillmentDisplay,
   paymentLabel,
 } from "./columns";
+import { ordersListKey, useAdminOrdersStore } from "@/store/useAdminOrdersStore";
 
 const PAGE_SIZE = 25;
 
@@ -38,18 +39,30 @@ export default function AdminOrdersPage() {
   const scopeFromUrl = searchParams.get("scope") || "";
   const shippingStatusFromUrl = searchParams.get("shippingStatus") || "";
   const qFromUrl = searchParams.get("q") || "";
+  const cached = useAdminOrdersStore.getState();
+  const initialSearch = qFromUrl || cached.searchQ || "";
+  const initialDate = cached.dateFilter || { preset: "all" };
+  const initialView = cached.viewFilter || "all";
+  const initialHide = Boolean(cached.hideArchived);
+  const initialKey = ordersListKey({
+    viewFilter: initialView,
+    hideArchived: initialHide,
+    dateFilter: initialDate,
+    q: initialSearch,
+  });
+  const cacheHit = cached.cacheKey === initialKey && Array.isArray(cached.orders) && cached.orders.length > 0;
 
-  const [orders, setOrders] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState(() => (cacheHit ? cached.orders : []));
+  const [page, setPage] = useState(() => (cacheHit ? cached.page || 1 : 1));
+  const [hasMore, setHasMore] = useState(() => (cacheHit ? Boolean(cached.hasMore) : false));
+  const [loading, setLoading] = useState(() => !cacheHit);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [dateFilter, setDateFilter] = useState({ preset: "all" });
-  const [viewFilter, setViewFilter] = useState("all");
-  const [hideArchived, setHideArchived] = useState(false);
-  const [sortBy, setSortBy] = useState("date");
-  const [searchQ, setSearchQ] = useState(qFromUrl);
-  const [debouncedQ, setDebouncedQ] = useState(qFromUrl);
+  const [dateFilter, setDateFilter] = useState(() => initialDate);
+  const [viewFilter, setViewFilter] = useState(() => initialView);
+  const [hideArchived, setHideArchived] = useState(() => initialHide);
+  const [sortBy, setSortBy] = useState(() => cached.sortBy || "date");
+  const [searchQ, setSearchQ] = useState(() => initialSearch);
+  const [debouncedQ, setDebouncedQ] = useState(() => initialSearch);
   const [rowSelection, setRowSelection] = useState({});
   const [isBulkLoading, setIsBulkLoading] = useState(false);
   const [isPrintingInvoices, setIsPrintingInvoices] = useState(false);
@@ -61,15 +74,16 @@ export default function AdminOrdersPage() {
   );
 
   const handleDateFilterChange = (next) => {
-    if (typeof next === "string") {
-      setDateFilter({ preset: next });
-      return;
-    }
-    setDateFilter({
-      preset: next?.preset || (next?.from ? "custom" : "all"),
-      from: next?.from || undefined,
-      to: next?.to || undefined,
-    });
+    const value =
+      typeof next === "string"
+        ? { preset: next }
+        : {
+            preset: next?.preset || (next?.from ? "custom" : "all"),
+            from: next?.from || undefined,
+            to: next?.to || undefined,
+          };
+    setDateFilter(value);
+    useAdminOrdersStore.getState().patch({ dateFilter: value });
   };
 
   // Legacy /admin/orders?scope=shipment → /admin/shipments
@@ -95,6 +109,7 @@ export default function AdminOrdersPage() {
   }, [pathname, searchParams, scopeFromUrl, router]);
 
   useEffect(() => {
+    if (!qFromUrl) return;
     setSearchQ(qFromUrl);
     setDebouncedQ(qFromUrl);
   }, [qFromUrl]);
@@ -124,29 +139,76 @@ export default function AdminOrdersPage() {
     [viewFilter, hideArchived, dateFilter, debouncedQ]
   );
 
+  const ordersRef = useRef([]);
+  ordersRef.current = orders;
+  const loadingMoreRef = useRef(false);
+  loadingMoreRef.current = loadingMore;
+  const lastLoadedAtRef = useRef(0);
+
+  const listKey = ordersListKey({
+    viewFilter,
+    hideArchived,
+    dateFilter,
+    q: debouncedQ,
+  });
+
   const fetchPage = useCallback(
-    async (pageNum, { append } = {}) => {
+    async (pageNum, { append, silent } = {}) => {
+      if (silent && loadingMoreRef.current) return;
+      if (silent && Date.now() - lastLoadedAtRef.current < 8_000) return;
       const gen = ++fetchGen.current;
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else if (!silent) setLoading(true);
       try {
         const data = await adminOrderService.getAll(buildParams(pageNum));
         if (gen !== fetchGen.current) return;
+        lastLoadedAtRef.current = Date.now();
         const { items, hasMore: more } = unwrapPage(data, { fallbackLimit: PAGE_SIZE });
         const list = items.filter((o) => o.status !== "abandoned");
-        setOrders((prev) => {
-          if (!append) return list;
+        const prev = ordersRef.current;
+        let next = list;
+        if (append) {
           const seen = new Set(prev.map((o) => o._id));
-          return [...prev, ...list.filter((o) => !seen.has(o._id))];
+          next = [...prev, ...list.filter((o) => !seen.has(o._id))];
+        } else if (silent && prev.length > list.length) {
+          const seen = new Set();
+          next = [];
+          for (const row of list) {
+            next.push(row);
+            seen.add(row._id);
+          }
+          for (const row of prev) {
+            if (!seen.has(row._id)) next.push(row);
+          }
+        }
+        setOrders(next);
+        if (append) {
+          setPage(pageNum);
+          setHasMore(more);
+        } else if (!(silent && prev.length > list.length)) {
+          setPage(1);
+          setHasMore(more);
+        }
+        const store = useAdminOrdersStore.getState();
+        store.saveSnapshot({
+          cacheKey: listKey,
+          orders: next,
+          page: append ? pageNum : silent && prev.length > list.length ? store.page : 1,
+          hasMore: append ? more : silent && prev.length > list.length ? store.hasMore : more,
+          dateFilter,
+          viewFilter,
+          hideArchived,
+          sortBy: store.sortBy,
+          searchQ: debouncedQ,
         });
-        setPage(pageNum);
-        setHasMore(more);
       } catch (error) {
         if (gen !== fetchGen.current) return;
         console.error("Error fetching admin orders:", error);
-        if (!append) setOrders([]);
-        setHasMore(false);
-        toast.error("Failed to fetch orders");
+        if (!append && !silent) {
+          setOrders([]);
+          setHasMore(false);
+          toast.error("Failed to fetch orders");
+        }
       } finally {
         if (gen === fetchGen.current) {
           setLoading(false);
@@ -154,13 +216,30 @@ export default function AdminOrdersPage() {
         }
       }
     },
-    [buildParams]
+    [buildParams, listKey, dateFilter, viewFilter, hideArchived, debouncedQ]
   );
 
   useEffect(() => {
     setRowSelection({});
-    fetchPage(1, { append: false });
-  }, [fetchPage]);
+    const hit =
+      useAdminOrdersStore.getState().cacheKey === listKey &&
+      (useAdminOrdersStore.getState().orders || []).length > 0;
+    fetchPage(1, { append: false, silent: hit });
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchPage(1, { append: false, silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    const pollId = window.setInterval(refreshIfVisible, 45_000);
+    return () => {
+      window.clearInterval(pollId);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+    };
+  }, [fetchPage, listKey]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -397,7 +476,10 @@ export default function AdminOrdersPage() {
         rowHeightClass="h-8"
         showColumnsMenuHideArchived
         columnsMenuHideArchived={hideArchived}
-        onColumnsMenuHideArchivedChange={setHideArchived}
+        onColumnsMenuHideArchivedChange={(value) => {
+          setHideArchived(value);
+          useAdminOrdersStore.getState().patch({ hideArchived: value });
+        }}
         columnsMenuSortOptions={[
           { value: "date", label: "Date" },
           { value: "customer", label: "Customer" },
@@ -406,7 +488,10 @@ export default function AdminOrdersPage() {
           { value: "fulfillment", label: "Fulfilment status" },
         ]}
         columnsMenuSortValue={sortBy}
-        onColumnsMenuSortChange={setSortBy}
+        onColumnsMenuSortChange={(value) => {
+          setSortBy(value);
+          useAdminOrdersStore.getState().patch({ sortBy: value });
+        }}
         getRowClassName={(order) =>
           isMutedFulfillmentRow(order) ? "text-muted-foreground" : undefined
         }
@@ -450,7 +535,10 @@ export default function AdminOrdersPage() {
             <>
               <AdminViewMenu
                 value={viewFilter}
-                onChange={setViewFilter}
+                onChange={(value) => {
+                  setViewFilter(value);
+                  useAdminOrdersStore.getState().patch({ viewFilter: value });
+                }}
                 options={[
                   { value: "all", label: "All" },
                   { value: "unfulfilled", label: "Unfulfilled" },

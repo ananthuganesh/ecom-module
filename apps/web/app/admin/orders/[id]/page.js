@@ -31,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
-import { paymentLabel, paymentTone, resolveFulfillmentDisplay } from "@/app/admin/orders/columns";
+import { paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
 import {
   Card,
   CardContent,
@@ -59,7 +59,7 @@ const ORDER_STATUS_LABELS = {
 function AttributionTouchRows({ touch }) {
   if (!touch) return <p className="text-[13px] font-medium text-muted-foreground">Direct / none</p>;
   const rows = [
-    ["Source", touch.source],
+    ["Source", channelDisplayName(touch.source)],
     ["Medium", touch.medium],
     ["Campaign", touch.campaign],
     ["Content", touch.content],

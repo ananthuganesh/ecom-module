@@ -84,6 +84,8 @@ export function createProductColumns({ categories = [] } = {}) {
     selectColumn(),
     {
       id: "product",
+      size: 280,
+      meta: { className: "w-[280px]" },
       accessorFn: (row) => row.productName || row.name || "",
       header: "Product",
       cell: ({ row }) => {
@@ -109,6 +111,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "status",
+      size: 128,
+      meta: { className: "w-[128px]" },
       accessorFn: (row) => productStatus(row),
       header: "Status",
       cell: ({ row }) => {
@@ -132,6 +136,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "inventory",
+      size: 96,
+      meta: { className: "w-24" },
       accessorFn: (row) => Number(row.totalStock ?? row.countInStock ?? 0),
       header: "Inventory",
       cell: ({ row }) => (
@@ -142,6 +148,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "category",
+      size: 140,
+      meta: { className: "w-[140px]" },
       accessorFn: (row) => resolveCategoryName(categories, row.category),
       header: "Category",
       cell: ({ row }) => (
@@ -152,6 +160,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "type",
+      size: 140,
+      meta: { className: "w-[140px]" },
       accessorFn: (row) =>
         resolveCategoryName(categories, row.type || row.subcategory),
       header: "Product type",
@@ -166,6 +176,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "actions",
+      size: 48,
+      meta: { className: "w-12" },
       enableSorting: false,
       enableHiding: false,
       header: "",

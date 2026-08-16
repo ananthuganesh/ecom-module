@@ -96,6 +96,8 @@ export function createInventoryColumns() {
     selectColumn(),
     {
       id: "product",
+      size: 280,
+      meta: { className: "w-[280px]" },
       accessorFn: (row) => row.productName || "",
       header: "Product",
       enableHiding: false,
@@ -122,6 +124,8 @@ export function createInventoryColumns() {
     },
     {
       id: "sku",
+      size: 140,
+      meta: { className: "w-[140px]" },
       accessorFn: (row) => row.variantSku || "",
       header: "SKU",
       cell: ({ row }) => (
@@ -132,53 +136,58 @@ export function createInventoryColumns() {
     },
     {
       id: "unavailable",
+      size: 108,
+      meta: { label: "Unavailable", className: "w-[108px]" },
       accessorFn: (row) => inventoryBuckets(row).unavailable,
       header: () => (
         <QtyHeader label="Unavailable" help={COLUMN_HELP.unavailable} />
       ),
-      meta: { label: "Unavailable" },
       cell: ({ row }) => (
         <QtyCell value={inventoryBuckets(row.original).unavailable} />
       ),
     },
     {
       id: "committed",
+      size: 108,
+      meta: { label: "Committed", className: "w-[108px]" },
       accessorFn: (row) => inventoryBuckets(row).committed,
       header: () => (
         <QtyHeader label="Committed" help={COLUMN_HELP.committed} />
       ),
-      meta: { label: "Committed" },
       cell: ({ row }) => (
         <QtyCell value={inventoryBuckets(row.original).committed} />
       ),
     },
     {
       id: "available",
+      size: 108,
+      meta: { label: "Available", className: "w-[108px]" },
       accessorFn: (row) => inventoryBuckets(row).available,
       header: () => (
         <QtyHeader label="Available" help={COLUMN_HELP.available} />
       ),
-      meta: { label: "Available" },
       cell: ({ row }) => (
         <QtyCell value={inventoryBuckets(row.original).available} />
       ),
     },
     {
       id: "onHand",
+      size: 96,
+      meta: { label: "On hand", className: "w-24" },
       accessorFn: (row) => inventoryBuckets(row).onHand,
       header: () => <QtyHeader label="On hand" help={COLUMN_HELP.onHand} />,
-      meta: { label: "On hand" },
       cell: ({ row }) => (
         <QtyCell value={inventoryBuckets(row.original).onHand} />
       ),
     },
     {
       id: "incoming",
+      size: 96,
+      meta: { label: "Incoming", className: "w-24" },
       accessorFn: (row) => inventoryBuckets(row).incoming,
       header: () => (
         <QtyHeader label="Incoming" help={COLUMN_HELP.incoming} />
       ),
-      meta: { label: "Incoming" },
       cell: ({ row }) => (
         <QtyCell value={inventoryBuckets(row.original).incoming} />
       ),

@@ -331,22 +331,16 @@ export function DataTable({
               {toolbarNode}
             </div>
             {showColumnsMenu ? (
-              <>
-                <div
-                  className="h-5 w-px shrink-0 bg-[#e3e3e3]"
-                  aria-hidden
-                />
-                <DataTableColumnsMenu
-                  table={table}
-                  columnIds={columnsMenuIds}
-                  sortOptions={columnsMenuSortOptions}
-                  sortValue={columnsMenuSortValue}
-                  onSortChange={onColumnsMenuSortChange}
-                  hideArchived={columnsMenuHideArchived}
-                  onHideArchivedChange={onColumnsMenuHideArchivedChange}
-                  showHideArchived={showColumnsMenuHideArchived}
-                />
-              </>
+              <DataTableColumnsMenu
+                table={table}
+                columnIds={columnsMenuIds}
+                sortOptions={columnsMenuSortOptions}
+                sortValue={columnsMenuSortValue}
+                onSortChange={onColumnsMenuSortChange}
+                hideArchived={columnsMenuHideArchived}
+                onHideArchivedChange={onColumnsMenuHideArchivedChange}
+                showHideArchived={showColumnsMenuHideArchived}
+              />
             ) : null}
           </div>
         ) : null}

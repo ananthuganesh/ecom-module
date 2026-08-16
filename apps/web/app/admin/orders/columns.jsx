@@ -147,9 +147,25 @@ export function isMutedFulfillmentRow(order) {
 
 function attributionTag(order) {
   const touch = order?.attribution?.lastTouch || order?.attribution?.firstTouch || {};
-  const source = String(touch.source || "").trim();
-  if (!source || source.toLowerCase() === "direct") return "Direct";
-  return source;
+  return channelDisplayName(touch.source);
+}
+
+function channelDisplayName(source) {
+  const raw = String(source || "").trim();
+  const s = raw.toLowerCase();
+  if (!s || ["direct", "(direct)", "none", "n/a", "(none)"].includes(s)) return "Direct";
+  if (s === "ig" || s.includes("instagram")) return "Instagram";
+  if (s === "fb" || s === "meta" || s.includes("facebook") || s.includes("fbclid")) {
+    return "Facebook";
+  }
+  if (s.includes("whatsapp") || s === "wa") return "WhatsApp";
+  if (s.includes("youtube") || s === "yt") return "YouTube";
+  if (s.includes("google") || s === "gclid") return "Google";
+  if (s.includes("tiktok")) return "TikTok";
+  if (s.includes("pinterest")) return "Pinterest";
+  if (s.includes("linkedin")) return "LinkedIn";
+  if (s === "x" || s.includes("twitter")) return "X";
+  return raw.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function paymentLabel(status) {
@@ -313,16 +329,18 @@ function locationColumn({ widthClass, size } = {}) {
   };
 }
 
-function totalColumn() {
+function totalColumn({ widthClass = "w-[100px]", size = 100 } = {}) {
   return {
     id: "total",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => Number(row.finalPrice ?? row.total ?? 0),
     header: "Total",
     cell: ({ row }) => {
       const order = row.original;
       const { ink, wt } = orderCellMeta(order);
       return (
-        <span className={`text-[13px] ${wt} ${ink}`}>
+        <span className={`text-[13px] tabular-nums ${wt} ${ink}`}>
           {formatINR(order.finalPrice ?? order.total ?? 0)}
         </span>
       );
@@ -358,9 +376,11 @@ function dtdcEstColumn({ widthClass, size } = {}) {
   };
 }
 
-function paymentColumn() {
+function paymentColumn({ widthClass = "w-[124px]", size = 124 } = {}) {
   return {
     id: "payment",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) =>
       row.paymentStatus || row.transactionDetails?.paymentStatus || "pending",
     header: "Payment",
@@ -377,9 +397,11 @@ function paymentColumn() {
   };
 }
 
-function fulfillmentColumn() {
+function fulfillmentColumn({ widthClass = "w-[148px]", size = 148 } = {}) {
   return {
     id: "fulfillment",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => resolveFulfillmentDisplay(row).key,
     header: "Fulfilment",
     cell: ({ row }) => {
@@ -393,9 +415,11 @@ function fulfillmentColumn() {
   };
 }
 
-function itemsColumn() {
+function itemsColumn({ widthClass = "w-[88px]", size = 88 } = {}) {
   return {
     id: "items",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => (row.items || row.orderItems || []).length,
     header: "Items",
     cell: ({ row }) => {
@@ -410,15 +434,17 @@ function itemsColumn() {
   };
 }
 
-function tagColumn() {
+function tagColumn({ widthClass = "w-[120px]", size = 120 } = {}) {
   return {
     id: "tag",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => attributionTag(row),
     header: "Tag",
     cell: ({ row }) => {
       const tag = attributionTag(row.original);
       return (
-        <span className="inline-flex h-6 items-center rounded-[0.5rem] bg-black/[0.06] px-2 text-[0.75rem] font-[550] leading-4 text-[#616161] capitalize">
+        <span className="inline-flex h-6 max-w-full items-center truncate rounded-[0.5rem] bg-black/[0.06] px-2 text-[0.75rem] font-[550] leading-4 text-[#616161]">
           {tag}
         </span>
       );
@@ -497,16 +523,16 @@ export function createOrderColumns({ isShipmentScope = false } = {}) {
   }
 
   return [
-    selectColumn({ size: 40, ...stickyLead }),
-    orderNumberColumn({ widthClass: "w-[120px]", size: 120, ...stickyLead }),
-    dateColumn(),
-    customerColumn(),
-    locationColumn(),
-    totalColumn(),
-    paymentColumn(),
-    fulfillmentColumn(),
-    itemsColumn(),
-    tagColumn(),
+    selectColumn({ widthClass: "w-10", size: 40, ...stickyLead }),
+    orderNumberColumn({ widthClass: "w-[112px]", size: 112, ...stickyLead }),
+    dateColumn({ widthClass: "w-[148px]", size: 148 }),
+    customerColumn({ widthClass: "w-[168px]", size: 168 }),
+    locationColumn({ widthClass: "w-[168px]", size: 168 }),
+    totalColumn({ widthClass: "w-[100px]", size: 100 }),
+    paymentColumn({ widthClass: "w-[124px]", size: 124 }),
+    fulfillmentColumn({ widthClass: "w-[148px]", size: 148 }),
+    itemsColumn({ widthClass: "w-[88px]", size: 88 }),
+    tagColumn({ widthClass: "w-[120px]", size: 120 }),
   ];
 }
 
@@ -515,5 +541,6 @@ export {
   paymentTone,
   paymentLabel,
   attributionTag,
+  channelDisplayName,
   STATUS_LABELS,
 };

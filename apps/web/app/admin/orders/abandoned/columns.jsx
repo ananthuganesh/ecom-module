@@ -194,6 +194,8 @@ export function createAbandonedColumns() {
     selectColumn(),
     {
       id: "checkout",
+      size: 160,
+      meta: { className: "w-[160px]" },
       accessorFn: (row) => row.checkoutLabel,
       header: "Checkout",
       cell: ({ row }) => (
@@ -212,6 +214,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "date",
+      size: 148,
+      meta: { className: "w-[148px]" },
       accessorFn: (row) => row.lastActivityAt,
       header: "Date",
       cell: ({ row }) => {
@@ -225,6 +229,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "customer",
+      size: 168,
+      meta: { className: "w-[168px]" },
       accessorFn: (row) => customerLabel(row.customerDetails),
       header: "Customer",
       cell: ({ row }) => (
@@ -235,6 +241,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "recovery",
+      size: 132,
+      meta: { className: "w-[132px]" },
       accessorFn: (row) => recoveryStatus(row),
       header: "Recovery",
       cell: ({ row }) => {
@@ -248,6 +256,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "email",
+      size: 108,
+      meta: { className: "w-[108px]" },
       accessorFn: (row) => emailStatus(row),
       header: "Email",
       cell: ({ row }) => {
@@ -261,6 +271,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "whatsapp",
+      size: 108,
+      meta: { className: "w-[108px]" },
       accessorFn: (row) => whatsappStatus(row),
       header: "WhatsApp",
       cell: ({ row }) => {
@@ -274,6 +286,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "items",
+      size: 88,
+      meta: { className: "w-[88px]" },
       accessorFn: (row) => (row.items || row.orderItems || []).length,
       header: "Items",
       cell: ({ row }) => (
@@ -284,6 +298,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "total",
+      size: 100,
+      meta: { className: "w-[100px]" },
       accessorFn: (row) => Number(row.totalAmount || 0),
       header: "Total",
       cell: ({ row }) => (
