@@ -21,6 +21,7 @@ import {
   recoveryStatus,
   whatsappStatus,
 } from "./columns";
+import { abandonedListKey, useAdminAbandonedStore } from "@/store/useAdminAbandonedStore";
 
 function customerLabel(details) {
   const d = details || {};
@@ -80,19 +81,36 @@ function mapCheckoutToRow(checkout) {
 export default function AbandonedCheckoutsPage() {
   const searchParams = useSearchParams();
   const qFromUrl = searchParams.get("q") || "";
-  const [rows, setRows] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const cached = useAdminAbandonedStore.getState();
+  const initialSearch = qFromUrl || cached.searchQ || "";
+  const initialView = cached.viewFilter || "abandoned";
+  const initialDate = cached.datePreset || "all";
+  const initialKey = abandonedListKey({
+    viewFilter: initialView,
+    datePreset: initialDate,
+    q: initialSearch,
+  });
+  const cacheHit = cached.cacheKey === initialKey && Array.isArray(cached.rows) && cached.rows.length > 0;
+
+  const [rows, setRows] = useState(() => (cacheHit ? cached.rows : []));
+  const [page, setPage] = useState(() => (cacheHit ? cached.page || 1 : 1));
+  const [hasMore, setHasMore] = useState(() => (cacheHit ? Boolean(cached.hasMore) : false));
+  const [loading, setLoading] = useState(() => !cacheHit);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQ, setSearchQ] = useState(qFromUrl);
-  const [debouncedQ, setDebouncedQ] = useState(qFromUrl.trim());
-  const [viewFilter, setViewFilter] = useState("abandoned");
-  const [datePreset, setDatePreset] = useState("all");
+  const [searchQ, setSearchQ] = useState(() => initialSearch);
+  const [debouncedQ, setDebouncedQ] = useState(() => initialSearch.trim());
+  const [viewFilter, setViewFilter] = useState(() => initialView);
+  const [datePreset, setDatePreset] = useState(() => initialDate);
   const [rowSelection, setRowSelection] = useState({});
   const fetchGen = useRef(0);
+  const rowsRef = useRef([]);
+  rowsRef.current = rows;
+  const loadingMoreRef = useRef(false);
+  loadingMoreRef.current = loadingMore;
+  const lastLoadedAtRef = useRef(0);
 
   useEffect(() => {
+    if (!qFromUrl) return;
     setSearchQ(qFromUrl);
     setDebouncedQ(qFromUrl.trim());
   }, [qFromUrl]);
@@ -109,11 +127,19 @@ export default function AbandonedCheckoutsPage() {
     return () => clearTimeout(t);
   }, [searchQ]);
 
+  const listKey = abandonedListKey({
+    viewFilter,
+    datePreset,
+    q: debouncedQ,
+  });
+
   const fetchPage = useCallback(
-    async (pageNum, { append } = {}) => {
+    async (pageNum, { append, silent } = {}) => {
+      if (silent && loadingMoreRef.current) return;
+      if (silent && Date.now() - lastLoadedAtRef.current < 8_000) return;
       const gen = ++fetchGen.current;
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else if (!silent) setLoading(true);
       try {
         const checkoutParams = {
           page: pageNum,
@@ -125,23 +151,53 @@ export default function AbandonedCheckoutsPage() {
 
         const checkoutsRes = await abandonedCheckoutService.getAll(checkoutParams);
         if (gen !== fetchGen.current) return;
+        lastLoadedAtRef.current = Date.now();
 
         const checkoutsPage = unwrapPage(checkoutsRes, { fallbackLimit: PAGE_SIZE });
         const checkoutRows = checkoutsPage.items.map(mapCheckoutToRow);
-
-        setRows((prev) => {
-          if (!append) return checkoutRows;
+        const more = Boolean(checkoutsPage.hasMore);
+        const prev = rowsRef.current;
+        let next = checkoutRows;
+        if (append) {
           const seen = new Set(prev.map(rowKey));
-          return [...prev, ...checkoutRows.filter((r) => !seen.has(rowKey(r)))];
+          next = [...prev, ...checkoutRows.filter((r) => !seen.has(rowKey(r)))];
+        } else if (silent && prev.length > checkoutRows.length) {
+          const seen = new Set();
+          next = [];
+          for (const row of checkoutRows) {
+            next.push(row);
+            seen.add(rowKey(row));
+          }
+          for (const row of prev) {
+            if (!seen.has(rowKey(row))) next.push(row);
+          }
+        }
+        setRows(next);
+        if (append) {
+          setPage(pageNum);
+          setHasMore(more);
+        } else if (!(silent && prev.length > checkoutRows.length)) {
+          setPage(1);
+          setHasMore(more);
+        }
+        const store = useAdminAbandonedStore.getState();
+        store.saveSnapshot({
+          cacheKey: listKey,
+          rows: next,
+          page: append ? pageNum : silent && prev.length > checkoutRows.length ? store.page : 1,
+          hasMore: append ? more : silent && prev.length > checkoutRows.length ? store.hasMore : more,
+          viewFilter,
+          datePreset,
+          searchQ: debouncedQ,
         });
-        setPage(pageNum);
-        setHasMore(Boolean(checkoutsPage.hasMore));
       } catch (error) {
         if (gen !== fetchGen.current) return;
         console.error("Error fetching abandoned list:", error);
-        toast.error("Failed to load abandoned carts");
-        if (!append) setRows([]);
-        setHasMore(false);
+        if (!append && !silent) {
+          toast.error("Failed to load abandoned carts");
+          setRows([]);
+          setHasMore(false);
+        }
       } finally {
         if (gen === fetchGen.current) {
           setLoading(false);
@@ -149,13 +205,30 @@ export default function AbandonedCheckoutsPage() {
         }
       }
     },
-    [viewFilter, datePreset, debouncedQ]
+    [viewFilter, datePreset, debouncedQ, listKey]
   );
 
   useEffect(() => {
     setRowSelection({});
-    fetchPage(1, { append: false });
-  }, [fetchPage]);
+    const hit =
+      useAdminAbandonedStore.getState().cacheKey === listKey &&
+      (useAdminAbandonedStore.getState().rows || []).length > 0;
+    fetchPage(1, { append: false, silent: hit });
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchPage(1, { append: false, silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    const pollId = window.setInterval(refreshIfVisible, 45_000);
+    return () => {
+      window.clearInterval(pollId);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+    };
+  }, [fetchPage, listKey]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -279,7 +352,10 @@ export default function AbandonedCheckoutsPage() {
             <>
               <AdminViewMenu
                 value={viewFilter}
-                onChange={setViewFilter}
+                onChange={(value) => {
+                  setViewFilter(value);
+                  useAdminAbandonedStore.getState().patch({ viewFilter: value });
+                }}
                 options={[
                   { value: "all", label: "All" },
                   { value: "abandoned", label: "Abandoned" },
@@ -299,7 +375,14 @@ export default function AbandonedCheckoutsPage() {
                   className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder-gray-400 focus:border-border focus:outline-none"
                 />
               </form>
-              <AdminDateRangeButton value={datePreset} onChange={setDatePreset} />
+              <AdminDateRangeButton
+                value={datePreset}
+                onChange={(next) => {
+                  const value = typeof next === "string" ? next : next?.preset || "all";
+                  setDatePreset(value);
+                  useAdminAbandonedStore.getState().patch({ datePreset: value });
+                }}
+              />
             </>
           )
         }
