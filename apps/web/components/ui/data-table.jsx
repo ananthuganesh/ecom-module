@@ -34,6 +34,25 @@ function isStickyLeft(column) {
   return column?.columnDef?.meta?.sticky === "left";
 }
 
+function hasExplicitSize(columns, columnId) {
+  return columns.some((col) => {
+    const id = col.id ?? col.accessorKey;
+    return String(id) === String(columnId) && col.size != null;
+  });
+}
+
+function columnSizeStyle(column, columns, stickyLeft) {
+  if (hasExplicitSize(columns, column.id)) {
+    const size = column.getSize();
+    return { width: size, minWidth: size, maxWidth: size };
+  }
+  if (stickyLeft.has(column.id)) {
+    const size = column.getSize();
+    return { width: size, minWidth: size };
+  }
+  return undefined;
+}
+
 /** Cumulative `left` offsets for sticky-left columns in visible order.
  * Overlap by 1px so scrolling content can't flash a hairline between pins. */
 function stickyLeftMap(visibleColumns) {
@@ -72,6 +91,7 @@ export function DataTable({
   showFooter = true,
   showSelectionCount = true,
   showColumnsMenu = true,
+  showToolbar,
   columnsMenuIds,
   columnsMenuSortOptions,
   columnsMenuSortValue,
@@ -200,7 +220,10 @@ export function DataTable({
   });
 
   const toolbarNode = typeof toolbar === "function" ? toolbar(table) : toolbar;
-  const showToolbarRow = Boolean(toolbarNode || searchKey || showColumnsMenu);
+  const showToolbarRow =
+    showToolbar === false
+      ? false
+      : Boolean(toolbarNode || searchKey || showColumnsMenu);
 
   const filteredCount = table.getFilteredRowModel().rows.length;
   const canLoadMoreClient =
@@ -345,18 +368,7 @@ export function DataTable({
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id} className="hover:bg-transparent">
                   {headerGroup.headers.map((header) => {
-                    const sizeStyle = header.column.columnDef.size
-                      ? {
-                          width: header.column.getSize(),
-                          minWidth: header.column.getSize(),
-                          maxWidth: header.column.getSize(),
-                        }
-                      : stickyLeft.has(header.column.id)
-                        ? {
-                            width: header.column.getSize(),
-                            minWidth: header.column.getSize(),
-                          }
-                        : undefined;
+                    const sizeStyle = columnSizeStyle(header.column, columns, stickyLeft);
                     return (
                     <TableHead
                       key={header.id}
@@ -385,15 +397,7 @@ export function DataTable({
                 Array.from({ length: Math.min(pageSize, 5) }).map((_, i) => (
                   <TableRow key={`skel-${i}`} className={cn("group/row", rowHeightClass)}>
                     {visibleLeafColumns.map((col) => {
-                      const sizeStyle = col.columnDef.size
-                        ? {
-                            width: col.getSize(),
-                            minWidth: col.getSize(),
-                            maxWidth: col.getSize(),
-                          }
-                        : stickyLeft.has(col.id)
-                          ? { width: col.getSize(), minWidth: col.getSize() }
-                          : undefined;
+                      const sizeStyle = columnSizeStyle(col, columns, stickyLeft);
                       return (
                         <TableCell
                           key={`skel-${i}-${col.id}`}
@@ -448,18 +452,7 @@ export function DataTable({
                       role={onRowClick ? "button" : undefined}
                     >
                       {row.getVisibleCells().map((cell) => {
-                        const sizeStyle = cell.column.columnDef.size
-                          ? {
-                              width: cell.column.getSize(),
-                              minWidth: cell.column.getSize(),
-                              maxWidth: cell.column.getSize(),
-                            }
-                          : stickyLeft.has(cell.column.id)
-                            ? {
-                                width: cell.column.getSize(),
-                                minWidth: cell.column.getSize(),
-                              }
-                            : undefined;
+                        const sizeStyle = columnSizeStyle(cell.column, columns, stickyLeft);
                         return (
                         <TableCell
                           key={cell.id}

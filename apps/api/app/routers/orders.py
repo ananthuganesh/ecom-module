@@ -354,25 +354,132 @@ def _trend(current: float, previous: float) -> str:
     return f"{change:+.1f}%"
 
 
+_ITEM_QTY_EXPR = {
+    "$reduce": {
+        "input": {"$ifNull": ["$items", []]},
+        "initialValue": 0,
+        "in": {"$add": ["$$value", {"$ifNull": ["$$this.quantity", 1]}]},
+    }
+}
+
+_CHANNEL_KEYS = (
+    ("direct", "Direct"),
+    ("instagram", "Instagram"),
+    ("facebook", "Facebook"),
+    ("others", "Others"),
+)
+
+
+def _channel_bucket(source: str) -> str:
+    s = str(source or "direct").strip().lower()
+    if not s or s in {"direct", "(direct)", "none", "n/a", "(none)"}:
+        return "direct"
+    if "instagram" in s or s in {"ig"}:
+        return "instagram"
+    if "facebook" in s or s in {"fb", "meta"} or "fbclid" in s:
+        return "facebook"
+    return "others"
+
+
+async def _channel_stats(collection, match: dict) -> list[dict]:
+    rows = await collection.aggregate(
+        [
+            {"$match": match},
+            {
+                "$group": {
+                    "_id": {"$ifNull": ["$attribution.lastTouch.source", "direct"]},
+                    "orders": {"$sum": 1},
+                    "revenue": {"$sum": {"$ifNull": ["$finalPrice", 0]}},
+                    "quantity": {"$sum": _ITEM_QTY_EXPR},
+                }
+            },
+            {"$sort": {"revenue": -1}},
+        ]
+    ).to_list(None)
+    return [
+        {
+            "source": str(row.get("_id") or "direct"),
+            "orders": int(row.get("orders") or 0),
+            "revenue": round(float(row.get("revenue") or 0), 2),
+            "quantity": int(row.get("quantity") or 0),
+        }
+        for row in rows
+    ]
+
+
+def _bucket_channel_performance(current: list[dict], previous: list[dict]) -> list[dict]:
+    empty = {"orders": 0, "revenue": 0.0, "quantity": 0}
+
+    def roll(rows: list[dict]) -> dict[str, dict]:
+        out = {key: dict(empty) for key, _ in _CHANNEL_KEYS}
+        for row in rows:
+            key = _channel_bucket(row.get("source"))
+            bucket = out[key]
+            bucket["orders"] += int(row.get("orders") or 0)
+            bucket["revenue"] += float(row.get("revenue") or 0)
+            bucket["quantity"] += int(row.get("quantity") or 0)
+        return out
+
+    cur = roll(current)
+    prev = roll(previous)
+    result = []
+    for key, label in _CHANNEL_KEYS:
+        c = cur[key]
+        p = prev[key]
+        result.append(
+            {
+                "key": key,
+                "label": label,
+                "orders": c["orders"],
+                "quantity": c["quantity"],
+                "revenue": round(c["revenue"], 2),
+                "change": _trend(c["revenue"], p["revenue"]),
+            }
+        )
+    return result
+
+
 @router.get("/stats")
 async def stats(
     _: AdminUser,
     range_: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d", alias="range"),
+    date_from: str | None = Query(None, alias="dateFrom"),
+    date_to: str | None = Query(None, alias="dateTo"),
 ):
     """Paid-order analytics. Excludes abandoned and cancelled checkouts."""
     from app.documents import User
+    from app.services.pagination import _parse_day_start
 
     now = datetime.utcnow()
-    if range_ == "all":
+    custom_start = _parse_day_start(date_from)
+    custom_end = _parse_day_start(date_to or date_from)
+
+    if custom_start:
+        if custom_end is None or custom_end < custom_start:
+            custom_end = custom_start
+        current_start = custom_start
+        period_end = custom_end + timedelta(days=1)
+        days = max((period_end - current_start).days, 1)
+        previous_end = current_start
+        previous_start = current_start - timedelta(days=days)
+        range_key = "custom"
+        is_all = False
+    elif range_ == "all":
         days = None
         current_start = datetime(2000, 1, 1)
+        period_end = now + timedelta(days=1)
         previous_start = datetime(2000, 1, 1)
         previous_end = datetime(2000, 1, 1)
+        range_key = "all"
+        is_all = True
     else:
         days = int(range_.removesuffix("d"))
+        period_end = now
         current_start = now - timedelta(days=days)
         previous_start = current_start - timedelta(days=days)
         previous_end = current_start
+        range_key = range_
+        is_all = False
 
     # Real sales only — unpaid gateway exits / abandoned carts do not count
     eligible: dict[str, Any] = {
@@ -400,14 +507,14 @@ async def stats(
         row = rows[0] if rows else {}
         return int(row.get("orders") or 0), round(float(row.get("revenue") or 0), 2)
 
-    if range_ == "all":
-        paid_orders, total_revenue = await period_totals(current_start, now + timedelta(days=1))
+    if is_all:
+        paid_orders, total_revenue = await period_totals(current_start, period_end)
         previous_paid_orders, previous_revenue = 0, 0.0
         date_match: dict[str, Any] = {}
     else:
-        paid_orders, total_revenue = await period_totals(current_start, now)
+        paid_orders, total_revenue = await period_totals(current_start, period_end)
         previous_paid_orders, previous_revenue = await period_totals(previous_start, previous_end)
-        date_match = {"createdAt": {"$gte": current_start, "$lt": now}}
+        date_match = {"createdAt": {"$gte": current_start, "$lt": period_end}}
 
     unpaid_match = {
         "status": {"$ne": "abandoned"},
@@ -430,20 +537,63 @@ async def stats(
     paid_customer_ids = [cid for cid in paid_customer_ids if cid]
     total_customers = len(paid_customer_ids)
 
-    if range_ == "all":
+    if is_all:
         current_customers = total_customers
         previous_customers = 0
+        order_counts = await collection.aggregate(
+            [
+                {"$match": {**eligible, "customerId": {"$nin": [None, ""]}}},
+                {"$group": {"_id": "$customerId", "orders": {"$sum": 1}}},
+            ]
+        ).to_list(None)
+        new_customers = sum(1 for row in order_counts if int(row.get("orders") or 0) == 1)
+        returning_customers = sum(1 for row in order_counts if int(row.get("orders") or 0) > 1)
+        previous_new_customers = 0
+        previous_returning_customers = 0
     else:
-        current_ids = await collection.distinct(
-            "customerId",
-            {**eligible, "createdAt": {"$gte": current_start, "$lt": now}},
+        current_ids = [
+            cid
+            for cid in await collection.distinct(
+                "customerId",
+                {**eligible, "createdAt": {"$gte": current_start, "$lt": period_end}},
+            )
+            if cid
+        ]
+        previous_ids = [
+            cid
+            for cid in await collection.distinct(
+                "customerId",
+                {**eligible, "createdAt": {"$gte": previous_start, "$lt": previous_end}},
+            )
+            if cid
+        ]
+        current_customers = len(current_ids)
+        previous_customers = len(previous_ids)
+
+        async def first_time_vs_returning(period_ids: list, start: datetime) -> tuple[int, int]:
+            if not period_ids:
+                return 0, 0
+            returning_ids = [
+                cid
+                for cid in await collection.distinct(
+                    "customerId",
+                    {
+                        **eligible,
+                        "customerId": {"$in": period_ids},
+                        "createdAt": {"$lt": start},
+                    },
+                )
+                if cid
+            ]
+            returning = len(returning_ids)
+            return len(period_ids) - returning, returning
+
+        new_customers, returning_customers = await first_time_vs_returning(
+            current_ids, current_start
         )
-        previous_ids = await collection.distinct(
-            "customerId",
-            {**eligible, "createdAt": {"$gte": previous_start, "$lt": previous_end}},
+        previous_new_customers, previous_returning_customers = await first_time_vs_returning(
+            previous_ids, previous_start
         )
-        current_customers = len([c for c in current_ids if c])
-        previous_customers = len([c for c in previous_ids if c])
 
     # Keep registered store size available for analytics pages if needed
     from app.services.customers import customer_mongo_filter
@@ -455,10 +605,10 @@ async def stats(
         round(previous_revenue / previous_paid_orders, 2) if previous_paid_orders else 0.0
     )
     series_days = days if days is not None else 30
-    series_start = now - timedelta(days=series_days) if range_ == "all" else current_start
+    series_start = current_start if not is_all else now - timedelta(days=series_days)
     daily_rows = await collection.aggregate(
         [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
+            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}},
             {
                 "$group": {
                     "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$createdAt"}},
@@ -490,7 +640,7 @@ async def stats(
 
     top_products = await collection.aggregate(
         [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
+            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}},
             {"$unwind": "$items"},
             {
                 "$group": {
@@ -504,6 +654,7 @@ async def stats(
                             ]
                         }
                     },
+                    "image": {"$first": "$items.image"},
                 }
             },
             {"$sort": {"revenue": -1, "quantity": -1}},
@@ -529,6 +680,22 @@ async def stats(
                     },
                     "quantity": 1,
                     "revenue": 1,
+                    "image": {
+                        "$ifNull": [
+                            "$image",
+                            {
+                                "$arrayElemAt": [
+                                    {
+                                        "$ifNull": [
+                                            {"$arrayElemAt": ["$product.thumbnails", 0]},
+                                            [],
+                                        ]
+                                    },
+                                    0,
+                                ]
+                            },
+                        ]
+                    },
                 }
             },
         ]
@@ -536,48 +703,39 @@ async def stats(
     for product in top_products:
         product["quantity"] = int(product.get("quantity") or 0)
         product["revenue"] = round(float(product.get("revenue") or 0), 2)
+        product["image"] = str(product.get("image") or "")
 
-    channels = await collection.aggregate(
-        [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
-            {
-                "$group": {
-                    "_id": {"$ifNull": ["$attribution.lastTouch.source", "direct"]},
-                    "orders": {"$sum": 1},
-                    "revenue": {"$sum": {"$ifNull": ["$finalPrice", 0]}},
-                }
-            },
-            {"$sort": {"revenue": -1}},
-        ]
-    ).to_list(None)
-    channels = [
-        {
-            "source": str(row.get("_id") or "direct"),
-            "orders": int(row.get("orders") or 0),
-            "revenue": round(float(row.get("revenue") or 0), 2),
-        }
-        for row in channels
-    ]
+    channels = await _channel_stats(
+        collection, {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}
+    )
+    if is_all:
+        current_perf_rows = await _channel_stats(
+            collection,
+            {**eligible, "createdAt": {"$gte": current_start, "$lt": period_end}},
+        )
+        previous_perf_rows: list[dict] = []
+    else:
+        current_perf_rows = channels
+        previous_perf_rows = await _channel_stats(
+            collection,
+            {**eligible, "createdAt": {"$gte": previous_start, "$lt": previous_end}},
+        )
+    channel_performance = _bucket_channel_performance(current_perf_rows, previous_perf_rows)
 
     location_rows = await collection.aggregate(
         [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
+            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}},
             {
                 "$addFields": {
                     "locationKey": {
                         "$trim": {
                             "input": {
                                 "$ifNull": [
-                                    "$shippingAddress.state",
+                                    "$shippingAddress.city",
                                     {
                                         "$ifNull": [
-                                            "$shippingAddress.stateName",
-                                            {
-                                                "$ifNull": [
-                                                    "$shippingAddress.city",
-                                                    "Unknown",
-                                                ]
-                                            },
+                                            "$shippingAddress.district",
+                                            "Unknown",
                                         ]
                                     },
                                 ]
@@ -622,13 +780,13 @@ async def stats(
             )
         )
 
-    if range_ == "all":
+    if is_all:
         abandoned_orders = int(
             await collection.count_documents({"status": "abandoned"})
         )
         previous_abandoned = 0
     else:
-        abandoned_orders = await abandoned_count(current_start, now)
+        abandoned_orders = await abandoned_count(current_start, period_end)
         previous_abandoned = await abandoned_count(previous_start, previous_end)
 
     checkout_attempts = paid_orders + abandoned_orders
@@ -649,17 +807,18 @@ async def stats(
         "abandonedOrders": abandoned_orders,
         "abandonedRate": abandoned_rate,
         "totalRevenue": total_revenue,
-        # Paying customers in the selected range (dashboard "New customers").
-        "newCustomers": current_customers,
+        "newCustomers": new_customers,
+        "returningCustomers": returning_customers,
         # Distinct paying customers all-time (kept for analytics).
         "totalCustomers": total_customers,
         "registeredCustomers": registered_customers,
         "avgOrderValue": avg,
-        "range": range_,
+        "range": range_key,
         "trends": {
             "orders": _trend(paid_orders, previous_paid_orders),
             "revenue": _trend(total_revenue, previous_revenue),
-            "customers": _trend(current_customers, previous_customers),
+            "customers": _trend(new_customers, previous_new_customers),
+            "returningCustomers": _trend(returning_customers, previous_returning_customers),
             "avgValue": _trend(avg, previous_avg),
             "abandoned": _trend(abandoned_orders, previous_abandoned),
             "abandonedRate": _trend(abandoned_rate, previous_abandoned_rate),
@@ -668,12 +827,15 @@ async def stats(
             "paidOrders": previous_paid_orders,
             "revenue": previous_revenue,
             "customers": previous_customers,
+            "newCustomers": previous_new_customers,
+            "returningCustomers": previous_returning_customers,
             "abandonedOrders": previous_abandoned,
             "abandonedRate": previous_abandoned_rate,
         },
         "series": series,
         "topProducts": top_products,
         "channels": channels,
+        "channelPerformance": channel_performance,
         "byLocation": by_location,
     }
 

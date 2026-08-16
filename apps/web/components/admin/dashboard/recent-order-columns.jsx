@@ -25,13 +25,14 @@ export const recentOrderColumns = [
     id: "order",
     accessorFn: (row) => formatOrderNumber(row) || row._id,
     header: "Order",
+    size: 92,
     cell: ({ row }) => {
       const order = row.original;
       return (
         <Button
           variant="link"
           size="sm"
-          className="h-8 px-0"
+          className="h-8 max-w-full truncate px-0"
           render={<Link href={adminOrderHref(order)} />}
           nativeButton={false}
         >
@@ -45,7 +46,7 @@ export const recentOrderColumns = [
     accessorFn: (row) => customerLabel(row),
     header: "Customer",
     cell: ({ row }) => (
-      <div className="flex h-8 max-w-[140px] items-center">
+      <div className="flex h-8 min-w-0 items-center">
         <span className="truncate">{customerLabel(row.original)}</span>
       </div>
     ),
@@ -54,6 +55,7 @@ export const recentOrderColumns = [
     id: "items",
     accessorFn: (row) => (row.items || row.orderItems || []).length,
     header: "Items",
+    size: 80,
     cell: ({ row }) => (
       <div className="flex h-8 items-center">
         <OrderItemsCell order={row.original} />
@@ -64,6 +66,7 @@ export const recentOrderColumns = [
     id: "total",
     accessorFn: (row) => Number(row.finalPrice) || 0,
     header: () => <div className="text-right">Total</div>,
+    size: 80,
     cell: ({ row }) => (
       <div className="flex h-8 items-center justify-end font-medium tabular-nums">
         ₹{formatINR(row.original.finalPrice)}

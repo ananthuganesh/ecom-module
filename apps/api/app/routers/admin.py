@@ -1204,11 +1204,56 @@ async def admin_orders(
 
 @router.get("/orders/counts")
 async def admin_order_counts(_: OrdersReader):
-    """Lightweight badge counts for admin nav (Shopify-style unfulfilled)."""
-    query: dict[str, Any] = {"status": {"$nin": ["abandoned"]}}
-    query = _apply_order_view_filters(query, view="unfulfilled", hide_archived=True)
-    unfulfilled = await Order.find(query).count()
-    return {"unfulfilled": int(unfulfilled or 0)}
+    """Live queue counts for admin nav and dashboard Needs attention."""
+    not_abandoned = {"status": {"$nin": ["abandoned"]}}
+
+    pending_query = _apply_order_view_filters(
+        dict(not_abandoned), view="unfulfilled", hide_archived=True
+    )
+    pending_fulfillment = await Order.find(pending_query).count()
+
+    ready_to_ship = await Order.find(
+        {
+            "archived": {"$ne": True},
+            "shippingStatus": {"$regex": r"^ready\s*to\s*ship$", "$options": "i"},
+            "status": {
+                "$nin": [
+                    "abandoned",
+                    "cancelled",
+                    "canceled",
+                    "delivered",
+                    "returned",
+                    "return",
+                ]
+            },
+        }
+    ).count()
+
+    payment_failed = await Order.find(
+        {
+            "archived": {"$ne": True},
+            "status": {"$nin": ["abandoned", "cancelled", "canceled"]},
+            "$or": [
+                {"paymentStatus": {"$regex": r"fail", "$options": "i"}},
+                {"transactionDetails.paymentStatus": {"$regex": r"fail", "$options": "i"}},
+            ],
+        }
+    ).count()
+
+    return_requests = await Order.find(
+        {
+            "archived": {"$ne": True},
+            "status": {"$regex": r"^return requested$", "$options": "i"},
+        }
+    ).count()
+
+    return {
+        "unfulfilled": int(pending_fulfillment or 0),
+        "pendingFulfillment": int(pending_fulfillment or 0),
+        "readyToShip": int(ready_to_ship or 0),
+        "paymentFailed": int(payment_failed or 0),
+        "returnRequests": int(return_requests or 0),
+    }
 
 
 async def _build_order_items(raw_items: list) -> tuple[list[OrderItem], float]:

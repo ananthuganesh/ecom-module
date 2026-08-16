@@ -1,9 +1,10 @@
 "use client";
 
-function formatINR(value, compact = false) {
+import SafeImage from "@/components/SafeImage";
+
+function formatINR(value) {
   return Number(value || 0).toLocaleString("en-IN", {
-    maximumFractionDigits: compact ? 1 : 0,
-    notation: compact ? "compact" : "standard",
+    maximumFractionDigits: 0,
   });
 }
 
@@ -11,31 +12,37 @@ export const bestSellingColumns = [
   {
     accessorKey: "name",
     header: "Product",
-    cell: ({ row }) => (
-      <div className="flex h-8 items-center">
-        <span className="block max-w-[140px] truncate font-medium">
-          {row.getValue("name") || "Product"}
-        </span>
-      </div>
-    ),
+    cell: ({ row }) => {
+      const name = row.getValue("name") || "Product";
+      return (
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+            <SafeImage src={row.original.image} alt={name} fill className="object-cover" />
+          </div>
+          <span className="truncate font-medium">{name}</span>
+        </div>
+      );
+    },
   },
   {
     accessorKey: "quantity",
-    header: "Qty",
-    meta: { label: "Qty" },
+    header: () => <div className="text-right">Sold</div>,
+    size: 64,
+    meta: { label: "Sold" },
     cell: ({ row }) => (
-      <div className="flex h-8 items-center justify-end tabular-nums">
+      <div className="text-right tabular-nums">
         {Number(row.getValue("quantity") || 0).toLocaleString("en-IN")}
       </div>
     ),
   },
   {
     accessorKey: "revenue",
-    header: "Revenue",
+    header: () => <div className="text-right">Revenue</div>,
+    size: 88,
     meta: { label: "Revenue" },
     cell: ({ row }) => (
-      <div className="flex h-8 items-center justify-end font-medium tabular-nums">
-        ₹{formatINR(row.getValue("revenue"), true)}
+      <div className="text-right font-medium tabular-nums">
+        ₹{formatINR(row.getValue("revenue"))}
       </div>
     ),
   },
