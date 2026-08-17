@@ -487,7 +487,7 @@ export default function ProductVariantsCard({
                 ) : null}
 
                 {!editingSecond && customValues.length === 0 ? (
-                  <div className="border-t border-[#ebebeb] pt-3">
+                  <div className="pt-3">
                     <button
                       type="button"
                       onClick={() => {
@@ -564,7 +564,7 @@ export default function ProductVariantsCard({
                     </div>
                   </button>
                 ) : (
-                  <div className="border-t border-[#ebebeb] pt-3">
+                  <div className="pt-3">
                     <button
                       type="button"
                       onClick={() => {

@@ -74,12 +74,6 @@ export default function ProductInventoryCard({ form, setForm }) {
             </tbody>
           </table>
         </div>
-
-        <p className="text-[12px] text-[#8a8a8a]">
-          {multiVariant
-            ? "Total available across sizes. Edit each variant below, or use Products → Inventory to adjust a SKU."
-            : "Available at Main Warehouse. Saving this product updates warehouse stock; you can also adjust SKUs in Products → Inventory."}
-        </p>
       </CardContent>
     </Card>
   );

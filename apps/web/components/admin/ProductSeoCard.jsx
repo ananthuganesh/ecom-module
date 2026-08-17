@@ -15,7 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { slugify } from "@/utils/productForm";
 
 const TITLE_MAX = 70;
+const TITLE_RECOMMENDED = "50–60";
 const DESC_MAX = 160;
+const DESC_RECOMMENDED = "150–160";
 
 function stripHtml(value) {
   return String(value || "")
@@ -40,43 +42,15 @@ function formatPreviewPrice(sellingPrice) {
   })} INR`;
 }
 
-function SeoPreview({
-  storeName,
-  breadcrumb,
-  previewTitle,
-  previewDescription,
-  onClick,
-}) {
-  const body = (
-    <>
-      <p className="truncate text-[12px] text-[#202124]">{storeName}</p>
-      <p className="mt-0.5 truncate text-[12px] text-[#4d5156]">
-        {breadcrumb.join(" › ")}
-      </p>
-      <p className="mt-1 truncate text-[18px] leading-6 font-normal text-[#1a0dab]">
-        {previewTitle}
-      </p>
-      {previewDescription ? (
-        <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-[#4d5156]">
-          {previewDescription}
-        </p>
-      ) : null}
-    </>
+function CharHint({ length, max, recommended }) {
+  return (
+    <p className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px] text-[#616161]">
+      <span>Recommended: {recommended} characters</span>
+      <span className="tabular-nums">
+        {length}/{max}
+      </span>
+    </p>
   );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full rounded-lg px-1 py-1 text-left hover:bg-[#fafafa]"
-      >
-        {body}
-      </button>
-    );
-  }
-
-  return <div className="px-1 py-1">{body}</div>;
 }
 
 export default function ProductSeoCard({
@@ -85,16 +59,16 @@ export default function ProductSeoCard({
   storeName = "Urban Aana",
 }) {
   const [editing, setEditing] = useState(false);
-
   const slug = String(form?.slug || "").trim();
   const productName = String(form?.productName || "").trim();
   const metaTitle = String(form?.metaTitle || "");
   const metaDescription = String(form?.metaDescription || "");
 
-  const previewTitle = (metaTitle.trim() || productName || "Product title").slice(
-    0,
-    TITLE_MAX
-  );
+  const previewTitle = (
+    metaTitle.trim() ||
+    productName ||
+    "Page title"
+  ).slice(0, TITLE_MAX);
 
   const previewDescription = useMemo(() => {
     const custom = metaDescription.trim();
@@ -110,6 +84,23 @@ export default function ProductSeoCard({
   const fullUrl = `${origin}/${handlePath}`;
   const breadcrumb = [originHost, "products", slug || undefined].filter(
     Boolean
+  );
+
+  const preview = (
+    <div className="rounded-lg border border-[#ebebeb] bg-white px-3 py-2.5">
+      <p className="truncate text-[12px] text-[#202124]">{storeName}</p>
+      <p className="mt-0.5 truncate text-[12px] text-[#4d5156]">
+        {breadcrumb.join(" › ")}
+      </p>
+      <p className="mt-1 truncate text-[18px] leading-6 font-normal text-[#1a0dab]">
+        {previewTitle}
+      </p>
+      {previewDescription ? (
+        <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-[#4d5156]">
+          {previewDescription}
+        </p>
+      ) : null}
+    </div>
   );
 
   return (
@@ -132,16 +123,13 @@ export default function ProductSeoCard({
           </button>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-
+      <CardContent className="flex flex-col gap-4">
         {editing ? (
           <>
-            <SeoPreview
-              storeName={storeName}
-              breadcrumb={breadcrumb}
-              previewTitle={previewTitle}
-              previewDescription={previewDescription}
-            />
+            <div>
+              <p className="mb-2 admin-card-label">Preview</p>
+              {preview}
+            </div>
 
             <div className="-mx-(--card-spacing) border-t border-[#ebebeb]" />
 
@@ -150,12 +138,15 @@ export default function ProductSeoCard({
               <Input
                 value={metaTitle}
                 maxLength={TITLE_MAX}
+                placeholder={productName || "Page title"}
                 onChange={(e) => updateForm({ metaTitle: e.target.value })}
                 className="h-9 border-[#c9cccf] bg-white"
               />
-              <p className="mt-1 text-[12px] text-[#616161]">
-                {metaTitle.length} of {TITLE_MAX} characters used
-              </p>
+              <CharHint
+                length={metaTitle.length}
+                max={TITLE_MAX}
+                recommended={TITLE_RECOMMENDED}
+              />
             </Field>
 
             <Field>
@@ -164,14 +155,17 @@ export default function ProductSeoCard({
                 rows={3}
                 value={metaDescription}
                 maxLength={DESC_MAX}
+                placeholder="Meta description"
                 onChange={(e) =>
                   updateForm({ metaDescription: e.target.value })
                 }
                 className="min-h-[4.5rem] border-[#c9cccf] bg-white"
               />
-              <p className="mt-1 text-[12px] text-[#616161]">
-                {metaDescription.length} of {DESC_MAX} characters used
-              </p>
+              <CharHint
+                length={metaDescription.length}
+                max={DESC_MAX}
+                recommended={DESC_RECOMMENDED}
+              />
             </Field>
 
             <Field>
@@ -193,13 +187,13 @@ export default function ProductSeoCard({
             </Field>
           </>
         ) : (
-          <SeoPreview
-            storeName={storeName}
-            breadcrumb={breadcrumb}
-            previewTitle={previewTitle}
-            previewDescription={previewDescription}
+          <button
+            type="button"
             onClick={() => setEditing(true)}
-          />
+            className="w-full rounded-lg text-left hover:bg-[#fafafa]"
+          >
+            {preview}
+          </button>
         )}
       </CardContent>
     </Card>
