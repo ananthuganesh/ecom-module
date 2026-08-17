@@ -80,7 +80,7 @@ export default function RootLayout({ children }) {
 
   return (
     <html
-      lang="en"
+      lang="en-IN"
       suppressHydrationWarning
       className={`${inter.variable} ${geistHeading.variable} ${lato.variable} ${archivoBlack.variable} ${notoMalayalam.variable}`}
     >

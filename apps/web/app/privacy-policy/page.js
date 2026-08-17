@@ -2,12 +2,10 @@ import PolicyLayout, {
   PolicySection,
   PolicySubSection,
 } from "@/components/storefront/PolicyLayout";
+import GrievanceOfficerDetails from "@/components/storefront/GrievanceOfficerDetails";
 import {
-  STORE_EMAIL,
   STORE_JURISDICTION,
   STORE_LEGAL_NAME,
-  STORE_PHONE,
-  STORE_PHONE_TEL,
   STORE_WEBSITE,
 } from "@/lib/storeContact";
 
@@ -141,24 +139,16 @@ export default function PrivacyPolicyPage() {
         </p>
       </PolicySection>
 
-      <PolicySection id="contact" number="9" title="Grievance / Contact">
+      <PolicySection id="contact" number="9" title="Grievance Officer">
         <p>
-          For privacy questions, data requests, or grievances related to
-          personal information, contact:
+          In line with the Consumer Protection (E-Commerce) Rules, 2020 and
+          applicable privacy law, the following officer is designated to
+          receive privacy questions, data requests, and grievances:
         </p>
-        <ul>
-          <li>
-            Email:{" "}
-            <a href={`mailto:${STORE_EMAIL}`}>{STORE_EMAIL}</a>
-          </li>
-          <li>
-            Phone:{" "}
-            <a href={`tel:${STORE_PHONE_TEL}`}>{STORE_PHONE}</a>
-          </li>
-        </ul>
+        <GrievanceOfficerDetails />
         <p>
-          We aim to acknowledge and address privacy-related grievances in a
-          reasonable time as required under applicable Indian law.
+          We aim to acknowledge grievances within 48 hours and resolve them
+          within one month of receipt, as required under applicable Indian law.
         </p>
       </PolicySection>
     </PolicyLayout>

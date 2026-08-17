@@ -78,15 +78,17 @@ const nextConfig = {
       { source: "/profile", destination: "/account", permanent: true },
       { source: "/profile/:path*", destination: "/account/:path*", permanent: true },
       // Deleted settings / wallet / payment UI
+      { source: "/admin/analytics", destination: "/admin/dashboard", permanent: false },
+      { source: "/admin/analytics/:path*", destination: "/admin/dashboard", permanent: false },
       { source: "/admin/wallet", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/settings/payments", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/settings/taxes", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/settings/warehouses", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/settings/roles", destination: "/admin/settings/users", permanent: false },
-      { source: "/admin/integrations/gtm", destination: "/admin/analytics", permanent: false },
+      { source: "/admin/integrations/gtm", destination: "/admin/dashboard", permanent: false },
       { source: "/admin/integrations/razorpay", destination: "/admin/settings/general", permanent: false },
-      { source: "/admin/settings/integrations/gtm", destination: "/admin/analytics", permanent: false },
-      { source: "/admin/settings/integrations/ga4", destination: "/admin/analytics", permanent: false },
+      { source: "/admin/settings/integrations/gtm", destination: "/admin/dashboard", permanent: false },
+      { source: "/admin/settings/integrations/ga4", destination: "/admin/dashboard", permanent: false },
       { source: "/admin/settings/integrations/razorpay", destination: "/admin/settings/general", permanent: false },
       // Legacy path stubs (formerly redirect-only pages)
       { source: "/admin/brands", destination: "/admin/products", permanent: false },
@@ -125,6 +127,10 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains; preload",
+          },
+          {
             key: "Permissions-Policy",
             value:
               "camera=(), microphone=(), geolocation=(), accelerometer=(self \"https://api.razorpay.com\" \"https://checkout.razorpay.com\"), gyroscope=(self \"https://api.razorpay.com\" \"https://checkout.razorpay.com\"), payment=(self \"https://api.razorpay.com\" \"https://checkout.razorpay.com\")",
@@ -136,6 +142,8 @@ const nextConfig = {
               "base-uri 'self'",
               "frame-ancestors 'none'",
               "object-src 'none'",
+              "upgrade-insecure-requests",
+              "script-src-attr 'none'",
               "img-src 'self' data: blob: https:",
               "media-src 'self' blob: https:",
               "font-src 'self' data: https://fonts.gstatic.com",

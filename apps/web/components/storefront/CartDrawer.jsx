@@ -30,7 +30,9 @@ function CartQtyControl({ qty, onChange, disabled = false }) {
       >
         −
       </button>
-      <span className="min-w-[1.25rem] text-center font-medium tabular-nums">{qty}</span>
+      <span className="min-w-[1.25rem] text-center font-medium tabular-nums" aria-live="polite">
+        {qty}
+      </span>
       <button
         type="button"
         onClick={() => onChange(qty + 1)}
@@ -85,6 +87,15 @@ export default function CartDrawer() {
     };
   }, [isDrawerOpen, syncStock]);
 
+  useEffect(() => {
+    if (!isDrawerOpen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDrawerOpen, setDrawerOpen]);
+
   const handleClose = () => setDrawerOpen(false);
 
   const handleCheckout = () => {
@@ -105,6 +116,9 @@ export default function CartDrawer() {
           />
 
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cart-drawer-title"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
@@ -112,11 +126,12 @@ export default function CartDrawer() {
             className="fixed inset-y-0 right-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[420px] flex-col overflow-hidden bg-white shadow-2xl"
           >
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 id="cart-drawer-title" className="text-lg font-semibold text-gray-900">
                 Shopping Cart{" "}
                 <span className="text-gray-500">({cartCount})</span>
               </h2>
               <button
+                type="button"
                 onClick={handleClose}
                 className="rounded-full p-2 transition-colors hover:bg-gray-100"
                 aria-label="Close cart"
@@ -196,7 +211,7 @@ export default function CartDrawer() {
                                   removeItem(item._id, item.size, item.color)
                                 }
                                 className="shrink-0 text-[12px] font-medium text-gray-400 transition-colors hover:text-red-500"
-                                aria-label="Remove item"
+                                aria-label={`Remove ${name} from cart`}
                               >
                                 Remove
                               </button>

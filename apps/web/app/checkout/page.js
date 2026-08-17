@@ -200,11 +200,13 @@ function CheckoutOrderSummary({
               <div className="mt-3 space-y-3">
                 <div className="flex gap-2">
                   <input
+                    id="checkout-coupon"
                     className={INPUT}
                     placeholder="Discount code"
                     autoComplete="off"
                     autoCapitalize="characters"
                     spellCheck={false}
+                    aria-label="Discount code"
                     value={couponInput}
                     onChange={(e) =>
                       setCouponInput(e.target.value.toUpperCase())
@@ -1034,18 +1036,27 @@ function CheckoutPageContent() {
               <section>
                 <h2 className={`${SECTION} mb-3`}>Contact</h2>
                 <div>
-                  <label className={LABEL}>Email</label>
+                  <label htmlFor="checkout-email" className={LABEL}>
+                    Email
+                  </label>
                   <input
+                    id="checkout-email"
                     type="email"
                     autoComplete="email"
                     className={formErrors.email ? INPUT_ERR : INPUT}
                     placeholder="you@example.com"
                     value={formData.email}
+                    aria-invalid={Boolean(formErrors.email)}
+                    aria-describedby={
+                      formErrors.email ? "checkout-email-error" : undefined
+                    }
                     onChange={(e) => updateField("email", e.target.value)}
                     onBlur={handleEmailBlur}
                   />
                   {formErrors.email && (
-                    <p className="mt-1 text-[12px] text-red-600">{formErrors.email}</p>
+                    <p id="checkout-email-error" className="mt-1 text-[12px] text-red-600">
+                      {formErrors.email}
+                    </p>
                   )}
                   {isResolvingEmail && (
                     <p className="mt-1 text-[12px] text-gray-500">Checking email…</p>
@@ -1082,37 +1093,67 @@ function CheckoutPageContent() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className={LABEL}>First name</label>
+                      <label htmlFor="checkout-first-name" className={LABEL}>
+                        First name
+                      </label>
                       <input
+                        id="checkout-first-name"
                         className={formErrors.firstName ? INPUT_ERR : INPUT}
                         autoComplete="given-name"
                         inputMode="text"
                         autoCapitalize="words"
                         value={formData.firstName}
+                        aria-invalid={Boolean(formErrors.firstName)}
+                        aria-describedby={
+                          formErrors.firstName
+                            ? "checkout-first-name-error"
+                            : undefined
+                        }
                         onChange={(e) => updateField("firstName", e.target.value)}
                       />
                       {formErrors.firstName && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.firstName}</p>
+                        <p
+                          id="checkout-first-name-error"
+                          className="mt-1 text-[12px] text-red-600"
+                        >
+                          {formErrors.firstName}
+                        </p>
                       )}
                     </div>
                     <div>
-                      <label className={LABEL}>Last name</label>
+                      <label htmlFor="checkout-last-name" className={LABEL}>
+                        Last name
+                      </label>
                       <input
+                        id="checkout-last-name"
                         className={formErrors.lastName ? INPUT_ERR : INPUT}
                         autoComplete="family-name"
                         inputMode="text"
                         autoCapitalize="words"
                         value={formData.lastName}
+                        aria-invalid={Boolean(formErrors.lastName)}
+                        aria-describedby={
+                          formErrors.lastName
+                            ? "checkout-last-name-error"
+                            : undefined
+                        }
                         onChange={(e) => updateField("lastName", e.target.value)}
                       />
                       {formErrors.lastName && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.lastName}</p>
+                        <p
+                          id="checkout-last-name-error"
+                          className="mt-1 text-[12px] text-red-600"
+                        >
+                          {formErrors.lastName}
+                        </p>
                       )}
                     </div>
                   </div>
 
                   <div>
-                    <label className={LABEL}>Phone</label>
+                    <label htmlFor="checkout-phone" className={LABEL}>
+                      Phone
+                    </label>
                     <div className="relative">
                       <span className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-[13px] text-gray-600">
                         <span className="text-[16px] leading-none" aria-hidden>
@@ -1121,6 +1162,7 @@ function CheckoutPageContent() {
                         <span>+91</span>
                       </span>
                       <input
+                        id="checkout-phone"
                         className={`${formErrors.phone ? INPUT_ERR : INPUT} pl-[4.25rem]`}
                         type="tel"
                         inputMode="numeric"
@@ -1128,11 +1170,17 @@ function CheckoutPageContent() {
                         autoComplete="tel-national"
                         placeholder="10-digit mobile"
                         value={formData.phone}
+                        aria-invalid={Boolean(formErrors.phone)}
+                        aria-describedby={
+                          formErrors.phone ? "checkout-phone-error" : undefined
+                        }
                         onChange={(e) => updateField("phone", e.target.value)}
                       />
                     </div>
                     {formErrors.phone && (
-                      <p className="mt-1 text-[12px] text-red-600">{formErrors.phone}</p>
+                      <p id="checkout-phone-error" className="mt-1 text-[12px] text-red-600">
+                        {formErrors.phone}
+                      </p>
                     )}
                   </div>
 
@@ -1152,55 +1200,86 @@ function CheckoutPageContent() {
                     )}
                   >
                     <div>
-                      <label className={LABEL}>Address</label>
+                      <label htmlFor="checkout-address" className={LABEL}>
+                        Address
+                      </label>
                       <input
+                        id="checkout-address"
                         className={formErrors.address ? INPUT_ERR : INPUT}
                         autoComplete="address-line1"
                         placeholder="Street address"
                         value={formData.address}
+                        aria-invalid={Boolean(formErrors.address)}
+                        aria-describedby={
+                          formErrors.address
+                            ? "checkout-address-error"
+                            : undefined
+                        }
                         onChange={(e) => updateField("address", e.target.value)}
                       />
                       {formErrors.address && (
-                        <p className="mt-1 text-[12px] text-red-600">{formErrors.address}</p>
+                        <p
+                          id="checkout-address-error"
+                          className="mt-1 text-[12px] text-red-600"
+                        >
+                          {formErrors.address}
+                        </p>
                       )}
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
-                        <label className={LABEL}>City</label>
+                        <label htmlFor="checkout-city" className={LABEL}>
+                          City
+                        </label>
                         <input
+                          id="checkout-city"
                           readOnly
                           tabIndex={-1}
                           className={`${formErrors.city ? INPUT_ERR : INPUT_READONLY}`}
                           value={formData.city}
                           placeholder="Auto-filled from PIN"
+                          aria-invalid={Boolean(formErrors.city)}
                         />
                         {formErrors.city && (
                           <p className="mt-1 text-[12px] text-red-600">{formErrors.city}</p>
                         )}
                       </div>
                       <div>
-                        <label className={LABEL}>State</label>
+                        <label htmlFor="checkout-state" className={LABEL}>
+                          State
+                        </label>
                         <input
+                          id="checkout-state"
                           readOnly
                           tabIndex={-1}
                           className={`${formErrors.state ? INPUT_ERR : INPUT_READONLY}`}
                           value={formData.state}
                           placeholder="Auto-filled from PIN"
+                          aria-invalid={Boolean(formErrors.state)}
                         />
                         {formErrors.state && (
                           <p className="mt-1 text-[12px] text-red-600">{formErrors.state}</p>
                         )}
                       </div>
                       <div>
-                        <label className={LABEL}>PIN code</label>
+                        <label htmlFor="checkout-pincode" className={LABEL}>
+                          PIN code
+                        </label>
                         <div className="relative">
                           <input
+                            id="checkout-pincode"
                             className={formErrors.postalCode ? INPUT_ERR : INPUT}
                             maxLength={6}
                             inputMode="numeric"
                             autoComplete="postal-code"
                             value={formData.postalCode}
+                            aria-invalid={Boolean(formErrors.postalCode)}
+                            aria-describedby={
+                              formErrors.postalCode
+                                ? "checkout-pincode-error"
+                                : undefined
+                            }
                             onChange={(e) =>
                               updateField("postalCode", e.target.value.replace(/\D/g, ""))
                             }
@@ -1210,7 +1289,12 @@ function CheckoutPageContent() {
                           )}
                         </div>
                         {formErrors.postalCode && (
-                          <p className="mt-1 text-[12px] text-red-600">{formErrors.postalCode}</p>
+                          <p
+                            id="checkout-pincode-error"
+                            className="mt-1 text-[12px] text-red-600"
+                          >
+                            {formErrors.postalCode}
+                          </p>
                         )}
                       </div>
                     </div>

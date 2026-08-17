@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import ProductDetailClient from "./ProductDetailClient";
+import { productJsonLdScript } from "@/lib/productJsonLd";
 import {
   absoluteUrl,
   fetchProductForSeo,
@@ -62,9 +63,16 @@ export default async function ProductPage({ params }) {
     lcpImage &&
     !lcpImage.includes("/urban/about-1") &&
     (lcpImage.startsWith("http://") || lcpImage.startsWith("https://"));
+  const jsonLd = productJsonLdScript(product);
 
   return (
     <>
+      {jsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLd }}
+        />
+      ) : null}
       {preloadLcp ? (
         <link
           rel="preload"

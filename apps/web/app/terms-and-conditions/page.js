@@ -2,12 +2,11 @@ import PolicyLayout, {
   PolicySection,
   PolicySubSection,
 } from "@/components/storefront/PolicyLayout";
+import GrievanceOfficerDetails from "@/components/storefront/GrievanceOfficerDetails";
 import {
   STORE_EMAIL,
   STORE_JURISDICTION,
   STORE_LEGAL_NAME,
-  STORE_PHONE,
-  STORE_PHONE_TEL,
   STORE_WEBSITE,
 } from "@/lib/storeContact";
 
@@ -147,16 +146,16 @@ export default function TermsPage() {
         </p>
       </PolicySection>
 
-      <PolicySection id="contact" number="11" title="Customer Support / Grievance">
-        <p>For order issues, complaints, or questions about these Terms:</p>
-        <ul>
-          <li>
-            Email: <a href={`mailto:${STORE_EMAIL}`}>{STORE_EMAIL}</a>
-          </li>
-          <li>
-            Phone: <a href={`tel:${STORE_PHONE_TEL}`}>{STORE_PHONE}</a>
-          </li>
-        </ul>
+      <PolicySection id="contact" number="11" title="Grievance Officer">
+        <p>
+          For order issues, complaints, or questions about these Terms, contact
+          our Grievance Officer (Consumer Protection (E-Commerce) Rules, 2020):
+        </p>
+        <GrievanceOfficerDetails />
+        <p>
+          We aim to acknowledge grievances within 48 hours and resolve them
+          within one month of receipt.
+        </p>
       </PolicySection>
     </PolicyLayout>
   );

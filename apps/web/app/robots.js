@@ -7,7 +7,15 @@ export default function robots() {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin/", "/checkout", "/api/", "/account/", "/cart/recover"],
+        disallow: [
+          "/admin/",
+          "/checkout",
+          "/api/",
+          "/account/",
+          "/cart/recover",
+          "/sentry-example-page",
+          "/test-route",
+        ],
       },
     ],
     sitemap: `${site}/sitemap.xml`,

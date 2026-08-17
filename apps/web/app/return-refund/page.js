@@ -2,6 +2,7 @@ import PolicyLayout, {
   PolicySection,
   PolicySubSection,
 } from "@/components/storefront/PolicyLayout";
+import GrievanceOfficerDetails from "@/components/storefront/GrievanceOfficerDetails";
 import {
   STORE_EMAIL,
   STORE_LEGAL_NAME,
@@ -193,19 +194,16 @@ export default function ReturnsAndShippingPage() {
         </p>
       </PolicySection>
 
-      <PolicySection id="contact" number="12" title="Contact / Grievance Support">
-        <p>For shipping, return, or refund support:</p>
-        <ul>
-          <li>
-            Email: <a href={`mailto:${STORE_EMAIL}`}>{STORE_EMAIL}</a>
-          </li>
-          <li>
-            Phone: <a href={`tel:${STORE_PHONE_TEL}`}>{STORE_PHONE}</a>
-          </li>
-        </ul>
+      <PolicySection id="contact" number="12" title="Grievance Officer">
+        <p>
+          For shipping, return, or refund support, contact our Grievance Officer
+          (Consumer Protection (E-Commerce) Rules, 2020):
+        </p>
+        <GrievanceOfficerDetails />
         <p>
           Please include your order number in every support request so we can
-          respond faster.
+          respond faster. We aim to acknowledge grievances within 48 hours and
+          resolve them within one month of receipt.
         </p>
       </PolicySection>
     </PolicyLayout>

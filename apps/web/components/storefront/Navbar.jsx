@@ -260,13 +260,15 @@ const Navbar = () => {
   }, [isSearchOpen]);
 
   useEffect(() => {
-    if (!isSearchOpen) return;
+    if (!isMobileMenuOpen && !isSearchOpen) return;
     const onKey = (e) => {
-      if (e.key === "Escape") closeSearch();
+      if (e.key !== "Escape") return;
+      if (isSearchOpen) closeSearch();
+      else closeMenu();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isSearchOpen]);
+  }, [isMobileMenuOpen, isSearchOpen]);
 
   // Live product suggestions while typing.
   useEffect(() => {
@@ -347,6 +349,8 @@ const Navbar = () => {
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className={navBtnClass}
               aria-label="Menu"
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="storefront-menu"
             >
               <MenuIcon size={18} />
               <span className="hidden md:inline">Menu</span>
@@ -356,6 +360,8 @@ const Navbar = () => {
               onClick={openSearch}
               className={navBtnClass}
               aria-label="Search"
+              aria-expanded={isSearchOpen}
+              aria-controls="navbar-search-suggestions"
             >
               <SearchIcon size={18} />
               <span className="hidden md:inline">Search</span>
@@ -363,7 +369,7 @@ const Navbar = () => {
           </div>
 
           <div className="flex items-center justify-center">
-            <Link href="/" onClick={closeMenu} className="flex items-center">
+            <Link href="/" onClick={closeMenu} className="flex items-center" aria-label="Urban Aana home">
               <Image
                 src={transparent ? "/brand/logo-dark.png" : "/brand/logo.png"}
                 alt="URBAN AANA"
@@ -526,7 +532,7 @@ const Navbar = () => {
                                   {thumb ? (
                                     <SafeImage
                                       src={resolveImageUrl(thumb)}
-                                      alt=""
+                                      alt={item.productName || "Product"}
                                       fill
                                       sizes="40px"
                                       className="object-cover"
@@ -585,6 +591,10 @@ const Navbar = () => {
             />
             <motion.aside
               key="menu-drawer"
+              id="storefront-menu"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="storefront-menu-title"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
@@ -592,7 +602,9 @@ const Navbar = () => {
               className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-white shadow-2xl will-change-transform"
             >
               <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3.5">
-                <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
+                <h2 id="storefront-menu-title" className="text-lg font-semibold text-gray-900">
+                  Menu
+                </h2>
                 <button
                   type="button"
                   onClick={closeMenu}

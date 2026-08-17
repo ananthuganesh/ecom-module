@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { CloseIcon } from "@/components/icons/storeIcons";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import SafeImage from "@/components/SafeImage";
 import { useCartStore } from "@/store/useCartStore";
@@ -109,6 +109,15 @@ export default function ProductCard({
       setAdding(false);
     }
   };
+
+  useEffect(() => {
+    if (!showPicker) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setShowPicker(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showPicker]);
 
   return (
     <>
@@ -288,7 +297,12 @@ export default function ProductCard({
             onClick={() => setShowPicker(false)}
           />
 
-          <div className="relative z-10 flex w-full max-w-lg min-h-[280px] overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-2xl sm:min-h-[320px]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`size-picker-title-${id}`}
+            className="relative z-10 flex w-full max-w-lg min-h-[280px] overflow-hidden rounded-xl border border-[#e5e5e5] bg-white shadow-2xl sm:min-h-[320px]"
+          >
             <div className="relative w-[38%] min-w-[120px] shrink-0 bg-[#f5f5f5] sm:w-[42%]">
               <SafeImage
                 src={resolveImageUrl(image)}
@@ -304,7 +318,7 @@ export default function ProductCard({
                 type="button"
                 onClick={() => setShowPicker(false)}
                 className="absolute top-2.5 right-2.5 rounded-md p-1.5 transition-colors hover:bg-gray-100"
-                aria-label="Close"
+                aria-label="Close size picker"
               >
                 <CloseIcon size={16} className="text-gray-500" />
               </button>
@@ -315,7 +329,10 @@ export default function ProductCard({
                     {productType}
                   </p>
                 ) : null}
-                <h3 className="line-clamp-2 text-sm font-semibold uppercase tracking-wide text-[#131814] sm:text-base">
+                <h3
+                  id={`size-picker-title-${id}`}
+                  className="line-clamp-2 text-sm font-semibold uppercase tracking-wide text-[#131814] sm:text-base"
+                >
                   {title}
                 </h3>
                 <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -336,10 +353,17 @@ export default function ProductCard({
               </div>
 
               <div>
-                <p className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-[#8a8f93] uppercase">
+                <p
+                  id={`size-picker-label-${id}`}
+                  className="mb-2 text-[10px] font-semibold tracking-[0.12em] text-[#8a8f93] uppercase"
+                >
                   Size
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                <div
+                  className="flex flex-wrap gap-1.5"
+                  role="radiogroup"
+                  aria-labelledby={`size-picker-label-${id}`}
+                >
                   {availableSizes.map((sizeObj) => {
                     const sizeLabel = sizeObj.size || sizeObj;
                     const stock =
@@ -350,6 +374,13 @@ export default function ProductCard({
                       <button
                         key={sizeLabel}
                         type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={
+                          outOfStock
+                            ? `${sizeLabel} sold out`
+                            : `Size ${sizeLabel}`
+                        }
                         onClick={() =>
                           !outOfStock && setSelectedSize(sizeLabel)
                         }

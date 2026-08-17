@@ -186,3 +186,20 @@
 .storefront-root .animate-fade-up {
   animation: fade-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
+
+/* Keyboard focus — keep mouse clicks clean, show a ring for Tab users */
+.storefront-root :focus {
+  outline: none;
+}
+.storefront-root :focus-visible {
+  outline: 2px solid #222222;
+  outline-offset: 2px;
+}
+.storefront-root a:focus-visible,
+.storefront-root button:focus-visible,
+.storefront-root input:focus-visible,
+.storefront-root select:focus-visible,
+.storefront-root textarea:focus-visible {
+  outline: 2px solid #222222;
+  outline-offset: 2px;
+}
