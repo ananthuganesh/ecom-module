@@ -13,7 +13,6 @@ export {
   shippingService,
   adminShippingService,
   adminAisensyService,
-  adminGa4Service,
   abandonedCheckoutService,
   couponService,
   reelsService,

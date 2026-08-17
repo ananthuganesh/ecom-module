@@ -5,7 +5,6 @@ export { adminCategoryService } from "./categoryService.js";
 export { adminProductColorService } from "./productColorService.js";
 export { adminShippingService } from "./shippingService.js";
 export { default as adminAisensyService } from "./adminAisensyService.js";
-export { default as adminGa4Service } from "./adminGa4Service.js";
 export { abandonedCheckoutService } from "./abandonedCheckoutService.js";
 export { adminCouponService } from "./couponService.js";
 export { adminTaxClassService } from "./taxClassService.js";

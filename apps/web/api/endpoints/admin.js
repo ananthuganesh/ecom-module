@@ -17,7 +17,6 @@ const products = {
 const orders = {
   base: "/admin/orders",
   counts: "/admin/orders/counts",
-  /** Paid-order analytics (dashboard / analytics pages). Not the nav badge endpoint. */
   stats: "/orders/stats",
   byId: (id) => `/admin/orders/${id}`,
   status: (id) => `/admin/orders/${id}/status`,
@@ -44,10 +43,6 @@ const aisensy = {
   syncCatalog: "/admin/aisensy/sync-catalog",
 };
 
-const ga4 = {
-  report: "/admin/ga4/report",
-};
-
 const taxClasses = {
   base: "/admin/tax-classes",
   byId: (id) => `/admin/tax-classes/${id}`,
@@ -72,7 +67,6 @@ export const adminEndpoints = {
   categories,
   productColors,
   aisensy,
-  ga4,
   taxClasses,
   companyProfile,
   stock,

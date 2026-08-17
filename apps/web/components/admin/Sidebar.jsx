@@ -21,7 +21,6 @@ import {
   Users,
   Settings,
   TicketPercent,
-  BarChart3,
   Folder,
   Film,
   Truck,
@@ -172,7 +171,6 @@ const menuItems = [
       { name: "Reels", href: "/admin/content/reels" },
     ],
   },
-  { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
 ];
 
 const settingsItem = {

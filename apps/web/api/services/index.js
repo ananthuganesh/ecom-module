@@ -19,7 +19,6 @@ export {
   adminProductColorService,
   adminShippingService,
   adminAisensyService,
-  adminGa4Service,
   abandonedCheckoutService,
   adminCouponService,
   adminTaxClassService,
