@@ -37,8 +37,9 @@ services:
       UVICORN_TIMEOUT_KEEP_ALIVE: "5"
       MALLOC_ARENA_MAX: "2"
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-      # Local Next on http://127.0.0.1 needs false; real HTTPS prod should set true.
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Leave unset so the API enables Secure cookies on HTTPS (PUBLIC_WEB_URL).
+      # Set COOKIE_SECURE=false only for local HTTP Docker.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
       RAZORPAY_LIVE_API_KEY: ${RAZORPAY_LIVE_API_KEY}
       RAZORPAY_LIVE_KEY_SECRET: ${RAZORPAY_LIVE_KEY_SECRET}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
