@@ -1,4 +1,4 @@
-import { ADMIN_TIME_ZONE, parseAdminDate } from "@/utils/formatAdminDateTime";
+import { ADMIN_TIME_ZONE, parseAdminDate } from "../utils/formatAdminDateTime.js";
 
 function touchKey(t) {
   if (!t) return "";

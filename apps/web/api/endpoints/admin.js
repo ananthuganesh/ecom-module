@@ -5,6 +5,7 @@ const users = {
   base: "/admin/users",
   byId: (id) => `/admin/users/${id}`,
   orders: (id) => `/admin/users/${id}/orders`,
+  neighbors: (id) => `/admin/users/${id}/neighbors`,
 };
 
 const products = {

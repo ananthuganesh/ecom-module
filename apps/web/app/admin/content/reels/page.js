@@ -260,6 +260,7 @@ export default function AdminReelsPage() {
   };
 
   return (
+    <div className="mx-auto w-full max-w-7xl">
     <AdminListLayout
       fill={false}
       title="Reels"
@@ -348,5 +349,6 @@ export default function AdminReelsPage() {
         }
       />
     </AdminListLayout>
+    </div>
   );
 }

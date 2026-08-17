@@ -121,6 +121,11 @@
   --card: #ffffff;
   --border: #e3e3e3;
   --input: #8a8a8a;
+  /* Polaris card: 1px full outline + soft bottom-right drop */
+  --admin-card-shadow:
+    0 0 0 1px #ebebeb,
+    0.03125rem 0.125rem 0.125rem -0.0625rem #00000008,
+    0 0.0625rem 0.0625rem 0 #00000006;
 }
 
 [data-admin-shell] [data-slot="sidebar-inset"] [data-slot="button"] {
@@ -130,17 +135,28 @@
 }
 
 /* Index table / cards — Polaris surface / border / shadow */
+[data-admin-shell] [data-slot="card"],
+[data-admin-shell] .admin-surface {
+  box-shadow: var(--admin-card-shadow);
+}
+
+[data-admin-shell] [data-slot="data-table-surface"] {
+  box-shadow:
+    0.03125rem 0.125rem 0.125rem -0.0625rem #00000008,
+    0 0.0625rem 0.0625rem 0 #00000006;
+}
+
+/* Nested tables (Dashboard Recent Orders / Best Selling) — hairline only */
+[data-admin-shell] [data-slot="card"] [data-slot="data-table-surface"] {
+  box-shadow: none;
+  border: 0.5px solid #ebebeb;
+}
+
 [data-admin-shell] [data-slot="data-table-surface"],
 [data-admin-shell] .admin-surface {
   background-color: #ffffff; /* --p-color-bg-surface */
   border: 0.5px solid #ebebeb; /* --p-color-border-secondary */
   border-radius: 0.75rem; /* --p-border-radius-container */
-  box-shadow:
-    0 0.3125rem 0.3125rem -0.15625rem #00000008,
-    0 0.1875rem 0.1875rem -0.09375rem #00000005,
-    0 0.125rem 0.125rem -0.0625rem #00000005,
-    0 0.0625rem 0.0625rem -0.03125rem #00000008,
-    0 0.03125rem 0.03125rem 0 #0000000a;
   overflow: hidden;
   font-size: 0.8125rem; /* --p-font-size-325 */
   font-weight: 450; /* --p-font-weight-regular */

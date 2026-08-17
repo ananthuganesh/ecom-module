@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { Bell, BellOff } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
+import { displayCustomerName } from "@/utils/displayCustomerName";
 import { formatINR } from "@/utils/formatINR";
 
 export function isCustomer(record) {
@@ -11,12 +11,7 @@ export function isCustomer(record) {
 }
 
 export function customerName(customer) {
-  const full = String(customer.name || "").trim();
-  if (full) return full;
-  const parts = [customer.firstName, customer.lastName]
-    .map((x) => String(x || "").trim())
-    .filter(Boolean);
-  return parts.length ? parts.join(" ") : "";
+  return displayCustomerName(customer, "");
 }
 
 function customerAddress(customer) {
@@ -28,7 +23,7 @@ export function customerPhone(customer) {
   const top = String(customer.phone || "").trim();
   if (top) return top;
   const a = customerAddress(customer);
-  return String(a?.phone || "").trim();
+  return String(a?.phone || a?.contact || a?.mobile || "").trim();
 }
 
 function customerLocation(customer) {
@@ -160,37 +155,6 @@ export function createCustomerColumns() {
           {Number(row.original.ordersCount || 0)}
         </CellText>
       ),
-    },
-    {
-      id: "abandoned",
-      size: 108,
-      meta: { className: "w-[108px] min-w-[108px] px-3" },
-      accessorFn: (row) => Number(row.abandonedCount || 0),
-      header: "Abandoned",
-      cell: ({ row }) => {
-        const count = Number(row.original.abandonedCount || 0);
-        const q =
-          String(row.original.email || "").trim() ||
-          customerPhone(row.original) ||
-          customerName(row.original) ||
-          String(row.original._id || "");
-        if (!count) {
-          return (
-            <CellText soft className="tabular-nums">
-              0
-            </CellText>
-          );
-        }
-        return (
-          <Link
-            href={`/admin/orders/abandoned?q=${encodeURIComponent(q)}`}
-            onClick={(e) => e.stopPropagation()}
-            className="block truncate text-[13px] font-medium tabular-nums text-[#005bd3] hover:underline"
-          >
-            {count}
-          </Link>
-        );
-      },
     },
     {
       id: "spent",

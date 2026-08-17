@@ -19,6 +19,14 @@ import {
   adminCouponService,
   adminProductService,
 } from "@/api";
+import {
+  AdminHeaderButton,
+  AdminListLayout,
+  AdminStatusText,
+} from "@/components/admin/list";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DataTable } from "@/components/ui/data-table";
+import { Spinner } from "@/components/ui/spinner";
 
 const KINDS = [
   {
@@ -75,6 +83,95 @@ function summaryOf(c) {
       : `₹${c.discountValue} off`;
   if ((c.kind || "order") === "products") return `${val} · products`;
   return `${val} · order`;
+}
+
+function createDiscountColumns({ onEdit, onDelete }) {
+  return [
+    {
+      id: "discount",
+      accessorFn: (row) => `${row.name || ""} ${row.code || ""}`,
+      header: "Discount",
+      cell: ({ row }) => {
+        const c = row.original;
+        return (
+          <div className="min-w-0">
+            <span className="block truncate text-[13px] font-medium text-foreground">
+              {c.name || ""}
+            </span>
+            <span className="mt-0.5 block truncate font-mono text-[12px] text-muted-foreground">
+              {c.code}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "type",
+      accessorFn: (row) => kindLabel(row.kind || "order"),
+      header: "Type",
+      cell: ({ row }) => (
+        <span className="block truncate text-[13px] text-muted-foreground">
+          {kindLabel(row.original.kind || "order")}
+        </span>
+      ),
+    },
+    {
+      id: "value",
+      accessorFn: (row) => summaryOf(row),
+      header: "Value",
+      cell: ({ row }) => (
+        <span className="block truncate text-[13px] text-muted-foreground">
+          {summaryOf(row.original)}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      accessorFn: (row) => row.status || "active",
+      header: "Status",
+      size: 120,
+      cell: ({ row }) => {
+        const active = (row.original.status || "active") === "active";
+        return (
+          <AdminStatusText tone={active ? "success" : "neutral"} dot>
+            {active ? "Active" : "Inactive"}
+          </AdminStatusText>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "",
+      size: 88,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex justify-end gap-1">
+          <button
+            type="button"
+            title="Edit"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(row.original);
+            }}
+            className="inline-flex size-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(row.original._id || row.original.id);
+            }}
+            className="inline-flex size-7 items-center justify-center rounded-md text-[#c70a24] hover:bg-[#fbe9e7]"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ),
+    },
+  ];
 }
 
 export default function AdminDiscountsPage() {
@@ -246,89 +343,134 @@ export default function AdminDiscountsPage() {
     }
   };
 
+  const columns = useMemo(
+    () =>
+      createDiscountColumns({
+        onEdit: startEdit,
+        onDelete: handleDelete,
+      }),
+    []
+  );
+
+  const alertBanner =
+    error || success ? (
+      <div
+        className={`mb-4 flex items-start gap-2 rounded-lg p-3 text-[13px] ${
+          success ? "bg-emerald-50 text-emerald-700" : "bg-destructive/10 text-destructive"
+        }`}
+      >
+        {success ? (
+          <CheckCircle2 size={16} className="mt-0.5" />
+        ) : (
+          <AlertCircle size={16} className="mt-0.5" />
+        )}
+        <span>{success || error}</span>
+      </div>
+    ) : null;
+
   if (loading) {
     return (
-      <div className="min-h-[40vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Spinner className="size-8 text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (view === "list") {
+    return (
+      <div className="mx-auto w-full max-w-7xl">
+        <AdminListLayout
+          fill={false}
+          title="Discounts"
+          description="Create codes for products, orders, or Buy X get Y"
+          actions={
+            <AdminHeaderButton variant="primary" onClick={startCreate}>
+              <Plus className="h-3.5 w-3.5" />
+              Create discount
+            </AdminHeaderButton>
+          }
+        >
+          {alertBanner}
+          <DataTable
+            columns={columns}
+            data={coupons}
+            getRowId={(row) => row._id || row.id}
+            onRowClick={startEdit}
+            showToolbar={false}
+            showColumnsMenu={false}
+            showFooter={false}
+            pageSize={50}
+            rowHeightClass="h-10"
+            emptyTitle="No discounts yet"
+            emptyDescription="Create a code for products, orders, or Buy X get Y."
+          />
+        </AdminListLayout>
       </div>
     );
   }
 
   return (
-    <div className="w-full">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">Discounts</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Create codes for products, orders, or Buy X get Y</p>
-        </div>
-        {view === "list" && (
-          <button
-            type="button"
-            onClick={startCreate}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground text-[13px] font-medium px-4 py-2.5 rounded-lg inline-flex items-center gap-2"
-          >
-            <Plus size={14} />
-            Create discount
-          </button>
-        )}
-      </div>
-
-      {(error || success) && (
-        <div
-          className={`mb-4 flex items-start gap-2 rounded-2xl p-3 text-[13px] ${
-            success ? "bg-emerald-50 text-emerald-700" : "bg-destructive/10 text-destructive"
-          }`}
-        >
-          {success ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertCircle size={16} className="mt-0.5" />}
-          <span>{success || error}</span>
-        </div>
-      )}
-
+    <div className="mx-auto w-full max-w-7xl">
       {view === "pick" && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className="text-[13px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 mb-6"
-          >
-            <ArrowLeft size={14} /> Back
-          </button>
-          <h2 className="text-sm font-medium text-foreground mb-1">Select discount type</h2>
-          <p className="text-[13px] text-muted-foreground mb-6">Choose how this discount applies at checkout</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <AdminListLayout
+          fill={false}
+          title="Select discount type"
+          description="Choose how this discount applies at checkout"
+          actions={
+            <AdminHeaderButton onClick={() => setView("list")}>
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back
+            </AdminHeaderButton>
+          }
+        >
+          {alertBanner}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {KINDS.map((k) => (
               <button
                 key={k.id}
                 type="button"
                 onClick={() => pickKind(k.id)}
-                className="text-left bg-card border border-border rounded-2xl p-6 hover:border-primary transition-colors"
+                className="text-left"
               >
-                <div className="p-2.5 bg-primary/5 text-foreground rounded-lg w-fit mb-4">
-                  <k.icon size={18} />
-                </div>
-                <h3 className="text-sm font-medium text-primary mb-1">{k.title}</h3>
-                <p className="text-[13px] text-muted-foreground leading-relaxed">{k.description}</p>
+                <Card className="@container/card h-full transition-colors hover:bg-muted/30">
+                  <CardHeader>
+                    <div className="mb-1 flex size-8 items-center justify-center rounded-lg bg-primary/5 text-[#303030]">
+                      <k.icon className="h-[18px] w-[18px]" />
+                    </div>
+                    <CardTitle>{k.title}</CardTitle>
+                    <CardDescription>{k.description}</CardDescription>
+                  </CardHeader>
+                </Card>
               </button>
             ))}
           </div>
-        </div>
+        </AdminListLayout>
       )}
 
       {view === "form" && (
-        <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
-          <button
-            type="button"
-            onClick={() => (editingId ? setView("list") : setView("pick"))}
-            className="text-[13px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-          >
-            <ArrowLeft size={14} /> Back
-          </button>
-
-          <div className="bg-card border border-border rounded-2xl p-6 space-y-5">
-            <div className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-              <Tag size={14} />
-              {kindLabel(form.kind)}
-            </div>
+        <AdminListLayout
+          fill={false}
+          title={editingId ? "Edit discount" : "Create discount"}
+          description={kindLabel(form.kind)}
+          actions={
+            <AdminHeaderButton
+              onClick={() => (editingId ? setView("list") : setView("pick"))}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back
+            </AdminHeaderButton>
+          }
+        >
+          {alertBanner}
+          <form onSubmit={handleSubmit} className="space-y-4">
+          <Card className="@container/card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Tag className="h-3.5 w-3.5" />
+                {kindLabel(form.kind)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -481,13 +623,17 @@ export default function AdminDiscountsPage() {
                 <option value="inactive">Inactive</option>
               </select>
             </div>
-          </div>
+          </CardContent>
+          </Card>
 
           {(form.kind === "products" || form.kind === "bxgy") && (
-            <div className="bg-card border border-border rounded-2xl p-6 space-y-5">
-              <h3 className="text-sm font-medium text-foreground">
-                {form.kind === "bxgy" ? "Customer buys" : "Applies to"}
-              </h3>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>
+                  {form.kind === "bxgy" ? "Customer buys" : "Applies to"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
 
               <div className="space-y-2">
                 <p className="text-[13px] font-medium text-muted-foreground">Products</p>
@@ -571,97 +717,24 @@ export default function AdminDiscountsPage() {
                   </div>
                 </div>
               )}
-            </div>
+              </CardContent>
+            </Card>
           )}
 
-          <div className="flex gap-3">
-            <button
+          <div className="flex gap-2">
+            <AdminHeaderButton
               type="submit"
+              variant="primary"
               disabled={saving}
-              className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-[13px] font-medium px-5 py-2.5 rounded-lg"
             >
               {saving ? "Saving…" : editingId ? "Save discount" : "Create discount"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("list")}
-              className="border border-border text-[13px] font-medium px-5 py-2.5 rounded-lg"
-            >
+            </AdminHeaderButton>
+            <AdminHeaderButton onClick={() => setView("list")}>
               Cancel
-            </button>
+            </AdminHeaderButton>
           </div>
-        </form>
-      )}
-
-      {view === "list" && (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          {coupons.length === 0 ? (
-            <div className="p-12 text-center">
-              <Tag className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-[13px] font-medium text-muted-foreground">No discounts yet</p>
-              <button
-                type="button"
-                onClick={startCreate}
-                className="mt-4 text-[13px] font-medium text-foreground hover:underline"
-              >
-                Create your first discount
-              </button>
-            </div>
-          ) : (
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="p-4">Discount</th>
-                  <th className="p-4">Type</th>
-                  <th className="p-4">Value</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {coupons.map((c) => (
-                  <tr key={c._id || c.id} className="hover:bg-muted/50">
-                    <td className="p-4">
-                      <p className="text-[13px] font-medium text-foreground">{c.name || ""}</p>
-                      <p className="text-[12px] font-mono text-muted-foreground mt-0.5">{c.code}</p>
-                    </td>
-                    <td className="p-4 text-[13px] text-muted-foreground">{kindLabel(c.kind || "order")}</td>
-                    <td className="p-4 text-[13px] text-muted-foreground">{summaryOf(c)}</td>
-                    <td className="p-4">
-                      <span
-                        className={`text-[12px] font-medium px-2 py-0.5 rounded ${
-                          c.status === "active"
-                            ? "bg-emerald-50 text-emerald-600"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {c.status || "active"}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(c)}
-                          className="p-2 rounded-lg hover:bg-muted text-muted-foreground"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(c._id || c.id)}
-                          className="p-2 rounded-lg hover:bg-red-50 text-red-500"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+          </form>
+        </AdminListLayout>
       )}
     </div>
   );

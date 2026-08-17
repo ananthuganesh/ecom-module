@@ -1,4 +1,4 @@
-import { ATTRIBUTION_KEY as STORAGE_ATTRIBUTION_KEY, ensureStorageKey } from "@/lib/storageKeys";
+import { ATTRIBUTION_KEY as STORAGE_ATTRIBUTION_KEY, ensureStorageKey } from "./storageKeys.js";
 
 export const ATTRIBUTION_KEY = STORAGE_ATTRIBUTION_KEY;
 export const FIRST_TOUCH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -19,7 +19,7 @@ function truncate(s, n = 200) {
 }
 
 /** Pure: parse touch from location-like object. */
-export function parseTouchFromLocation({ search = "", pathname = "/", nowIso } = {}) {
+export function parseTouchFromLocation({ search = "", pathname = "/", nowIso, referrer } = {}) {
   const q = new URLSearchParams(
     typeof search === "string" && search.startsWith("?") ? search.slice(1) : search || ""
   );
@@ -41,6 +41,8 @@ export function parseTouchFromLocation({ search = "", pathname = "/", nowIso } =
   const qs = landingQuery.toString();
   touch.landingPath = truncate(qs ? `${pathname}?${qs}` : pathname || "/");
   touch.landedAt = nowIso || new Date().toISOString();
+  const ref = truncate(String(referrer || "").trim());
+  if (ref) touch.referrer = ref;
   return touch;
 }
 
@@ -86,6 +88,7 @@ export function captureAttributionFromLocation(loc) {
   const touch = parseTouchFromLocation({
     search: loc?.search ?? window.location.search,
     pathname: loc?.pathname ?? window.location.pathname,
+    referrer: typeof document !== "undefined" ? document.referrer : "",
   });
   if (!touch) return;
   const prev = readStoredAttribution();

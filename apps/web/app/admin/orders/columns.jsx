@@ -6,7 +6,7 @@ import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
 import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
 import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
-import { estimateDtdcSurfaceCost } from "@/utils/dtdcEstCost";
+import { displayCustomerName } from "@/utils/displayCustomerName";
 
 const STATUS_LABELS = {
   // Order status — package / fulfillment wording
@@ -185,12 +185,7 @@ function paymentTone(status) {
 }
 
 function customerName(order) {
-  return (
-    order.shippingAddress?.name ||
-    order.customerId?.name ||
-    order.customerId?.email ||
-    ""
-  );
+  return displayCustomerName(order, "");
 }
 
 function formatOrderDate(order) {

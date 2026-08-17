@@ -9,6 +9,7 @@ import {
 } from "@/api";
 import { printHtml } from "@/utils/printHtml";
 import { buildMultiInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
+import { displayCustomerName } from "@/utils/displayCustomerName";
 import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatAdminDateTime, parseAdminDate } from "@/utils/formatAdminDateTime";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
@@ -328,7 +329,7 @@ export default function AdminOrdersPage() {
       return {
         Order: formatOrderNumber(order) || order._id || "",
         Date: formatAdminDateTime(order.createdAt),
-        Customer: ship.name || order.customerId?.name || order.customerName || "",
+        Customer: displayCustomerName(order, ""),
         Email: order.customerId?.email || ship.email || "",
         Phone: order.customerId?.phone || ship.phone || "",
         City: ship.city || "",

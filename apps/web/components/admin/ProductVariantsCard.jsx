@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import SafeImage from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -433,9 +433,11 @@ export default function ProductVariantsCard({
   const showTable = started && sizes.length > 0;
 
   return (
-    <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-      <CardContent className="flex flex-col gap-3 p-4">
-        <CardTitle className="admin-card-heading m-0">Variants</CardTitle>
+    <Card className="@container/card">
+      <CardHeader>
+        <CardTitle>Variants</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
 
         {!started ? (
           <button

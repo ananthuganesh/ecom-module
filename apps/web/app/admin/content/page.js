@@ -203,6 +203,7 @@ export default function MediaLibrary() {
   };
 
   return (
+    <div className="mx-auto w-full max-w-7xl">
     <AdminListLayout
       fill={false}
       title="Files"
@@ -291,5 +292,6 @@ export default function MediaLibrary() {
         }
       />
     </AdminListLayout>
+    </div>
   );
 }

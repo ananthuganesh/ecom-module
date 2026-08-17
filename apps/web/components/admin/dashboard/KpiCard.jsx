@@ -75,7 +75,7 @@ export default function KpiCard({
   sparkline,
 }) {
   return (
-    <Card className="@container/card bg-linear-to-t from-primary/5 to-card shadow-xs dark:bg-card">
+    <Card className="@container/card bg-linear-to-t from-primary/5 to-card dark:bg-card">
       <CardHeader className="gap-2">
         <div className="flex items-center gap-2">
           {Icon ? (

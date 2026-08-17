@@ -23,6 +23,27 @@ function cleanName(value) {
   return name;
 }
 
+/** Handles / emails / `akhilst1996` — not a first + last name. */
+function isUsernameLike(value) {
+  const name = String(value || "").trim();
+  if (!name) return false;
+  if (name.includes("@")) return true;
+  return !/\s/.test(name) && /\d/.test(name);
+}
+
+function personName(value) {
+  const name = cleanName(value);
+  if (!name || isUsernameLike(name)) return "";
+  return name;
+}
+
+function fromFirstLast(obj) {
+  if (!obj || typeof obj !== "object") return "";
+  const first = personName(obj.firstName);
+  const last = personName(obj.lastName);
+  return cleanName(`${first} ${last}`);
+}
+
 function nameFromEmail(email) {
   if (!email || !String(email).includes("@")) return "";
   const local = String(email).split("@")[0] || "";
@@ -43,21 +64,26 @@ export function displayCustomerName(orderOrCustomer, fallback = "Customer") {
       ? orderOrCustomer.customerId
       : orderOrCustomer?.user && typeof orderOrCustomer.user === "object"
         ? orderOrCustomer.user
-        : orderOrCustomer?.name || orderOrCustomer?.email
+        : orderOrCustomer?.name ||
+            orderOrCustomer?.email ||
+            orderOrCustomer?.firstName ||
+            orderOrCustomer?.lastName
           ? orderOrCustomer
           : null;
 
   const ship = orderOrCustomer?.shippingAddress || {};
-  const fromShip =
-    cleanName(ship.name) ||
-    cleanName(ship.fullName) ||
-    cleanName(`${ship.firstName || ""} ${ship.lastName || ""}`);
-
-  const fromCustomer = cleanName(customer?.name);
-  const fromEmail = nameFromEmail(customer?.email || ship.email || orderOrCustomer?.email);
   const phone = customer?.phone || ship.phone || ship.mobile || "";
 
-  return fromCustomer || fromShip || fromEmail || (phone ? String(phone) : "") || fallback;
+  return (
+    fromFirstLast(customer) ||
+    fromFirstLast(ship) ||
+    personName(ship.fullName) ||
+    personName(ship.name) ||
+    personName(customer?.name) ||
+    nameFromEmail(customer?.email || ship.email || orderOrCustomer?.email) ||
+    (phone ? String(phone) : "") ||
+    fallback
+  );
 }
 
 export default displayCustomerName;

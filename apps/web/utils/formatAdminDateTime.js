@@ -44,6 +44,25 @@ export function formatAdminDateTime(iso) {
   return `${day} ${month} at ${time}`;
 }
 
+/** Admin date only: `28 Jun 2026` (Asia/Kolkata) */
+export function formatAdminDate(iso) {
+  const d = parseAdminDate(iso);
+  if (!d) return "";
+  const day = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    timeZone: ADMIN_TIME_ZONE,
+  }).format(d);
+  const month = new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    timeZone: ADMIN_TIME_ZONE,
+  }).format(d);
+  const year = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    timeZone: ADMIN_TIME_ZONE,
+  }).format(d);
+  return `${day} ${month} ${year}`;
+}
+
 /** Order detail: `August 16, 2026 at 2:36 pm` (Asia/Kolkata) */
 export function formatAdminLongDateTime(iso) {
   const d = parseAdminDate(iso);

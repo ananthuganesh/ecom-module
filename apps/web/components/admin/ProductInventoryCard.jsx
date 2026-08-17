@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 export default function ProductInventoryCard({ form, setForm }) {
@@ -30,9 +30,11 @@ export default function ProductInventoryCard({ form, setForm }) {
   };
 
   return (
-    <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-      <CardContent className="flex flex-col gap-3 p-4">
-        <CardTitle className="admin-card-heading m-0">Inventory</CardTitle>
+    <Card className="@container/card">
+      <CardHeader>
+        <CardTitle>Inventory</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
 
         <div className="overflow-hidden rounded-xl border border-[#e3e3e3]">
           <table className="w-full border-collapse text-left">

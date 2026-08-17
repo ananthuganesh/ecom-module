@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { adminOrderService, adminErpService, adminShippingService, adminCompanyProfileService, adminTaxClassService } from "@/api";
-import { Package, ChevronUp, ChevronDown, Copy, Check, ShoppingBag as OrderIcon, X, Archive, RotateCcw } from "lucide-react";
+import { Package, ChevronUp, ChevronDown, Copy, Check, X, Archive, RotateCcw } from "lucide-react";
+import { ShoppingBag } from "@/components/admin/LocalIcons";
 import SafeImage from "@/components/SafeImage";
 import {
   buildOrderTimeline,
@@ -56,26 +57,98 @@ const ORDER_STATUS_LABELS = {
   cancelled: "Cancelled",
 };
 
-function AttributionTouchRows({ touch }) {
-  if (!touch) return <p className="text-[13px] font-medium text-muted-foreground">Direct / none</p>;
-  const rows = [
-    ["Source", channelDisplayName(touch.source)],
-    ["Medium", touch.medium],
-    ["Campaign", touch.campaign],
-    ["Content", touch.content],
-    ["Term", touch.term],
-    ["gclid", touch.gclid],
-    ["fbclid", touch.fbclid],
-  ].filter(([, v]) => v);
+function campaignContentLabel(touch) {
+  const campaign = String(touch?.campaign || "").trim();
+  const content = String(touch?.content || "").trim();
+  if (campaign && content && campaign !== content) {
+    return `${campaign} / ${content}`;
+  }
+  return campaign || content || "";
+}
+
+function AttributionRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex justify-between gap-3 text-[13px] font-medium">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="break-all text-right text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function AttributionMarketingRows({ touch }) {
+  if (!touch) {
+    return <p className="admin-card-muted">Direct / none</p>;
+  }
+  const source = channelDisplayName(touch.source) || touch.source;
+  const medium = String(touch.medium || "").trim();
+  const campaignContent = campaignContentLabel(touch);
+  if (!source && !medium && !campaignContent) {
+    return <p className="admin-card-muted">Direct / none</p>;
+  }
   return (
     <div className="space-y-2">
-      {rows.map(([label, value]) => (
-        <div key={label} className="flex justify-between gap-3 text-[13px] font-medium">
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="text-foreground text-right break-all">{value}</span>
-        </div>
-      ))}
+      <AttributionRow label="Source" value={source} />
+      <AttributionRow label="Medium" value={medium} />
+      <AttributionRow label="Campaign/Content" value={campaignContent} />
     </div>
+  );
+}
+
+function AttributionTechnicalRows({ touch }) {
+  if (!touch) return null;
+  const utmRows = [
+    ["utm_source", touch.source],
+    ["utm_medium", touch.medium],
+    ["utm_campaign", touch.campaign],
+    ["utm_content", touch.content],
+    ["utm_term", touch.term],
+  ].filter(([, v]) => v);
+  const timestamp = touch.landedAt ? formatAdminLongDateTime(touch.landedAt) : "";
+  const referrer = touch.referrer || touch.referer || "";
+  const hasAnything =
+    touch.fbclid ||
+    touch.gclid ||
+    utmRows.length ||
+    touch.landingPath ||
+    referrer ||
+    timestamp;
+  if (!hasAnything) {
+    return <p className="admin-card-muted">No technical details</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <AttributionRow label="fbclid" value={touch.fbclid} />
+      <AttributionRow label="gclid" value={touch.gclid} />
+      {utmRows.length ? (
+        <div className="space-y-2">
+          <p className="admin-card-label">Full UTM parameters</p>
+          {utmRows.map(([label, value]) => (
+            <AttributionRow key={label} label={label} value={value} />
+          ))}
+        </div>
+      ) : null}
+      <AttributionRow label="Landing page" value={touch.landingPath} />
+      <AttributionRow label="Referrer" value={referrer} />
+      <AttributionRow label="Timestamp" value={timestamp} />
+    </div>
+  );
+}
+
+function hasTechnicalAttribution(touch) {
+  if (!touch) return false;
+  return Boolean(
+    touch.fbclid ||
+      touch.gclid ||
+      touch.source ||
+      touch.medium ||
+      touch.campaign ||
+      touch.content ||
+      touch.term ||
+      touch.landingPath ||
+      touch.referrer ||
+      touch.referer ||
+      touch.landedAt
   );
 }
 
@@ -247,6 +320,7 @@ export default function AdminOrderDetailPage() {
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
   const [fulfillLoading, setFulfillLoading] = useState(false);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
+  const [showAttributionTech, setShowAttributionTech] = useState(false);
 
   const loadInvoice = async (orderId) => {
     const inv = await adminErpService.salesInvoices.byOrder(orderId);
@@ -645,7 +719,11 @@ export default function AdminOrderDetailPage() {
   // Use order-specific shipping / billing addresses
   const shippingAddr = order.shippingAddress || {};
   const formatAddrLines = (addr) => ({
-    name: addr.name || "",
+    name:
+      [addr.firstName, addr.lastName].filter(Boolean).join(" ").trim() ||
+      addr.fullName ||
+      addr.name ||
+      "",
     street: addr.address || addr.house || "",
     address2: addr.address2 || "",
     city: addr.city || "",
@@ -708,13 +786,11 @@ export default function AdminOrderDetailPage() {
     );
 
   return (
-    <main className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
+    <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto bg-background md:gap-6">
       {/* Action Header */}
-      <header className="px-4 py-3 flex justify-between items-center gap-3 shrink-0 z-20 bg-transparent sticky top-0 backdrop-blur-sm">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="inline-flex items-center justify-center w-8 h-8 shrink-0 text-foreground">
-            <OrderIcon className="w-5 h-5" />
-          </span>
+      <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 bg-transparent py-0 backdrop-blur-sm">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShoppingBag active className="size-[18px] shrink-0 text-[#303030]" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[16px] leading-5 font-medium text-foreground truncate m-0">
@@ -896,11 +972,11 @@ export default function AdminOrderDetailPage() {
       </header>
 
       {/* Main Container - Three Column Grid (equal side cards; Unfulfilled flexes) */}
-      <div className="grid grid-cols-1 items-start gap-3 p-3 pb-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,20rem)]">
+      <div className="grid grid-cols-1 items-start gap-4 pb-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,20rem)]">
         
         {/* Column 1: Customer & addresses */}
-        <aside className="flex flex-col gap-3">
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+        <aside className="flex flex-col gap-4">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="flex flex-col gap-4 p-4">
               <div>
                 <CardTitle className="admin-card-heading mb-2">
@@ -968,7 +1044,7 @@ export default function AdminOrderDetailPage() {
             </CardContent>
           </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="flex flex-col gap-4 p-4">
               <div>
                 <CardTitle className="admin-card-heading mb-3">
@@ -1023,8 +1099,8 @@ export default function AdminOrderDetailPage() {
         </aside>
 
         {/* Column 2: Order details / fulfillment + timeline */}
-        <div className="flex min-w-0 flex-col gap-3">
-        <Card className="admin-surface flex flex-col gap-0 overflow-visible rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+        <div className="flex min-w-0 flex-col gap-4">
+        <Card className="@container/card flex flex-col gap-0 overflow-visible py-0">
           <CardContent className="admin-fulfillment p-4">
             <div className="admin-fulfillment-header">
               <AdminStatusText tone={fulfillment.tone} size="large" dot solid>
@@ -1137,7 +1213,7 @@ export default function AdminOrderDetailPage() {
           </CardContent>
         </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="p-4">
               <CardTitle className="admin-card-heading mb-3">
                 Activity
@@ -1209,8 +1285,8 @@ export default function AdminOrderDetailPage() {
         </div>
 
         {/* Column 3: Payment, Invoice, Attribution */}
-        <aside className="flex flex-col gap-3">
-          <Card className="admin-surface gap-0 overflow-visible rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+        <aside className="flex flex-col gap-4">
+          <Card className="@container/card gap-0 overflow-visible py-0">
             <CardContent className="space-y-4 p-4">
             <div>
                <CardTitle className="admin-card-heading mb-3">
@@ -1254,26 +1330,9 @@ export default function AdminOrderDetailPage() {
                      />
                    </div>
                  )}
-                 {(order.razorpayOrderId || order.transactionDetails?.razorpayOrderId) && (
-                   <div>
-                     <p className="mb-1 admin-card-label">Razorpay order</p>
-                     <CopyableValue
-                       uppercase
-                       value={order.razorpayOrderId || order.transactionDetails?.razorpayOrderId}
-                     />
-                   </div>
-                 )}
-                 {order.transactionDetails?.rrn && (
-                   <div>
-                     <p className="mb-1 admin-card-label">Reference (RRN)</p>
-                     <CopyableValue value={order.transactionDetails.rrn} />
-                   </div>
-                 )}
                  {!order.razorpayPaymentId &&
                    !order.transactionDetails?.razorpayPaymentId &&
                    !order.transactionDetails?.paymentId &&
-                   !order.razorpayOrderId &&
-                   !order.transactionDetails?.razorpayOrderId &&
                    String(order.paymentStatus || order.transactionDetails?.paymentStatus || "").toLowerCase() !== "paid" && (
                      <p className="admin-card-muted">
                        Awaiting online payment — no Razorpay reference yet.
@@ -1319,12 +1378,12 @@ export default function AdminOrderDetailPage() {
             </CardContent>
           </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="p-4">
               <CardTitle className="admin-card-heading mb-3">
                 Invoice Details
               </CardTitle>
-              <div className="mb-5 space-y-4">
+              <div className="space-y-4">
                 <div>
                   <p className="mb-1 admin-card-label">Taxable Value</p>
                   <p className="admin-card-muted">{formatINR(invoiceTaxable)}</p>
@@ -1339,61 +1398,94 @@ export default function AdminOrderDetailPage() {
                 </div>
               </div>
               {!invoice && showPrintInvoice ? (
-                <AdminHeaderButton
-                  onClick={() => ensureInvoice()}
-                  disabled={invoiceLoading || isPrintingInvoice}
-                >
-                  {invoiceLoading ? (
-                    <>
-                      <Spinner className="size-3.5 text-[#303030]" />
-                      Creating…
-                    </>
-                  ) : (
-                    "Generate invoice"
-                  )}
-                </AdminHeaderButton>
-              ) : invoice && showPrintInvoice ? (
-                <AdminHeaderButton
-                  onClick={handlePrintInvoice}
-                  disabled={isPrintingInvoice || invoiceLoading}
-                >
-                  {isPrintingInvoice ? (
-                    <>
-                      <Spinner className="size-3.5 text-[#303030]" />
-                      Preparing…
-                    </>
-                  ) : (
-                    "Print invoice"
-                  )}
-                </AdminHeaderButton>
-              ) : (
-                <p className="text-[13px] text-muted-foreground">
+                <div className="mt-5">
+                  <AdminHeaderButton
+                    onClick={() => ensureInvoice()}
+                    disabled={invoiceLoading || isPrintingInvoice}
+                  >
+                    {invoiceLoading ? (
+                      <>
+                        <Spinner className="size-3.5 text-[#303030]" />
+                        Creating…
+                      </>
+                    ) : (
+                      "Generate invoice"
+                    )}
+                  </AdminHeaderButton>
+                </div>
+              ) : !showPrintInvoice ? (
+                <p className="mt-5 text-[13px] text-muted-foreground">
                   Invoice is available after the order is marked as fulfilled.
                 </p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="space-y-4 p-4">
-              <CardTitle className="admin-card-heading mb-3">
+              <CardTitle className="admin-card-heading">
                 Attribution
               </CardTitle>
               {!firstTouch && !lastTouch ? (
                 <p className="admin-card-muted">Direct / none</p>
-              ) : sameTouch ? (
-                <AttributionTouchRows touch={firstTouch || lastTouch} />
               ) : (
-                <div className="space-y-4">
-                  <div>
-                    <p className="mb-2 admin-card-label">First touch</p>
-                    <AttributionTouchRows touch={firstTouch} />
+                <>
+                  <div className="space-y-4">
+                    {firstTouch ? (
+                      <div>
+                        <p className="mb-2 admin-card-label">First touch</p>
+                        <AttributionMarketingRows touch={firstTouch} />
+                      </div>
+                    ) : null}
+                    {lastTouch ? (
+                      <div>
+                        <p className="mb-2 admin-card-label">Last touch</p>
+                        <AttributionMarketingRows touch={lastTouch} />
+                      </div>
+                    ) : null}
                   </div>
-                  <div>
-                    <p className="mb-2 admin-card-label">Last touch</p>
-                    <AttributionTouchRows touch={lastTouch} />
-                  </div>
-                </div>
+                  {hasTechnicalAttribution(firstTouch) ||
+                  hasTechnicalAttribution(lastTouch) ? (
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowAttributionTech((open) => !open)}
+                        className="admin-card-link text-left hover:underline"
+                        aria-expanded={showAttributionTech}
+                      >
+                        {showAttributionTech
+                          ? "Hide technical details"
+                          : "View technical details →"}
+                      </button>
+                      {showAttributionTech ? (
+                        sameTouch ? (
+                          <AttributionTechnicalRows
+                            touch={firstTouch || lastTouch}
+                          />
+                        ) : (
+                          <div className="space-y-4">
+                            {firstTouch ? (
+                              <div>
+                                <p className="mb-2 admin-card-label">
+                                  First touch
+                                </p>
+                                <AttributionTechnicalRows touch={firstTouch} />
+                              </div>
+                            ) : null}
+                            {lastTouch ? (
+                              <div>
+                                <p className="mb-2 admin-card-label">
+                                  Last touch
+                                </p>
+                                <AttributionTechnicalRows touch={lastTouch} />
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
               )}
             </CardContent>
           </Card>

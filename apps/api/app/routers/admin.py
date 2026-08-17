@@ -324,6 +324,76 @@ async def admin_users(
     return [_enrich_customer(u) for u in users]
 
 
+async def _resolve_customer(user_id: str) -> User | None:
+    raw = str(user_id or "").strip()
+    if not raw:
+        return None
+    if len(raw) == 12 and raw.isdigit():
+        user = await User.find_one(User.customerUrlId == raw)
+        if user:
+            return user
+    if ObjectId.is_valid(raw):
+        return await User.get(ObjectId(raw))
+    return None
+
+
+async def _customer_stats(user: User) -> dict:
+    stats = {"ordersCount": 0, "amountSpent": 0.0, "abandonedCount": 0}
+    collection = Order.get_pymongo_collection()
+    rows = await collection.aggregate(
+        [
+            {
+                "$match": {
+                    "customerId": user.id,
+                    "status": {"$nin": ["abandoned", "cancelled"]},
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$customerId",
+                    "ordersCount": {"$sum": 1},
+                    "amountSpent": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$in": [
+                                        {
+                                            "$toLower": {
+                                                "$ifNull": ["$paymentStatus", ""]
+                                            }
+                                        },
+                                        ["paid"],
+                                    ]
+                                },
+                                {
+                                    "$ifNull": [
+                                        "$finalPrice",
+                                        {"$ifNull": ["$total", 0]},
+                                    ]
+                                },
+                                0,
+                            ]
+                        }
+                    },
+                }
+            },
+        ]
+    ).to_list(length=1)
+    if rows:
+        stats["ordersCount"] = int(rows[0].get("ordersCount") or 0)
+        stats["amountSpent"] = float(rows[0].get("amountSpent") or 0)
+    try:
+        ac_coll = AbandonedCheckout.get_pymongo_collection()
+        stats["abandonedCount"] = int(
+            await ac_coll.count_documents(
+                {"status": "abandoned", "userId": user.id}
+            )
+        )
+    except Exception:
+        pass
+    return stats
+
+
 @router.post("/users", status_code=201)
 async def admin_create_customer(body: dict, _: CustomersWriter):
     """Create a storefront customer (not an admin). Used from Customers page only."""
@@ -400,21 +470,107 @@ async def admin_create_customer(body: dict, _: CustomersWriter):
 
 @router.get("/users/{user_id}")
 async def admin_user(user_id: str, _: CustomersReader):
-    user = await User.get(ObjectId(user_id))
+    user = await _resolve_customer(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user_public(user)
+    stats = await _customer_stats(user)
+    data = user_public(user, stats=stats)
+    if not str(data.get("phone") or "").strip():
+        for addr in data.get("addresses") or []:
+            phone = str(
+                (addr or {}).get("phone")
+                or (addr or {}).get("contact")
+                or (addr or {}).get("mobile")
+                or ""
+            ).strip()
+            if phone:
+                data["phone"] = phone
+                break
+    if not str(data.get("phone") or "").strip():
+        collection = Order.get_pymongo_collection()
+        row = await collection.find_one(
+            {
+                "customerId": user.id,
+                "status": {"$nin": ["abandoned", "cancelled"]},
+            },
+            sort=[("createdAt", -1)],
+        )
+        if row:
+            ship = row.get("shippingAddress") or {}
+            details = (row.get("transactionDetails") or {}).get("customerDetails") or {}
+            phone = str(
+                ship.get("phone")
+                or ship.get("contact")
+                or ship.get("mobile")
+                or details.get("phone")
+                or ""
+            ).strip()
+            if phone:
+                data["phone"] = phone
+    return data
+
+
+@router.get("/users/{user_id}/neighbors")
+async def admin_user_neighbors(user_id: str, _: CustomersReader):
+    """Previous (newer) / next (older) customer for detail-page ↑ ↓ navigation."""
+    from app.services.customers import customer_mongo_filter
+
+    user = await _resolve_customer(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    created = user.createdAt or datetime.utcnow()
+    col = User.get_pymongo_collection()
+    base = customer_mongo_filter()
+
+    newer = await col.find_one(
+        {
+            **base,
+            "$or": [
+                {"createdAt": {"$gt": created}},
+                {"createdAt": created, "_id": {"$gt": user.id}},
+            ],
+        },
+        sort=[("createdAt", 1), ("_id", 1)],
+    )
+    older = await col.find_one(
+        {
+            **base,
+            "$or": [
+                {"createdAt": {"$lt": created}},
+                {"createdAt": created, "_id": {"$lt": user.id}},
+            ],
+        },
+        sort=[("createdAt", -1), ("_id", -1)],
+    )
+
+    def _nav(doc: dict | None) -> dict | None:
+        if not doc:
+            return None
+        url_id = doc.get("customerUrlId")
+        oid = str(doc.get("_id"))
+        return {
+            "_id": oid,
+            "name": doc.get("name"),
+            "customerUrlId": str(url_id) if url_id is not None else None,
+            "key": str(url_id).strip() if url_id not in (None, "") else oid,
+        }
+
+    return {"previous": _nav(newer), "next": _nav(older)}
 
 
 @router.get("/users/{user_id}/orders")
 async def admin_user_orders(user_id: str, _: OrdersReader):
-    orders = await Order.find(Order.customerId == ObjectId(user_id)).to_list()
+    user = await _resolve_customer(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    orders = await Order.find(Order.customerId == user.id).to_list()
     return await enrich_orders(orders)
 
 
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, actor: RoleManager):
-    user = await User.get(ObjectId(user_id))
+    user = await _resolve_customer(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.isAdmin or (getattr(user, "roleId", None) and str(user.roleId).strip()):

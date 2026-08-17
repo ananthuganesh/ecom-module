@@ -173,12 +173,12 @@ describe("buildOrderTimeline", () => {
 });
 
 describe("formatTimelineDayLabel", () => {
-  const now = new Date("2026-07-30T12:00:00");
+  const now = new Date("2026-07-30T06:30:00.000Z"); // 12:00 IST
 
   it("returns Today / Yesterday / month day", () => {
-    assert.equal(formatTimelineDayLabel("2026-07-30T09:00:00", now), "Today");
-    assert.equal(formatTimelineDayLabel("2026-07-29T09:00:00", now), "Yesterday");
-    assert.equal(formatTimelineDayLabel("2026-07-26T09:00:00", now), "July 26");
+    assert.equal(formatTimelineDayLabel("2026-07-30T03:30:00.000Z", now), "Today");
+    assert.equal(formatTimelineDayLabel("2026-07-29T03:30:00.000Z", now), "Yesterday");
+    assert.equal(formatTimelineDayLabel("2026-07-26T03:30:00.000Z", now), "July 26");
   });
 });
 
@@ -191,13 +191,15 @@ describe("formatTimelineTime", () => {
 
 describe("groupTimelineByDay", () => {
   it("groups newest-first by calendar day with labels on groups", () => {
+    // parseAdminDate treats naive ISO as UTC, then labels use Asia/Kolkata.
+    const now = new Date("2026-07-30T06:30:00.000Z"); // 12:00 IST
     const groups = groupTimelineByDay(
       [
-        { id: "a", title: "A", at: "2026-07-29T21:55:00" },
-        { id: "b", title: "B", at: "2026-07-29T21:50:00" },
-        { id: "c", title: "C", at: "2026-07-26T21:54:00" },
+        { id: "a", title: "A", at: "2026-07-29T16:25:00.000Z" },
+        { id: "b", title: "B", at: "2026-07-29T16:20:00.000Z" },
+        { id: "c", title: "C", at: "2026-07-26T16:24:00.000Z" },
       ],
-      new Date("2026-07-30T12:00:00")
+      now
     );
     assert.equal(groups.length, 2);
     assert.equal(groups[0].label, "Yesterday");

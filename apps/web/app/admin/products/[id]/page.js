@@ -27,15 +27,15 @@ import {
   ChevronUp,
   Eye,
   Loader2,
-  Package,
   Plus,
   Printer,
 } from "lucide-react";
 import SafeImage from "@/components/SafeImage";
 import SelectExistingMediaDialog from "@/components/admin/SelectExistingMediaDialog";
 import { AdminHeaderButton, AdminStatusText } from "@/components/admin/list";
+import { Package } from "@/components/admin/LocalIcons";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -192,19 +192,6 @@ function variantMenuLabel(variant, index) {
   if (label) return label;
   if (sku) return sku;
   return `Variant ${index + 1}`;
-}
-
-function formatCreatedAt(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function cloneForm(form) {
@@ -705,32 +692,23 @@ export default function AdminProductDetailPage() {
 
   return (
     <>
-      <main className="admin-product-form mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
-        <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 bg-transparent px-4 py-3 backdrop-blur-sm">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-foreground">
-              <Package className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="m-0 truncate text-[16px] leading-5 font-medium text-foreground">
-                  {isNew
-                    ? form.productName || "Add product"
-                    : form.productName || "Untitled product"}
-                </p>
-                <AdminStatusText tone={statusTone(form.status)} dot>
-                  {statusLabel(form.status)}
-                </AdminStatusText>
-                {!isNew && dirty ? (
-                  <span className="text-[12px] font-medium text-muted-foreground">
-                    Unsaved
-                  </span>
-                ) : null}
-              </div>
-              <p className="m-0 mt-0.5 truncate text-[13px] font-normal text-muted-foreground">
-                {isNew ? "New product" : formatCreatedAt(product?.createdAt)}
-              </p>
-            </div>
+      <main className="admin-product-form mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto bg-background md:gap-6">
+        <header className="sticky top-0 z-20 flex shrink-0 flex-col gap-3 bg-transparent py-0 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <Package active className="size-[18px] shrink-0 text-[#303030]" />
+            <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+              {isNew
+                ? form.productName || "Add product"
+                : form.productName || "Untitled product"}
+            </h2>
+            <AdminStatusText tone={statusTone(form.status)} dot>
+              {statusLabel(form.status)}
+            </AdminStatusText>
+            {!isNew && dirty ? (
+              <span className="text-xs font-medium text-muted-foreground">
+                Unsaved
+              </span>
+            ) : null}
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -858,10 +836,10 @@ export default function AdminProductDetailPage() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 items-start gap-3 p-3 pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
-          <div className="flex min-w-0 flex-col gap-3">
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
+        <div className="grid grid-cols-1 items-start gap-4 pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <Card className="@container/card">
+              <CardContent className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel>Title</FieldLabel>
                   <Input
@@ -887,7 +865,7 @@ export default function AdminProductDetailPage() {
                 </Field>
 
                 <div className="flex flex-col gap-3">
-                  <CardTitle className="admin-card-heading m-0">Media</CardTitle>
+                  <CardTitle>Media</CardTitle>
                   {uniqueMedia.length === 0 ? (
                   <div
                     className="admin-media-dropzone flex flex-col items-center justify-center gap-3 bg-white px-4 py-12 text-center"
@@ -1044,9 +1022,11 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Price</CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Price</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field>
                     <FieldLabel>MRP</FieldLabel>
@@ -1142,10 +1122,12 @@ export default function AdminProductDetailPage() {
             <ProductSeoCard form={form} updateForm={updateForm} />
           </div>
 
-          <aside className="flex flex-col gap-3">
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Status</CardTitle>
+          <aside className="flex flex-col gap-4">
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Status</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <Select
                   value={form.status || "draft"}
                   onValueChange={(status) => updateForm({ status })}
@@ -1189,9 +1171,11 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Category</CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Category</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel>Category</FieldLabel>
                   <Select
@@ -1247,11 +1231,11 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">
-                  Attributes
-                </CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Attributes</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 {PRODUCT_ATTR_FIELDS.map(({ key, label, options, creatable }) => {
                   if (creatable && key === "colors") {
                     return (
@@ -1335,9 +1319,11 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Publishing</CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Publishing</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <Button
                   type="button"
                   variant="outline"

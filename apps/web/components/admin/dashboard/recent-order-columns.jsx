@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatOrderNumber, adminOrderHref } from "@/utils/formatOrderNumber";
 import { Button } from "@/components/ui/button";
 import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
+import { displayCustomerName } from "@/utils/displayCustomerName";
 
 function formatINR(value) {
   return Number(value || 0).toLocaleString("en-IN", {
@@ -12,12 +13,7 @@ function formatINR(value) {
 }
 
 function customerLabel(order) {
-  return (
-    order.shippingAddress?.name ||
-    order.customerId?.name ||
-    order.customerId?.email ||
-    ""
-  );
+  return displayCustomerName(order, "");
 }
 
 export const recentOrderColumns = [

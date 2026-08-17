@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -107,12 +113,10 @@ export default function ProductSeoCard({
   );
 
   return (
-    <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle className="admin-card-heading m-0">
-            Search engine listing
-          </CardTitle>
+    <Card className="@container/card">
+      <CardHeader>
+        <CardTitle>Search engine listing</CardTitle>
+        <CardAction>
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
@@ -126,7 +130,9 @@ export default function ProductSeoCard({
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-        </div>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
 
         {editing ? (
           <>
@@ -137,7 +143,7 @@ export default function ProductSeoCard({
               previewDescription={previewDescription}
             />
 
-            <div className="-mx-4 border-t border-[#ebebeb]" />
+            <div className="-mx-(--card-spacing) border-t border-[#ebebeb]" />
 
             <Field>
               <FieldLabel>Page title</FieldLabel>

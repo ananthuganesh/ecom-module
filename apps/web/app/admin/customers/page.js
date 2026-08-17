@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { adminUserService } from "@/api";
 import { Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import {
 } from "@/components/admin/list";
 import { DataTable } from "@/components/ui/data-table";
 import CreateCustomerSheet from "@/components/admin/CreateCustomerSheet";
+import { adminCustomerHref } from "@/utils/formatCustomerUrl";
 import {
   createCustomerColumns,
   customerName,
@@ -18,6 +20,7 @@ import {
 } from "./columns";
 
 export default function AdminCustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -179,10 +182,11 @@ export default function AdminCustomersPage() {
           showSelectionCount={false}
           infiniteScroll
           rowHeightClass="h-8"
-          tableClassName="min-w-[1480px]"
+          tableClassName="min-w-[1372px]"
           emptyTitle="No customers found"
           emptyDescription="Add a customer to get started."
           pageSize={25}
+          onRowClick={(customer) => router.push(adminCustomerHref(customer))}
           toolbar={
             selectedIds.length > 0 ? (
               <>
@@ -239,7 +243,10 @@ export default function AdminCustomersPage() {
       <CreateCustomerSheet
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSuccess={() => fetchCustomers()}
+        onSuccess={(created) => {
+          fetchCustomers();
+          if (created) router.push(adminCustomerHref(created));
+        }}
       />
     </>
   );
