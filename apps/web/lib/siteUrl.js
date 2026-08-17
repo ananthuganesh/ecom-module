@@ -58,6 +58,16 @@ export function productCanonicalPath(product) {
   return slug ? `/product/${slug}` : "/all-products";
 }
 
+/** Full document title. Use with `title: { absolute }` so the root template is not applied twice. */
+export function productDocumentTitle(product) {
+  const custom = String(product?.metaTitle || "").trim();
+  if (custom) return custom;
+  const name =
+    String(product?.productName || product?.name || "Product").trim() ||
+    "Product";
+  return `${name} | Urban Aana`;
+}
+
 export function productOgImage(product) {
   const img =
     product?.thumbnails?.[0] ||

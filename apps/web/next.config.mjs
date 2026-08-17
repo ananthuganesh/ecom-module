@@ -77,6 +77,7 @@ const nextConfig = {
       // Customer account (legacy /profile → /account)
       { source: "/profile", destination: "/account", permanent: true },
       { source: "/profile/:path*", destination: "/account/:path*", permanent: true },
+      { source: "/products/:slug", destination: "/product/:slug", permanent: true, statusCode: 301 },
       // Deleted settings / wallet / payment UI
       { source: "/admin/analytics", destination: "/admin/dashboard", permanent: false },
       { source: "/admin/analytics/:path*", destination: "/admin/dashboard", permanent: false },

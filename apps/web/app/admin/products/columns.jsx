@@ -33,7 +33,7 @@ export function resolveCategoryName(categories, value) {
 }
 
 export function storefrontHref(product) {
-  if (product?.slug) return `/products/${product.slug}`;
+  if (product?.slug) return `/product/${product.slug}`;
   if (product?._id) return `/product/${product._id}`;
   return "/all-products";
 }

@@ -5,6 +5,7 @@ import {
   absoluteUrl,
   fetchProductForSeo,
   productCanonicalPath,
+  productDocumentTitle,
   productOgImage,
 } from "@/lib/siteUrl";
 
@@ -13,14 +14,12 @@ export async function generateMetadata({ params }) {
   const product = await fetchProductForSeo(id);
   if (!product) {
     return {
-      title: "Product | Urban Aana",
+      title: { absolute: "Product | Urban Aana" },
       description: "Shop premium streetwear at Urban Aana.",
     };
   }
 
-  const title =
-    (product.metaTitle || "").trim() ||
-    `${product.productName || product.name || "Product"} | Urban Aana`;
+  const title = productDocumentTitle(product);
   const description =
     (product.metaDescription || "").trim() ||
     String(product.description || "")
@@ -33,7 +32,7 @@ export async function generateMetadata({ params }) {
   const image = productOgImage(product);
 
   return {
-    title,
+    title: { absolute: title },
     description,
     alternates: { canonical },
     openGraph: {

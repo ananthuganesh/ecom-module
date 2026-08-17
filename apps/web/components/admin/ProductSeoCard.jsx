@@ -80,7 +80,7 @@ export default function ProductSeoCard({
 
   const origin = storeOrigin();
   const originHost = origin.replace(/^https?:\/\//, "");
-  const handlePath = slug ? `products/${slug}` : "products/";
+  const handlePath = slug ? `product/${slug}` : "product/";
   const fullUrl = `${origin}/${handlePath}`;
   const breadcrumb = [originHost, "products", slug || undefined].filter(
     Boolean
@@ -171,9 +171,9 @@ export default function ProductSeoCard({
             <Field>
               <FieldLabel>URL handle</FieldLabel>
               <Input
-                value={slug ? `products/${slug}` : "products/"}
+                value={slug ? `product/${slug}` : "product/"}
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/^products\/?/i, "");
+                  const raw = e.target.value.replace(/^products?\//i, "");
                   updateForm({
                     slug: slugify(raw),
                     slugManual: true,
