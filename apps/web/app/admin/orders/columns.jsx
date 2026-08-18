@@ -84,6 +84,24 @@ export function resolveFulfillmentDisplay(order) {
   };
 }
 
+export function orderHasAwb(order) {
+  return Boolean(String(order?.awbCode || order?.awb || "").trim());
+}
+
+/** Same gate as the order page: book DTDC (Mark as fulfilled) only when still Unfulfilled. */
+export function canFulfillOrder(order) {
+  return resolveFulfillmentDisplay(order).key === "Unfulfilled" && !orderHasAwb(order);
+}
+
+/** Invoice and shipping label print after a consignment exists. */
+export function canPrintOrderInvoice(order) {
+  return orderHasAwb(order);
+}
+
+export function canPrintOrderLabel(order) {
+  return orderHasAwb(order);
+}
+
 /** Fulfillment / shipping status → pill tone (pastel palette). */
 function shippingTone(status) {
   const s = String(status || "").trim().toLowerCase();

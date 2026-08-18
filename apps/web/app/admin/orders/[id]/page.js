@@ -32,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
-import { paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
+import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
 import {
   Card,
   CardContent,
@@ -772,10 +772,8 @@ export default function AdminOrderDetailPage() {
   const fulfillment = resolveFulfillmentDisplay(order);
   const isCancelled = String(order.status || "").toLowerCase() === "cancelled";
   const hasAwb = Boolean(order.awbCode || order.awb);
-  const isUnfulfilled =
-    fulfillment.key === "Unfulfilled" || fulfillment.key === "Payment Pending";
   // Invoice print is the post-fulfillment document on this page (labels live under Shipments).
-  const showPrintInvoice = !isUnfulfilled || hasAwb;
+  const showPrintInvoice = canPrintOrderInvoice(order);
   const canRefund =
     isCancelled &&
     !["refunded"].includes(payStatus) &&

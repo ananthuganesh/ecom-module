@@ -6,15 +6,17 @@ import {
   adminCompanyProfileService,
   adminErpService,
   adminOrderService,
+  adminShippingService,
 } from "@/api";
 import { printHtml } from "@/utils/printHtml";
+import { printPdfBlob } from "@/utils/printPdfBlob";
 import { buildMultiInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
 import { displayCustomerName } from "@/utils/displayCustomerName";
 import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatAdminDateTime, parseAdminDate } from "@/utils/formatAdminDateTime";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
-import { Download, FileText, Loader2, Search } from "lucide-react";
+import { Check, Download, FileText, Loader2, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   AdminListLayout,
@@ -24,6 +26,9 @@ import {
 } from "@/components/admin/list";
 import { DataTable } from "@/components/ui/data-table";
 import {
+  canFulfillOrder,
+  canPrintOrderInvoice,
+  canPrintOrderLabel,
   createOrderColumns,
   isMutedFulfillmentRow,
   resolveFulfillmentDisplay,
@@ -66,7 +71,9 @@ export default function AdminOrdersPage() {
   const [debouncedQ, setDebouncedQ] = useState(() => initialSearch);
   const [rowSelection, setRowSelection] = useState({});
   const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [isFulfilling, setIsFulfilling] = useState(false);
   const [isPrintingInvoices, setIsPrintingInvoices] = useState(false);
+  const [isPrintingLabels, setIsPrintingLabels] = useState(false);
   const fetchGen = useRef(0);
 
   const selectedOrderIds = useMemo(
@@ -295,6 +302,15 @@ export default function AdminOrdersPage() {
 
   const columns = useMemo(() => createOrderColumns(), []);
 
+  const selectedOrders = useMemo(() => {
+    const ids = new Set(selectedOrderIds.map(String));
+    return displayOrders.filter((order) => ids.has(String(order._id)));
+  }, [displayOrders, selectedOrderIds]);
+
+  const canFulfillSelected = selectedOrders.some(canFulfillOrder);
+  const canPrintSelectedInvoices = selectedOrders.some(canPrintOrderInvoice);
+  const canPrintSelectedLabels = selectedOrders.some(canPrintOrderLabel);
+
   const handleExportSelected = () => {
     if (!selectedOrderIds.length) return;
     const selected = displayOrders.filter((o) => selectedOrderIds.includes(o._id));
@@ -346,8 +362,122 @@ export default function AdminOrdersPage() {
     toast.success(`Exported ${rows.length} row${rows.length === 1 ? "" : "s"}`);
   };
 
+  const mergeUpdatedOrders = (updated) => {
+    if (!updated.length) return;
+    const byId = new Map(updated.map((order) => [String(order._id), order]));
+    setOrders((prev) => {
+      const next = prev.map((order) => byId.get(String(order._id)) || order);
+      useAdminOrdersStore.getState().patch({ orders: next });
+      return next;
+    });
+  };
+
+  const handleBulkMarkFulfilled = async () => {
+    const ids = selectedOrders.filter(canFulfillOrder).map((order) => order._id);
+    if (!ids.length || isFulfilling) return;
+    setIsFulfilling(true);
+    setIsBulkLoading(true);
+    try {
+      const CONCURRENCY = 4;
+      let cursor = 0;
+      let failed = 0;
+      const updated = [];
+      const workers = Array.from(
+        { length: Math.min(CONCURRENCY, ids.length) },
+        async () => {
+          while (cursor < ids.length) {
+            const id = ids[cursor];
+            cursor += 1;
+            try {
+              const response = await adminShippingService.createShipment(id);
+              if (response?.order) updated.push(response.order);
+              try {
+                const existing = await adminErpService.salesInvoices.byOrder(id);
+                if (!existing) await adminErpService.salesInvoices.fromOrder(id);
+              } catch {
+                /* print invoice can still create later */
+              }
+            } catch {
+              failed += 1;
+            }
+          }
+        }
+      );
+      await Promise.all(workers);
+      mergeUpdatedOrders(updated);
+      if (!updated.length) {
+        toast.error("Could not mark orders as fulfilled");
+        return;
+      }
+      toast.success(
+        failed
+          ? `Marked ${updated.length} fulfilled (${failed} failed)`
+          : `Marked ${updated.length} order${updated.length === 1 ? "" : "s"} as fulfilled`
+      );
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || error?.message || "Fulfillment failed");
+    } finally {
+      setIsFulfilling(false);
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleBulkPrintLabels = async () => {
+    const ids = selectedOrders.filter(canPrintOrderLabel).map((order) => order._id);
+    if (!ids.length || isPrintingLabels) return;
+    setIsPrintingLabels(true);
+    setIsBulkLoading(true);
+    try {
+      const { blob, printed, skipped, errors } =
+        await adminShippingService.downloadLabelsBulk(ids);
+      if (!(blob instanceof Blob) || blob.type?.includes("json")) {
+        let detail = "No printable DTDC labels in selection";
+        try {
+          const text = await blob.text();
+          const parsed = JSON.parse(text);
+          if (parsed?.detail) detail = String(parsed.detail);
+        } catch {
+          /* ignore */
+        }
+        toast.error(detail);
+        return;
+      }
+      await printPdfBlob(blob, { autoPrint: true });
+      const extra = [];
+      if (skipped) extra.push(`${skipped} skipped`);
+      if (errors) extra.push(`${errors} failed`);
+      toast.success(
+        extra.length
+          ? `Printing ${printed} label${printed === 1 ? "" : "s"} (${extra.join(", ")})`
+          : `Printing ${printed} label${printed === 1 ? "" : "s"}`
+      );
+    } catch (error) {
+      let detail = error?.message || "Label print failed";
+      const data = error?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await data.text());
+          if (parsed?.detail) detail = String(parsed.detail);
+        } catch {
+          /* ignore */
+        }
+      } else if (typeof data?.detail === "string") {
+        detail = data.detail;
+      }
+      toast.error(detail);
+    } finally {
+      setIsPrintingLabels(false);
+      setIsBulkLoading(false);
+    }
+  };
+
   const handleBulkPrintInvoices = async () => {
     if (!selectedOrderIds.length || isPrintingInvoices) return;
+    const printableIds = selectedOrders.filter(canPrintOrderInvoice).map((order) => order._id);
+    if (!printableIds.length) {
+      toast.error("Invoice is available after the order is marked as fulfilled");
+      return;
+    }
     setIsPrintingInvoices(true);
     setIsBulkLoading(true);
     try {
@@ -374,7 +504,7 @@ export default function AdminOrdersPage() {
         stateCode: companyRaw.stateCode,
       };
 
-      const ids = [...selectedOrderIds];
+      const ids = [...printableIds];
       const orderById = new Map(orders.map((o) => [o._id, o]));
       const CONCURRENCY = 8;
       let cursor = 0;
@@ -518,18 +648,47 @@ export default function AdminOrdersPage() {
                 <AdminHeaderButton variant="outline" onClick={handleExportSelected}>
                   <Download className="w-3.5 h-3.5" /> Export
                 </AdminHeaderButton>
-                <AdminHeaderButton
-                  variant="outline"
-                  disabled={isBulkLoading || isPrintingInvoices}
-                  onClick={handleBulkPrintInvoices}
-                >
-                  {isPrintingInvoices ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5" />
-                  )}
-                  {isPrintingInvoices ? "Preparing…" : "Print invoices"}
-                </AdminHeaderButton>
+                {canFulfillSelected ? (
+                  <AdminHeaderButton
+                    disabled={isBulkLoading || isFulfilling}
+                    onClick={handleBulkMarkFulfilled}
+                  >
+                    {isFulfilling ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    {isFulfilling ? "Booking…" : "Mark as fulfilled"}
+                  </AdminHeaderButton>
+                ) : null}
+                {canPrintSelectedLabels ? (
+                  <AdminHeaderButton
+                    variant="outline"
+                    disabled={isBulkLoading || isPrintingLabels}
+                    onClick={handleBulkPrintLabels}
+                  >
+                    {isPrintingLabels ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Printer className="w-3.5 h-3.5" />
+                    )}
+                    {isPrintingLabels ? "Preparing…" : "Print labels"}
+                  </AdminHeaderButton>
+                ) : null}
+                {canPrintSelectedInvoices ? (
+                  <AdminHeaderButton
+                    variant="outline"
+                    disabled={isBulkLoading || isPrintingInvoices}
+                    onClick={handleBulkPrintInvoices}
+                  >
+                    {isPrintingInvoices ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5" />
+                    )}
+                    {isPrintingInvoices ? "Preparing…" : "Print invoices"}
+                  </AdminHeaderButton>
+                ) : null}
               </div>
             </>
           ) : (
