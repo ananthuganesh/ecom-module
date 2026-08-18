@@ -1,18 +1,25 @@
 import { getSiteUrl } from "@/lib/siteUrl";
 
+/** Ecommerce robots: index catalog + content; keep session/checkout/admin out. */
 export default function robots() {
   const site = getSiteUrl();
   return {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        allow: ["/", "/_next/static/"],
         disallow: [
+          "/admin",
           "/admin/",
           "/checkout",
-          "/api/",
+          "/cart",
+          "/wishlist",
+          "/account",
           "/account/",
-          "/cart/recover",
+          "/login",
+          "/order/",
+          "/api/",
+          "/all-products?",
           "/sentry-example-page",
           "/test-route",
         ],

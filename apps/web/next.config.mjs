@@ -14,6 +14,10 @@ const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: tracingRoot,
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24 * 30,
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
+    qualities: [75, 80],
     remotePatterns: [
       {
         protocol: 'https',
@@ -58,6 +62,7 @@ const nextConfig = {
     ],
   },
   experimental: {
+    optimizePackageImports: ["lucide-react", "date-fns"],
     // Dev/proxy rewrites default to 10MB — reels allow up to 200MB videos.
     proxyClientMaxBodySize: "210mb",
     serverActions: {
@@ -120,7 +125,27 @@ const nextConfig = {
     ];
   },
   async headers() {
+    const longCache = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=2592000, stale-while-revalidate=86400",
+      },
+    ];
     return [
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      { source: "/banner/:path*", headers: longCache },
+      { source: "/images/:path*", headers: longCache },
+      { source: "/urban/:path*", headers: longCache },
+      { source: "/badge/:path*", headers: longCache },
+      { source: "/icons/:path*", headers: longCache },
       {
         source: "/:path*",
         headers: [

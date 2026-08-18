@@ -5,9 +5,11 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ChevronRightIcon } from "@/components/icons/storeIcons";
 import ProductCard from "@/components/storefront/ProductCard";
-import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { productService } from "@/api";
 import { trackViewItemList } from "@/lib/tracking";
+import dynamic from "next/dynamic";
+
+const WhyUrbanAana = dynamic(() => import("@/components/storefront/WhyUrbanAana"));
 
 function titleFromSlug(slug) {
   return String(slug || "")
@@ -21,7 +23,7 @@ export default function CategoryPageClient({
   slug,
   initialProducts = [],
   categoryPageSize = 100,
-  cardPriorityCount = 4,
+  cardPriorityCount = 2,
 }) {
   const [products, setProducts] = useState(initialProducts);
   const [error, setError] = useState(null);

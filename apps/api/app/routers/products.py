@@ -57,6 +57,9 @@ def _build_product_query(
     query: dict[str, Any] = {}
     ands: list[dict[str, Any]] = []
 
+    # Storefront catalog — never list drafts (sitemap, home, PLP).
+    query["status"] = {"$ne": "draft"}
+
     if keyword:
         safe = re.escape(keyword.strip())[:120]
         rx = {"$regex": safe, "$options": "i"}
@@ -219,7 +222,7 @@ async def list_products(
 
 @router.get("/featured")
 async def featured(limit: int = Query(default=4, le=12)):
-    products = await Product.find_all().sort([("createdAt", -1)]).limit(limit).to_list()
+    products = await Product.find({"status": {"$ne": "draft"}}).sort([("createdAt", -1)]).limit(limit).to_list()
     return [product_dict(p) for p in products]
 
 

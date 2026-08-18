@@ -10,18 +10,20 @@ import {
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { productService } from "@/api";
 import { useCartStore } from "@/store/useCartStore";
 import { useAuthStore } from "@/store/useAuthStore";
-import CartDrawer from "./CartDrawer";
 import { useWishlistStore } from "@/store/useWishlistStore";
 import SafeImage from "@/components/SafeImage";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { formatINR } from "@/utils/formatINR";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart } from "lucide-react";
+
+const CartDrawer = dynamic(() => import("./CartDrawer"), { ssr: false });
 
 const NAVBAR_HEIGHT = 56;
 

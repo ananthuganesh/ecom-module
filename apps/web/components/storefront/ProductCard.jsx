@@ -28,6 +28,7 @@ export default function ProductCard({
   const [selectedSize, setSelectedSize] = useState("");
   const [adding, setAdding] = useState(false);
   const [quickAddingSize, setQuickAddingSize] = useState("");
+  const [showHover, setShowHover] = useState(false);
 
   if (!product) return null;
 
@@ -135,6 +136,7 @@ export default function ProductCard({
               <Link
                 href={href}
                 className="absolute inset-0 z-0 block"
+                onMouseEnter={() => hoverImage && setShowHover(true)}
                 onClick={() => trackSelectItem(product, listName, listId)}
               >
                 <SafeImage
@@ -144,10 +146,10 @@ export default function ProductCard({
                   priority={priority}
                   sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
                   className={`object-cover transition-opacity duration-300 ${
-                    hoverImage ? "group-hover:opacity-0" : ""
+                    hoverImage && showHover ? "group-hover:opacity-0" : ""
                   }`}
                 />
-                {hoverImage ? (
+                {hoverImage && showHover ? (
                   <SafeImage
                     src={resolveImageUrl(hoverImage)}
                     alt=""

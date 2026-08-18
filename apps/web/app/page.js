@@ -1,19 +1,31 @@
+import { preload } from "react-dom";
+import dynamic from "next/dynamic";
 import HeroBanner from "@/components/storefront/HeroBanner";
 import ProductGrid from "@/components/storefront/ProductGrid";
-import InstagramReels from "@/components/storefront/InstagramReels";
-import TwoColumnImages from "@/components/storefront/TwoColumnImages";
-import TwoColumnVideos from "@/components/storefront/TwoColumnVideos";
-import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
-import FaqSection from "@/components/storefront/FaqSection";
+import { HERO_LCP_SRC } from "@/components/storefront/heroSlides";
 import { getCatalogConfig } from "@/lib/catalogConfig";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
+import { canonicalUrl } from "@/lib/siteUrl";
+
+const InstagramReels = dynamic(() => import("@/components/storefront/InstagramReels"));
+const TwoColumnImages = dynamic(() => import("@/components/storefront/TwoColumnImages"));
+const TwoColumnVideos = dynamic(() => import("@/components/storefront/TwoColumnVideos"));
+const WhyUrbanAana = dynamic(() => import("@/components/storefront/WhyUrbanAana"));
+const FaqSection = dynamic(() => import("@/components/storefront/FaqSection"));
+
+export const metadata = {
+  alternates: { canonical: canonicalUrl("/") },
+  openGraph: { url: canonicalUrl("/") },
+};
 
 // Route segment cache floor (Next requires a static literal).
 // Per-request fetch TTL is STORE_CATALOG_REVALIDATE.
 export const revalidate = 60;
 
 export default async function Home() {
-  const { homePageSize, cardPriorityCount } = getCatalogConfig();
+  preload(HERO_LCP_SRC, { as: "image", fetchPriority: "high" });
+
+  const { homePageSize } = getCatalogConfig();
   const products = await fetchStoreProducts({
     pageSize: homePageSize,
     sort: "newest",
@@ -32,7 +44,7 @@ export default async function Home() {
             Latest <span className="title-knewave-accent">Drops</span>
           </h2>
         </header>
-        <ProductGrid products={products} priorityCount={cardPriorityCount} />
+        <ProductGrid products={products} priorityCount={0} />
       </section>
 
       <InstagramReels />

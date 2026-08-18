@@ -15,25 +15,30 @@ const VIDEOS = [
 ];
 
 function VideoCell({ src, alt, active, onPlayRequest }) {
+  const wrapRef = useRef(null);
   const videoRef = useRef(null);
   const playing = active;
+  const [armed, setArmed] = useState(false);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !src) return;
-
-    video.src = src;
-    video.load();
-
-    return () => {
-      video.pause();
-    };
+    const wrap = wrapRef.current;
+    if (!wrap || !src) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setArmed(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px 0px" }
+    );
+    observer.observe(wrap);
+    return () => observer.disconnect();
   }, [src]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
-
+    if (!video || !armed) return;
     if (active) {
       video.muted = false;
       const attempt = video.play();
@@ -46,7 +51,7 @@ function VideoCell({ src, alt, active, onPlayRequest }) {
     } else {
       video.pause();
     }
-  }, [active]);
+  }, [active, armed]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -58,6 +63,7 @@ function VideoCell({ src, alt, active, onPlayRequest }) {
   }, [onPlayRequest]);
 
   const togglePlay = () => {
+    setArmed(true);
     if (playing) {
       onPlayRequest(null);
     } else {
@@ -67,6 +73,7 @@ function VideoCell({ src, alt, active, onPlayRequest }) {
 
   return (
     <button
+      ref={wrapRef}
       type="button"
       onClick={togglePlay}
       className="group relative w-full cursor-pointer overflow-hidden rounded-xl bg-black text-left lg:rounded-2xl"
@@ -75,9 +82,10 @@ function VideoCell({ src, alt, active, onPlayRequest }) {
     >
       <video
         ref={videoRef}
+        src={armed ? src : undefined}
         className="absolute inset-0 h-full w-full rounded-lg object-cover lg:rounded-xl"
         playsInline
-        preload="metadata"
+        preload="none"
         aria-hidden
       />
 

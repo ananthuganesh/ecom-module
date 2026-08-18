@@ -3,6 +3,7 @@ import { Inter, Geist, Lato, Archivo_Black, Noto_Sans_Malayalam } from "next/fon
 import GtmClient from "@/components/GtmClient";
 import AttributionCapture from "@/components/AttributionCapture";
 import StorefrontShell from "@/components/storefront/StorefrontShell";
+import { HERO_OG_IMAGE } from "@/components/storefront/heroSlides";
 
 /* Preset b3ZNhPpghM: Inter (sans) + Geist (heading) */
 const inter = Inter({
@@ -45,24 +46,24 @@ export const metadata = {
       process.env.PUBLIC_WEB_URL ||
       "https://urbanaana.com").replace(/\/$/, "")
   ),
-  title: {
-    default: "URBAN AANA | Premium Streetwear",
-    template: "%s | Urban Aana",
-  },
-  description: "Official online store for the URBAN AANA tribe. Premium streetwear shipped across India.",
+    title: {
+      default: "URBAN AANA | Premium Streetwear",
+      template: "%s | Urban Aana",
+    },
+    description: "Official online store for the URBAN AANA tribe. Premium streetwear shipped across India.",
   openGraph: {
     type: "website",
     locale: "en_IN",
     siteName: "Urban Aana",
     title: "URBAN AANA | Premium Streetwear",
     description: "Official online store for the URBAN AANA tribe.",
-    images: [{ url: "/urban/about-1.jpg", width: 1200, height: 630, alt: "Urban Aana" }],
+    images: [HERO_OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
     title: "URBAN AANA | Premium Streetwear",
     description: "Official online store for the URBAN AANA tribe.",
-    images: ["/urban/about-1.jpg"],
+    images: [HERO_OG_IMAGE.url],
   },
 };
 

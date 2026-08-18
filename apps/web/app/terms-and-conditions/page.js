@@ -9,11 +9,13 @@ import {
   STORE_LEGAL_NAME,
   STORE_WEBSITE,
 } from "@/lib/storeContact";
+import { canonicalUrl } from "@/lib/siteUrl";
 
 export const metadata = {
-  title: "Terms and Conditions | Urban Aana",
+  title: "Terms and Conditions",
   description:
     "Terms and conditions for shopping on Urban Aana — orders, payments, liability, and Indian governing law.",
+  alternates: { canonical: canonicalUrl("/terms-and-conditions") },
 };
 
 export default function TermsPage() {

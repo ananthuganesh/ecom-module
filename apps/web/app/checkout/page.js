@@ -62,6 +62,29 @@ function toIndianMobile(value) {
 
 const isIndianMobile = (phone) => /^[6-9]\d{9}$/.test(String(phone || ""));
 
+function loadRazorpayScript() {
+  if (typeof window !== "undefined" && window.Razorpay) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const src = "https://checkout.razorpay.com/v1/checkout.js";
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Razorpay failed to load")), {
+        once: true,
+      });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Razorpay failed to load"));
+    document.body.appendChild(script);
+  });
+}
+
 const formatCheckoutMoney = (amount) => {
   const n = Number(amount) || 0;
   const whole = Math.abs(n - Math.round(n)) < 0.005;
@@ -278,7 +301,6 @@ function CheckoutPageContent() {
 
   const [loading, setLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
-  const [isRazorpayLoaded, setIsRazorpayLoaded] = useState(false);
   const [razorpayConfigured, setRazorpayConfigured] = useState(true);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [loginPromptSkipped, setLoginPromptSkipped] = useState(false);
@@ -360,14 +382,6 @@ function CheckoutPageContent() {
   useEffect(() => {
     if (!paymentMethod) savePaymentMethod("razorpay");
   }, [paymentMethod, savePaymentMethod]);
-
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => setIsRazorpayLoaded(true);
-    document.body.appendChild(script);
-  }, []);
 
   const availableItems = checkoutItems.filter(
     (item) => !isCartLineUnavailable(item)
@@ -868,8 +882,10 @@ function CheckoutPageContent() {
       setPaymentError("Online payments are currently unavailable. Please try again later.");
       return;
     }
-    if (!isRazorpayLoaded) {
-      alert("Razorpay is still loading. Please wait a moment.");
+    try {
+      await loadRazorpayScript();
+    } catch {
+      setPaymentError("Could not load the payment form. Please try again.");
       return;
     }
 

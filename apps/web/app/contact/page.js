@@ -9,7 +9,7 @@ import {
   STORE_PHONE_TEL,
 } from "@/lib/storeContact";
 
-const CONTACT_IMAGE = "/images/44.jpg";
+const CONTACT_IMAGE = "/images/44.webp";
 
 const fieldClass =
   "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-3 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black";

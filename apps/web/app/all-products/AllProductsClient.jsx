@@ -15,10 +15,12 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { productService } from "@/api";
 import FilterSidebar from "@/components/FilterSidebar";
 import ProductSkeleton from "@/components/ProductSkeleton";
-import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 import { trackViewItemList, trackSearch } from "@/lib/tracking";
 import { normalizeProductPage } from "@/utils/normalizeProductPage";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
+
+const WhyUrbanAana = dynamic(() => import("@/components/storefront/WhyUrbanAana"));
 
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest" },
@@ -114,7 +116,7 @@ function AllProductsContent({
   initialHasMore = false,
   initialFacets = EMPTY_FACETS,
   catalogPageSize = 40,
-  cardPriorityCount = 4,
+  cardPriorityCount = 2,
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -448,7 +450,7 @@ export default function AllProductsClient({
   initialHasMore = false,
   initialFacets = EMPTY_FACETS,
   catalogPageSize = 40,
-  cardPriorityCount = 4,
+  cardPriorityCount = 2,
 }) {
   return (
     <main className="min-h-screen bg-white">

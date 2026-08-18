@@ -9,11 +9,13 @@ import {
   STORE_PHONE,
   STORE_PHONE_TEL,
 } from "@/lib/storeContact";
+import { canonicalUrl } from "@/lib/siteUrl";
 
 export const metadata = {
-  title: "Returns & Shipping | Urban Aana",
+  title: "Returns & Shipping",
   description:
     "Urban Aana shipping, returns, and refund policy for customers in India.",
+  alternates: { canonical: canonicalUrl("/return-refund") },
 };
 
 export default function ReturnsAndShippingPage() {

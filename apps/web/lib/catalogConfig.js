@@ -13,6 +13,6 @@ export function getCatalogConfig() {
     homePageSize: intEnv("STORE_HOME_PAGE_SIZE", 12),
     catalogPageSize: intEnv("STORE_CATALOG_PAGE_SIZE", 40),
     categoryPageSize: intEnv("STORE_CATEGORY_PAGE_SIZE", 100),
-    cardPriorityCount: intEnv("STORE_CARD_PRIORITY_COUNT", 4),
+    cardPriorityCount: intEnv("STORE_CARD_PRIORITY_COUNT", 2),
   };
 }

@@ -18,34 +18,35 @@ function playMuted(video) {
 function ReelCard({ videoUrl, altText }) {
   const containerRef = useRef(null);
   const videoRef = useRef(null);
+  const [activeSrc, setActiveSrc] = useState("");
 
   useEffect(() => {
     const container = containerRef.current;
     const video = videoRef.current;
     if (!container || !video || !videoUrl) return;
 
-    video.src = videoUrl;
-    video.load();
-
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
-          playMuted(video);
+          setActiveSrc(videoUrl);
         } else {
           video.pause();
         }
       },
-      { threshold: [0, 0.2, 0.5, 1] }
+      { rootMargin: "120px 0px", threshold: [0, 0.2, 0.5, 1] }
     );
 
     observer.observe(container);
-    playMuted(video);
-
     return () => {
       observer.disconnect();
       video.pause();
     };
   }, [videoUrl]);
+
+  useEffect(() => {
+    if (!activeSrc) return;
+    playMuted(videoRef.current);
+  }, [activeSrc]);
 
   return (
     <div
@@ -59,12 +60,12 @@ function ReelCard({ videoUrl, altText }) {
       >
         <video
           ref={videoRef}
+          src={activeSrc || undefined}
           className="absolute inset-0 h-full w-full object-cover"
           muted
           loop
           playsInline
-          autoPlay
-          preload="auto"
+          preload="none"
           aria-label={altText || "Product showcase"}
         />
       </div>
@@ -73,7 +74,7 @@ function ReelCard({ videoUrl, altText }) {
 }
 
 /** Repeat items until one half of the strip is wide enough for a seamless loop. */
-function buildTrackItems(reels, minCount = 12) {
+function buildTrackItems(reels, minCount = 6) {
   if (!reels.length) return [];
   const target = Math.max(minCount, reels.length);
   const items = [];
@@ -128,7 +129,7 @@ export default function InstagramReels() {
     };
   }, []);
 
-  const trackItems = useMemo(() => buildTrackItems(reels, 12), [reels]);
+  const trackItems = useMemo(() => buildTrackItems(reels, Math.max(reels.length, 5)), [reels]);
 
   if (!loaded && reels.length === 0) {
     return (

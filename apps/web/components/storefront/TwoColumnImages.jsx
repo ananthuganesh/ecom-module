@@ -4,8 +4,8 @@ import Image from "next/image";
 import { useEffect, useRef } from "react";
 
 const IMAGES = [
-  { src: "/images/44.jpg", alt: "Urban Aana campaign" },
-  { src: "/images/47.jpg", alt: "Urban Aana campaign" },
+  { src: "/images/44.webp", alt: "Urban Aana campaign" },
+  { src: "/images/47.webp", alt: "Urban Aana campaign" },
 ];
 
 function ParallaxImage({ src, alt, speed = 0.22 }) {

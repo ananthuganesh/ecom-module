@@ -1,11 +1,13 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import WhyUrbanAana from "@/components/storefront/WhyUrbanAana";
 
-const HERO_IMAGE = "/urban/about-1.jpg";
-const WHO_IMAGE = "/images/founders.png";
+const WhyUrbanAana = dynamic(() => import("@/components/storefront/WhyUrbanAana"));
+
+const HERO_IMAGE = "/urban/about-1.webp";
+const WHO_IMAGE = "/images/founders.webp";
 
 const fadeUp = {
   initial: { opacity: 0, y: 24 },
@@ -90,8 +92,6 @@ const AboutSection = () => {
             src={WHO_IMAGE}
             alt="Meet the founders of Urban Aana"
             fill
-            priority
-            unoptimized
             sizes="(max-width: 1024px) 100vw, 50vw"
             className="object-contain object-center"
           />

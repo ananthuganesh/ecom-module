@@ -17,6 +17,11 @@ export function absoluteUrl(path = "/") {
   return path.startsWith("http") ? path : `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** Self-referencing canonical for a storefront path (`/` → origin, no trailing slash). */
+export function canonicalUrl(path = "/") {
+  return absoluteUrl(path);
+}
+
 /** Server-side API base (Docker / local) without trailing slash. */
 export function getInternalApiBase() {
   const fromEnv = (
@@ -74,7 +79,7 @@ export function productOgImage(product) {
     product?.images?.[0] ||
     product?.variants?.[0]?.images?.[0] ||
     "";
-  if (!img) return absoluteUrl("/urban/about-1.jpg");
+  if (!img) return absoluteUrl("/banner/hero-image-01.webp");
   if (String(img).startsWith("http")) return String(img);
   return absoluteUrl(img.startsWith("/") ? img : `/${img}`);
 }

@@ -16,7 +16,7 @@ import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatAdminDateTime, parseAdminDate } from "@/utils/formatAdminDateTime";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
-import { Check, Download, FileText, Loader2, Printer, Search } from "lucide-react";
+import { Download, FileText, Loader2, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   AdminListLayout,
@@ -650,14 +650,13 @@ export default function AdminOrdersPage() {
                 </AdminHeaderButton>
                 {canFulfillSelected ? (
                   <AdminHeaderButton
+                    variant="primary"
                     disabled={isBulkLoading || isFulfilling}
                     onClick={handleBulkMarkFulfilled}
                   >
                     {isFulfilling ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Check className="w-3.5 h-3.5" />
-                    )}
+                    ) : null}
                     {isFulfilling ? "Booking…" : "Mark as fulfilled"}
                   </AdminHeaderButton>
                 ) : null}

@@ -60,6 +60,7 @@ export default async function ProductPage({ params }) {
   const lcpImage = productOgImage(product);
   const preloadLcp =
     lcpImage &&
+    !lcpImage.includes("/banner/hero-image-01") &&
     !lcpImage.includes("/urban/about-1") &&
     (lcpImage.startsWith("http://") || lcpImage.startsWith("https://"));
   const jsonLd = productJsonLdScript(product);

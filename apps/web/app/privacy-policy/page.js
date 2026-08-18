@@ -8,11 +8,13 @@ import {
   STORE_LEGAL_NAME,
   STORE_WEBSITE,
 } from "@/lib/storeContact";
+import { canonicalUrl } from "@/lib/siteUrl";
 
 export const metadata = {
-  title: "Privacy Policy | Urban Aana",
+  title: "Privacy Policy",
   description:
     "Urban Aana privacy policy for customers in India — data collection, use, rights, and contact.",
+  alternates: { canonical: canonicalUrl("/privacy-policy") },
 };
 
 export default function PrivacyPolicyPage() {

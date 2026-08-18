@@ -4,9 +4,26 @@ import { useState } from "react";
 import Image from "next/image";
 import { BASE_URL, EXPLICIT_BACKEND_URL } from "@/api/axios/client";
 
+const OPTIMIZED_HOSTS = new Set([
+  "images.urbanaana.com",
+  "images.unsplash.com",
+]);
+
+function shouldOptimizeExternal(url) {
+  try {
+    const host = new URL(url).hostname;
+    if (OPTIMIZED_HOSTS.has(host)) return true;
+    if (host.endsWith(".r2.dev") || host.endsWith(".cloudflarestorage.com")) return true;
+    if (host === "localhost" || host === "127.0.0.1") return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Renders image only when src exists. Uses unoptimized for external URLs
- * to avoid Next.js upstream 404 errors. Shows placeholder on load error.
+ * Renders image only when src exists. Unknown external hosts stay unoptimized
+ * to avoid Next.js upstream 404s; CDN/R2 URLs go through the optimizer.
  */
 export default function SafeImage({
   src,
@@ -74,7 +91,7 @@ export default function SafeImage({
       alt={alt}
       fill={fill}
       className={className}
-      unoptimized={isExternal}
+      unoptimized={isExternal && !shouldOptimizeExternal(normalizedSrc)}
       onError={() => setError(true)}
       priority={priority}
       fetchPriority={resolvedFetchPriority}
