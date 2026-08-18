@@ -692,7 +692,7 @@ export default function AdminProductDetailPage() {
 
   return (
     <>
-      <main className="admin-product-form mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto bg-background md:gap-6">
+      <main className="admin-product-form mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 bg-background md:gap-6">
         <header className="sticky top-0 z-20 flex shrink-0 flex-col gap-3 bg-transparent py-0 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <Package active className="size-[18px] shrink-0 text-[#303030]" />

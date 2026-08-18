@@ -1413,10 +1413,6 @@ export default function AdminOrderDetailPage() {
                     )}
                   </AdminHeaderButton>
                 </div>
-              ) : !showPrintInvoice ? (
-                <p className="mt-5 text-[13px] text-muted-foreground">
-                  Invoice is available after the order is marked as fulfilled.
-                </p>
               ) : null}
             </CardContent>
           </Card>
