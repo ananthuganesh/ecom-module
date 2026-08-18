@@ -9,6 +9,7 @@ import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
 import { Download, Loader2, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
+import { Truck } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminHeaderButton,
@@ -337,7 +338,7 @@ export default function AdminShipmentsPage() {
   };
 
   return (
-    <AdminListLayout fill={false} title={pageTitle}>
+    <AdminListLayout fill={false} title={pageTitle} icon={Truck}>
       <DataTable
         columns={columns}
         data={displayOrders}

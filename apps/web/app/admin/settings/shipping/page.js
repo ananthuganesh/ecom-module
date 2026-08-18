@@ -5,16 +5,11 @@ import { Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { adminSettingsService } from "@/api";
 
-function Section({ title, description, action, children }) {
+function Section({ title, action, children }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-5 text-card-foreground space-y-4">
+    <section className="admin-surface space-y-4 rounded-xl bg-card p-5 text-card-foreground">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[14px] font-medium text-foreground">{title}</h2>
-          {description ? (
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
+        <h2 className="admin-card-heading">{title}</h2>
         {action}
       </div>
       {children}
@@ -103,9 +98,6 @@ export default function ShippingSettingsPage() {
           <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
             Shipping
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Rename shipping profiles. Zone and rate editing is coming soon.
-          </p>
         </div>
         <button
           type="button"
@@ -120,7 +112,6 @@ export default function ShippingSettingsPage() {
 
       <Section
         title="Shipping profiles"
-        description="Set shipping zones and rates for products"
         action={
           <button
             type="button"

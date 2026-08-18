@@ -730,6 +730,138 @@ async def build_staff_new_order_email_html(order, user=None) -> tuple[str, str]:
     return subject, html_body
 
 
+def _admin_dashboard_url() -> str:
+    return f"{tpl.site_url()}/admin/dashboard"
+
+
+def _trend_note(trend: str) -> str:
+    t = str(trend or "").strip()
+    if not t or t in {"+0%", "+0.0%"}:
+        return ""
+    return f" <span style='color:{tpl.TEXT_MUTED};'>({tpl.esc(t)} vs prior month)</span>"
+
+
+def build_monthly_report_email_html(report: dict[str, Any]) -> tuple[str, str]:
+    """Staff digest for the previous calendar month."""
+    label = str(report.get("label") or "last month")
+    trends = report.get("trends") or {}
+    subject = f"Monthly report – {label}"
+    lead = (
+        f"Here’s your Urban Aana store report for <strong>{tpl.esc(label)}</strong>. "
+        f"Figures are paid orders only, compared with the month before."
+    )
+    overview = _kv_rows(
+        [
+            (
+                "Total sales",
+                tpl.esc(tpl.format_inr(report.get("total_revenue") or 0))
+                + _trend_note(trends.get("revenue")),
+            ),
+            (
+                "Paid orders",
+                tpl.esc(str(int(report.get("paid_orders") or 0)))
+                + _trend_note(trends.get("orders")),
+            ),
+            (
+                "Average order",
+                tpl.esc(tpl.format_inr(report.get("avg_order_value") or 0))
+                + _trend_note(trends.get("avgValue")),
+            ),
+            (
+                "New customers",
+                tpl.esc(str(int(report.get("new_customers") or 0)))
+                + _trend_note(trends.get("customers")),
+            ),
+            (
+                "Returning customers",
+                tpl.esc(str(int(report.get("returning_customers") or 0)))
+                + _trend_note(trends.get("returningCustomers")),
+            ),
+            (
+                "Abandoned carts",
+                tpl.esc(str(int(report.get("abandoned_orders") or 0)))
+                + _trend_note(trends.get("abandoned")),
+            ),
+            (
+                "Abandoned rate",
+                tpl.esc(f"{float(report.get('abandoned_rate') or 0):.1f}%")
+                + _trend_note(trends.get("abandonedRate")),
+            ),
+        ]
+    )
+
+    channel_rows = [
+        [
+            str(row.get("label") or "—"),
+            str(int(row.get("orders") or 0)),
+            tpl.format_inr(row.get("revenue") or 0),
+        ]
+        for row in (report.get("channels") or [])
+    ]
+    channels_html = (
+        tpl.report_table(["Channel", "Orders", "Sales"], channel_rows)
+        if channel_rows
+        else f"<p style='margin:0;color:{tpl.TEXT_MUTED};'>No channel data this month.</p>"
+    )
+
+    product_rows = [
+        [
+            str(row.get("name") or "Unknown"),
+            str(int(row.get("quantity") or 0)),
+            tpl.format_inr(row.get("revenue") or 0),
+        ]
+        for row in (report.get("top_products") or [])
+    ]
+    products_html = (
+        tpl.report_table(["Product", "Qty", "Sales"], product_rows)
+        if product_rows
+        else f"<p style='margin:0;color:{tpl.TEXT_MUTED};'>No paid product sales this month.</p>"
+    )
+
+    location_rows = [
+        [
+            str(row.get("location") or "Unknown"),
+            str(int(row.get("orders") or 0)),
+            tpl.format_inr(row.get("sales") or 0),
+        ]
+        for row in (report.get("by_location") or [])
+    ]
+    locations_html = (
+        tpl.report_table(["City", "Orders", "Sales"], location_rows)
+        if location_rows
+        else ""
+    )
+
+    sections = [
+        tpl.brand_header(),
+        tpl.content_block(
+            f"{lead}{tpl.mail_button(_admin_dashboard_url(), 'View dashboard')}"
+        ),
+        tpl.content_block(overview, top_border=True),
+        tpl.content_block(
+            f"{tpl.section_heading('Channel performance')}{channels_html}",
+            top_border=True,
+        ),
+        tpl.content_block(
+            f"{tpl.section_heading('Top products')}{products_html}",
+            top_border=True,
+        ),
+    ]
+    if locations_html:
+        sections.append(
+            tpl.content_block(
+                f"{tpl.section_heading('Top cities')}{locations_html}",
+                top_border=True,
+            )
+        )
+    html_body = tpl.render_shopify_email(
+        preheader=subject,
+        sections_html="".join(sections),
+        footer_note="Urban Aana · Monthly store report",
+    )
+    return subject, html_body
+
+
 async def send_email(
     *,
     to: str,

@@ -59,6 +59,7 @@ import { cn } from "@/lib/utils";
 
 export function AdminListLayout({
   title,
+  icon: Icon,
   description,
   actions,
   metrics,
@@ -98,9 +99,18 @@ export function AdminListLayout({
                   {title || description ? (
                     <div className="min-w-0">
                       {title ? (
-                        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
-                          {title}
-                        </h1>
+                        <div className="flex items-center gap-2">
+                          {Icon ? (
+                            <Icon
+                              active
+                              className="size-5 shrink-0 text-[#4a4a4a]"
+                              aria-hidden
+                            />
+                          ) : null}
+                          <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+                            {title}
+                          </h1>
+                        </div>
                       ) : null}
                       {description ? (
                         <p className="mt-1 max-w-[42rem] text-[13px] leading-5 text-[#616161]">

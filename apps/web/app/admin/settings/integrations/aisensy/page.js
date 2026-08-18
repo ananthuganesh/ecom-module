@@ -260,23 +260,15 @@ export default function AisensySettingsPage() {
 
   return (
     <div className="w-full">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
-          AiSensy
+          Whatsapp API
         </h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Toggle WhatsApp alerts per event. Emails are managed under Notifications.
-        </p>
       </div>
 
-      <div className="space-y-6">
-        <div className="rounded-xl border border-border bg-card p-6 text-card-foreground space-y-6">
-          <div>
-            <h2 className="text-[13px] font-medium text-foreground">WhatsApp to Customer</h2>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Toggle each event and set the exact Live campaign name
-            </p>
-          </div>
+      <div className="space-y-4">
+        <div className="admin-surface space-y-4 rounded-xl bg-card p-5 text-card-foreground">
+          <h2 className="admin-card-heading">WhatsApp to Customer</h2>
 
           <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
             {EVENT_ROWS.map((row) => (
@@ -316,13 +308,8 @@ export default function AisensySettingsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-6 text-card-foreground space-y-6">
-          <div>
-            <h2 className="text-[13px] font-medium text-foreground">Sync</h2>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Push contacts and catalogue to AiSensy
-            </p>
-          </div>
+        <div className="admin-surface space-y-4 rounded-xl bg-card p-5 text-card-foreground">
+          <h2 className="admin-card-heading">Sync</h2>
 
           <div className="flex flex-wrap items-center gap-3">
             <button

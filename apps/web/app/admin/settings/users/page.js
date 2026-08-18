@@ -129,9 +129,6 @@ export default function UsersSettingsPage() {
           <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
             Users
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            People who can sign in and manage this store
-          </p>
         </div>
         <button
           type="button"
@@ -142,7 +139,7 @@ export default function UsersSettingsPage() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card text-card-foreground">
+      <div className="admin-surface overflow-hidden rounded-xl bg-card text-card-foreground">
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />

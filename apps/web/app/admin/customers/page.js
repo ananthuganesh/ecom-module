@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { adminUserService } from "@/api";
 import { Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Users } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminHeaderButton,
@@ -154,6 +155,7 @@ export default function AdminCustomersPage() {
       <AdminListLayout
         fill={false}
         title="Customers"
+        icon={Users}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <AdminHeaderButton

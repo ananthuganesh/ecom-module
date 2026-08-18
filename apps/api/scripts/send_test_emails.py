@@ -130,6 +130,15 @@ async def main(to: str) -> None:
     results.append(("STAFF_NEW_ORDER", result))
     print("STAFF_NEW_ORDER", result.get("ok") or result)
 
+    from app.services import monthly_report as monthly_report_svc
+
+    report = await monthly_report_svc.collect_monthly_report()
+    subject, html = email_svc.build_monthly_report_email_html(report)
+    subject = f"[TEST MONTHLY] {subject}"
+    result = await email_svc.send_email(to=to, subject=subject, html_body=html)
+    results.append(("STAFF_MONTHLY_REPORT", result))
+    print("STAFF_MONTHLY_REPORT", result.get("ok") or result, report.get("label"))
+
     if checkout:
         await cart_recovery.ensure_recovery_token(checkout)
         if checkout.recoveryToken and not getattr(checkout, "id", None) is False:

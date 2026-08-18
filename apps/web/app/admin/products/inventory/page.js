@@ -10,6 +10,7 @@ import {
   AdminViewMenu,
   AdminHeaderButton,
 } from "@/components/admin/list";
+import { Package } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
 import { createInventoryColumns } from "./columns";
 
@@ -155,6 +156,7 @@ export default function ProductsInventoryPage() {
       <AdminListLayout
         fill={false}
         title="Inventory"
+        icon={Package}
         description="Warehouse stock by SKU at Main Warehouse. Each row is one size. Click a row to adjust on-hand units — this is what orders sell from. Change photos, prices, or size options on the product page."
         metrics={
           <AdminMetricRow

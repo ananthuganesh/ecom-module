@@ -21,7 +21,7 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 z-50 flex h-14 w-full shrink-0 items-center gap-2 border-b border-white/10 bg-[#0a0a0a] text-white">
+    <header className="relative z-50 flex h-14 w-full shrink-0 items-center gap-2 bg-[#0a0a0a] text-white">
       <div className="grid w-full grid-cols-[1fr_minmax(0,40rem)_1fr] items-center gap-3 px-4 lg:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <Link

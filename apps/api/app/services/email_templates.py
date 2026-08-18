@@ -358,6 +358,35 @@ def order_total_row(label: str, amount: str) -> str:
 </table>"""
 
 
+def report_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Narrow 2–3 column table for staff monthly reports."""
+    head_cells = "".join(
+        f"""<th align="{'left' if i == 0 else 'right'}"
+      style="padding:0 0 8px;font-family:{FONT_STACK};font-size:12px;line-height:16px;
+      font-weight:600;color:{TEXT_MUTED};{'padding-right:8px;' if i == 0 else 'padding-left:8px;'}">
+      {esc(h)}</th>"""
+        for i, h in enumerate(headers)
+    )
+    body = []
+    for row in rows:
+        cells = []
+        for i, cell in enumerate(row):
+            align = "left" if i == 0 else "right"
+            side_pad = "padding-right:8px;" if i == 0 else "padding-left:8px;"
+            cells.append(
+                f"""<td align="{align}"
+      style="padding:6px 0;font-family:{FONT_STACK};font-size:14px;line-height:20px;
+      color:{TEXT_PRIMARY};{side_pad}border-top:1px solid {BORDER};">
+      {esc(cell)}</td>"""
+            )
+        body.append(f"<tr>{''.join(cells)}</tr>")
+    return f"""
+<table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+  <tr>{head_cells}</tr>
+  {''.join(body)}
+</table>"""
+
+
 def build_contact_inquiry_email_html(
     *,
     name: str,

@@ -8,45 +8,113 @@ import {
 } from "@/utils/storefrontReels";
 
 function playMuted(video) {
-  if (!video) return;
+  if (!video?.src) return;
   video.muted = true;
+  video.defaultMuted = true;
   video.playsInline = true;
+  video.loop = true;
+  if (video.ended) video.currentTime = 0;
+  if (!video.paused && !video.ended) return;
   const attempt = video.play();
   if (attempt?.catch) attempt.catch(() => undefined);
 }
 
-function ReelCard({ videoUrl, altText }) {
+function cardIsOnScreen(el) {
+  if (!el) return false;
+  const rect = el.getBoundingClientRect();
+  return (
+    rect.right > 8 &&
+    rect.left < window.innerWidth - 8 &&
+    rect.bottom > 0 &&
+    rect.top < window.innerHeight
+  );
+}
+
+function ReelCard({ videoUrl, altText, stripActive }) {
   const containerRef = useRef(null);
   const videoRef = useRef(null);
+  const lastTimeRef = useRef(0);
+  const stuckTicksRef = useRef(0);
   const [activeSrc, setActiveSrc] = useState("");
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !activeSrc) return;
+
+    const resume = () => playMuted(video);
+    const restart = () => {
+      try {
+        video.currentTime = 0;
+      } catch {
+        /* ignore seek errors on detached media */
+      }
+      playMuted(video);
+    };
+
+    video.addEventListener("canplay", resume);
+    video.addEventListener("loadeddata", resume);
+    video.addEventListener("ended", restart);
+    video.addEventListener("stalled", resume);
+    return () => {
+      video.removeEventListener("canplay", resume);
+      video.removeEventListener("loadeddata", resume);
+      video.removeEventListener("ended", restart);
+      video.removeEventListener("stalled", resume);
+    };
+  }, [activeSrc]);
 
   useEffect(() => {
     const container = containerRef.current;
     const video = videoRef.current;
     if (!container || !video || !videoUrl) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
-          setActiveSrc(videoUrl);
-        } else {
-          video.pause();
-        }
-      },
-      { rootMargin: "120px 0px", threshold: [0, 0.2, 0.5, 1] }
-    );
+    if (!stripActive) {
+      video.pause();
+      return undefined;
+    }
 
-    observer.observe(container);
+    const sync = () => {
+      if (document.hidden || !cardIsOnScreen(container)) {
+        stuckTicksRef.current = 0;
+        if (!video.paused) video.pause();
+        return;
+      }
+      setActiveSrc((current) => current || videoUrl);
+
+      if (!video.paused && !video.ended) {
+        const t = video.currentTime || 0;
+        if (t === lastTimeRef.current) {
+          stuckTicksRef.current += 1;
+          if (stuckTicksRef.current >= 8) {
+            stuckTicksRef.current = 0;
+            const nearEnd = video.duration && t >= video.duration - 0.25;
+            try {
+              video.currentTime = nearEnd ? 0 : t;
+            } catch {
+              /* ignore */
+            }
+            video.pause();
+            playMuted(video);
+          }
+        } else {
+          stuckTicksRef.current = 0;
+          lastTimeRef.current = t;
+        }
+        return;
+      }
+
+      playMuted(video);
+    };
+
+    sync();
+    const id = window.setInterval(sync, 250);
+    document.addEventListener("visibilitychange", sync);
     return () => {
-      observer.disconnect();
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", sync);
       video.pause();
     };
-  }, [videoUrl]);
-
-  useEffect(() => {
-    if (!activeSrc) return;
-    playMuted(videoRef.current);
-  }, [activeSrc]);
+  }, [stripActive, videoUrl]);
 
   return (
     <div
@@ -65,7 +133,7 @@ function ReelCard({ videoUrl, altText }) {
           muted
           loop
           playsInline
-          preload="none"
+          preload="metadata"
           aria-label={altText || "Product showcase"}
         />
       </div>
@@ -88,7 +156,7 @@ function buildTrackItems(reels, minCount = 6) {
   return items;
 }
 
-function MarqueeHalf({ items, copy }) {
+function MarqueeHalf({ items, copy, stripActive }) {
   return (
     <div
       className="flex shrink-0 gap-2 pr-2 md:gap-3 md:pr-3 lg:gap-4 lg:pr-4"
@@ -99,6 +167,7 @@ function MarqueeHalf({ items, copy }) {
           key={`${copy}-${reel.id}-${index}`}
           videoUrl={reel.videoUrl}
           altText={reel.altText}
+          stripActive={stripActive}
         />
       ))}
     </div>
@@ -108,6 +177,8 @@ function MarqueeHalf({ items, copy }) {
 export default function InstagramReels() {
   const [reels, setReels] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [stripActive, setStripActive] = useState(false);
+  const stripRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +201,17 @@ export default function InstagramReels() {
   }, []);
 
   const trackItems = useMemo(() => buildTrackItems(reels, Math.max(reels.length, 5)), [reels]);
+
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => setStripActive(entry.isIntersecting),
+      { rootMargin: "160px 0px", threshold: 0 }
+    );
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [trackItems.length]);
 
   if (!loaded && reels.length === 0) {
     return (
@@ -164,10 +246,13 @@ export default function InstagramReels() {
         </h2>
       </header>
 
-      <div className="ua-reels-strip relative w-full overflow-hidden px-4 lg:px-8">
+      <div
+        ref={stripRef}
+        className="ua-reels-strip relative w-full overflow-hidden px-4 lg:px-8"
+      >
         <div className="ua-reels-marquee flex w-max">
-          <MarqueeHalf items={trackItems} copy={0} />
-          <MarqueeHalf items={trackItems} copy={1} />
+          <MarqueeHalf items={trackItems} copy={0} stripActive={stripActive} />
+          <MarqueeHalf items={trackItems} copy={1} stripActive={stripActive} />
         </div>
       </div>
 

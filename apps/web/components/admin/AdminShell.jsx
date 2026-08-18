@@ -36,6 +36,7 @@ export default function AdminShell({ children }) {
   const [verified, setVerified] = useState(false);
 
   const isAdminLoginPage = pathname === "/admin/login";
+  const isSettingsPage = pathname.startsWith("/admin/settings");
   const hasStaffSession = canAccessAdmin(userInfo);
 
   useEffect(() => {
@@ -100,6 +101,16 @@ export default function AdminShell({ children }) {
     }
   }, [hydrated, userInfo, isAdminLoginPage, router, verified]);
 
+  useEffect(() => {
+    if (isAdminLoginPage || isSettingsPage) return;
+    try {
+      const next = `${pathname}${typeof window !== "undefined" ? window.location.search : ""}`;
+      sessionStorage.setItem("admin-settings-return", next);
+    } catch {
+      /* ignore */
+    }
+  }, [pathname, isAdminLoginPage, isSettingsPage]);
+
   if (!hydrated) return <AdminLoading />;
 
   if (isAdminLoginPage) {
@@ -125,30 +136,43 @@ export default function AdminShell({ children }) {
     <TooltipProvider>
       <SidebarProvider
         data-admin-shell
+        data-admin-frame
         open
         onOpenChange={() => {}}
-        className="flex-col"
+        className="flex h-svh max-h-svh flex-col overflow-hidden bg-[#0a0a0a]"
         style={{
           "--sidebar-width": "15rem", /* --pg-navigation-width */
           "--header-height": "3.5rem", /* --pg-top-bar-height */
         }}
       >
         <SiteHeader />
-        <div className="flex min-h-0 w-full flex-1 pt-(--header-height)">
-          <Suspense fallback={<Spinner className="m-4 size-5 text-muted-foreground" />}>
-            <AdminSidebar
-              variant="sidebar"
-              className="inset-y-auto! top-(--header-height)! bottom-0! h-[calc(100svh-var(--header-height))]!"
-            />
-          </Suspense>
-          <SidebarInset className="min-w-0">
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">
-                <div className="flex min-w-0 flex-col gap-4 px-4 py-4 md:gap-6 md:px-6 md:py-6">
-                  {children}
+        <div className="relative flex min-h-0 w-full flex-1 overflow-hidden rounded-t-2xl bg-[#f1f1f1]">
+          {!isSettingsPage ? (
+            <Suspense fallback={<Spinner className="m-4 size-5 text-muted-foreground" />}>
+              <AdminSidebar
+                variant="sidebar"
+                className="top-0! bottom-0! h-full!"
+              />
+            </Suspense>
+          ) : null}
+          <SidebarInset
+            className={
+              isSettingsPage
+                ? "min-h-0 min-w-0 overflow-hidden"
+                : "min-h-0 min-w-0 overflow-y-auto overscroll-contain"
+            }
+          >
+            {isSettingsPage ? (
+              <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+            ) : (
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex min-w-0 flex-col gap-3 px-3 py-3 md:gap-4 md:px-4 md:py-4">
+                    {children}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
             <Toaster position="bottom-right" theme="light" />
           </SidebarInset>
         </div>

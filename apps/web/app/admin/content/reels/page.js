@@ -9,6 +9,7 @@ import {
   AdminListLayout,
   AdminHeaderButton,
 } from "@/components/admin/list";
+import { Film } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
 import { createMediaColumns } from "../columns";
 import { mediaFileKey } from "../mediaUtils";
@@ -260,10 +261,10 @@ export default function AdminReelsPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl">
     <AdminListLayout
       fill={false}
       title="Reels"
+      icon={Film}
       actions={
         <>
           <input
@@ -349,6 +350,5 @@ export default function AdminReelsPage() {
         }
       />
     </AdminListLayout>
-    </div>
   );
 }

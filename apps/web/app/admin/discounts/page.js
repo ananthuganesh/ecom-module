@@ -24,6 +24,7 @@ import {
   AdminListLayout,
   AdminStatusText,
 } from "@/components/admin/list";
+import { TicketPercent } from "@/components/admin/LocalIcons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Spinner } from "@/components/ui/spinner";
@@ -378,11 +379,10 @@ export default function AdminDiscountsPage() {
 
   if (view === "list") {
     return (
-      <div className="mx-auto w-full max-w-7xl">
-        <AdminListLayout
+      <AdminListLayout
           fill={false}
           title="Discounts"
-          description="Create codes for products, orders, or Buy X get Y"
+          icon={TicketPercent}
           actions={
             <AdminHeaderButton variant="primary" onClick={startCreate}>
               <Plus className="h-3.5 w-3.5" />
@@ -405,12 +405,11 @@ export default function AdminDiscountsPage() {
             emptyDescription="Create a code for products, orders, or Buy X get Y."
           />
         </AdminListLayout>
-      </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl">
+    <>
       {view === "pick" && (
         <AdminListLayout
           fill={false}
@@ -736,6 +735,6 @@ export default function AdminDiscountsPage() {
           </form>
         </AdminListLayout>
       )}
-    </div>
+    </>
   );
 }

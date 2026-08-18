@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { adminCompanyProfileService } from "@/api";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
+import AdminTopSheet from "@/components/admin/AdminTopSheet";
+import { SettingsStore } from "@/components/admin/LocalIcons";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const INDIA_STATES = [
   { code: "01", name: "Jammu and Kashmir" },
@@ -79,19 +84,68 @@ function formSignature(form) {
 
 const inputClass =
   "w-full h-10 px-3 bg-card border border-border text-[13px] font-medium focus:outline-none focus:border-ring transition-colors rounded-[6px]";
+const textareaClass =
+  "w-full min-h-[88px] px-3 py-2 bg-card border border-border text-[13px] font-medium focus:outline-none focus:border-ring transition-colors rounded-[6px] resize-y";
 const labelClass = "text-[13px] font-medium text-muted-foreground";
 
-function Section({ title, description, children }) {
+const TITLE_MAX = 70;
+const DESC_MAX = 160;
+
+function Section({ title, children }) {
   return (
-    <section className="rounded-xl border border-border bg-card p-5 text-card-foreground space-y-4">
-      <div>
-        <h2 className="text-[14px] font-medium text-foreground">{title}</h2>
-        {description ? (
-          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
+    <section className="admin-surface space-y-4 rounded-xl bg-card p-5 text-card-foreground">
+      <h2 className="admin-card-heading">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function ImageField({ label, hint, preview, dark, wide, onPick, onClear }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <label className={labelClass}>{label}</label>
+        {preview ? (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[12px] font-[550] text-[#005bd3] hover:underline"
+          >
+            Remove
+          </button>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          "relative flex w-full items-center justify-center overflow-hidden rounded-[6px] border border-dashed border-[#c9cccf]",
+          wide ? "h-36" : "h-28",
+          dark ? "bg-[#1a1a1a] hover:bg-[#222]" : "bg-[#fafafa] hover:bg-[#f7f7f7]"
+        )}
+      >
+        {preview ? (
+          <img src={preview} alt="" className="max-h-full max-w-[90%] object-contain" />
+        ) : (
+          <span className={cn("text-[13px]", dark ? "text-[#b0b0b0]" : "text-muted-foreground")}>
+            Upload
+          </span>
+        )}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,image/gif"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) onPick(file);
+        }}
+      />
+      {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+    </div>
   );
 }
 
@@ -100,6 +154,15 @@ export default function GeneralSettingsPage() {
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [openSheet, setOpenSheet] = useState(null);
+  const [brand, setBrand] = useState({
+    logo: "",
+    logoDark: "",
+    favicon: "",
+    ogImage: "",
+    metaTitle: "",
+    metaDescription: "",
+  });
 
   const showSaveBar = useProductSaveBarStore((s) => s.show);
   const hideSaveBar = useProductSaveBarStore((s) => s.hide);
@@ -134,6 +197,15 @@ export default function GeneralSettingsPage() {
   }, []);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const setBrandImage = (key, file) => {
+    setBrand((prev) => {
+      if (typeof prev[key] === "string" && prev[key].startsWith("blob:")) {
+        URL.revokeObjectURL(prev[key]);
+      }
+      return { ...prev, [key]: file ? URL.createObjectURL(file) : "" };
+    });
+  };
 
   const onStateChange = (code) => {
     const match = INDIA_STATES.find((s) => s.code === code);
@@ -248,16 +320,125 @@ export default function GeneralSettingsPage() {
         <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
           General
         </h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Store identity, contact details, and order numbering
-        </p>
       </div>
 
       <div className="space-y-4">
-        <Section
-          title="Order ID format"
-          description="Used on orders, customer pages, and order emails."
-        >
+        <section className="admin-surface rounded-xl bg-card p-5 text-card-foreground">
+          <h2 className="admin-card-heading">
+            Store contact details
+          </h2>
+          <div className="mt-4 overflow-hidden rounded-lg border border-[#ebebeb]">
+            <button
+              type="button"
+              onClick={() => setOpenSheet("contact")}
+              className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#f7f7f7]"
+            >
+              <SettingsStore className="mt-0.5 size-5 shrink-0 text-[#4a4a4a]" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-[550] leading-5 text-[#303030]">
+                  {storeName}
+                </span>
+                <span className="mt-0.5 block text-[13px] font-[450] leading-5 text-[#616161]">
+                  {contactLine}
+                </span>
+              </span>
+              <ChevronRight className="mt-1 size-4 shrink-0 text-[#8a8a8a]" aria-hidden />
+            </button>
+            <div className="border-t border-[#ebebeb]" />
+            <button
+              type="button"
+              onClick={() => setOpenSheet("address")}
+              className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#f7f7f7]"
+            >
+              <MapPin className="mt-0.5 size-5 shrink-0 text-[#4a4a4a]" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-[550] leading-5 text-[#303030]">
+                  Store address
+                </span>
+                <span className="mt-0.5 block text-[13px] font-[450] leading-5 text-[#616161]">
+                  {addressLine || "Add your store address"}
+                </span>
+              </span>
+              <ChevronRight className="mt-1 size-4 shrink-0 text-[#8a8a8a]" aria-hidden />
+            </button>
+          </div>
+        </section>
+
+        <Section title="Brand">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <ImageField
+              label="Logo"
+              hint="PNG or SVG, light backgrounds"
+              preview={brand.logo}
+              onPick={(file) => setBrandImage("logo", file)}
+              onClear={() => setBrandImage("logo", null)}
+            />
+            <ImageField
+              label="Logo dark"
+              hint="PNG or SVG, dark backgrounds"
+              dark
+              preview={brand.logoDark}
+              onPick={(file) => setBrandImage("logoDark", file)}
+              onClear={() => setBrandImage("logoDark", null)}
+            />
+            <ImageField
+              label="Favicon"
+              hint="Square PNG, 32×32 or 512×512"
+              preview={brand.favicon}
+              onPick={(file) => setBrandImage("favicon", file)}
+              onClear={() => setBrandImage("favicon", null)}
+            />
+          </div>
+          <ImageField
+            label="OG image"
+            hint="1200×630 recommended"
+            wide
+            preview={brand.ogImage}
+            onPick={(file) => setBrandImage("ogImage", file)}
+            onClear={() => setBrandImage("ogImage", null)}
+          />
+        </Section>
+
+        <Section title="Search engine listing">
+          <div className="space-y-1.5">
+            <label className={labelClass}>Meta title</label>
+            <input
+              className={inputClass}
+              value={brand.metaTitle}
+              maxLength={TITLE_MAX}
+              onChange={(e) => setBrand((prev) => ({ ...prev, metaTitle: e.target.value }))}
+              placeholder={storeName}
+              disabled={saving}
+            />
+            <p className="flex justify-between text-[12px] text-muted-foreground">
+              <span>Recommended: 50–60 characters</span>
+              <span className="tabular-nums">
+                {brand.metaTitle.length}/{TITLE_MAX}
+              </span>
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>Meta description</label>
+            <textarea
+              className={textareaClass}
+              value={brand.metaDescription}
+              maxLength={DESC_MAX}
+              onChange={(e) =>
+                setBrand((prev) => ({ ...prev, metaDescription: e.target.value }))
+              }
+              placeholder="Short description for search and social"
+              disabled={saving}
+            />
+            <p className="flex justify-between text-[12px] text-muted-foreground">
+              <span>Recommended: 150–160 characters</span>
+              <span className="tabular-nums">
+                {brand.metaDescription.length}/{DESC_MAX}
+              </span>
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Order ID format">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className={labelClass}>Prefix</label>
@@ -289,140 +470,159 @@ export default function GeneralSettingsPage() {
             </span>
           </p>
         </Section>
-
-        <Section title="Store contact details">
-          <div className="mb-1 rounded-[6px] border border-border bg-muted/80 px-4 py-3">
-            <p className="text-[13px] font-medium text-foreground">{storeName}</p>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">{contactLine}</p>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className={labelClass}>Store name</label>
-              <input
-                className={inputClass}
-                value={form.tradeName}
-                onChange={(e) => setField("tradeName", e.target.value)}
-                placeholder="My Store"
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>Email</label>
-              <input
-                type="email"
-                className={inputClass}
-                value={form.email}
-                onChange={(e) => setField("email", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>Phone</label>
-              <input
-                className={inputClass}
-                value={form.phone}
-                onChange={(e) => setField("phone", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>Legal name</label>
-              <input
-                className={inputClass}
-                value={form.legalName}
-                onChange={(e) => setField("legalName", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>GSTIN</label>
-              <input
-                className={inputClass}
-                value={form.gstin}
-                onChange={(e) => setField("gstin", e.target.value.toUpperCase())}
-                placeholder="22AAAAA0000A1Z5"
-                maxLength={15}
-                disabled={saving}
-              />
-              <p className="text-[12px] leading-relaxed text-muted-foreground">
-                Leave blank for simple order invoices. Enter GSTIN to enable GST tax invoices
-                (CGST/SGST/IGST) on every order.
-              </p>
-            </div>
-          </div>
-        </Section>
-
-        <Section title="Store address">
-          <div className="mb-1 rounded-[6px] border border-border bg-muted/80 px-4 py-3">
-            <p className="text-[13px] leading-relaxed text-muted-foreground">
-              {addressLine || "Add your store address"}
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className={labelClass}>Address line 1</label>
-              <input
-                className={inputClass}
-                value={form.addressLine1}
-                onChange={(e) => setField("addressLine1", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className={labelClass}>Address line 2</label>
-              <input
-                className={inputClass}
-                value={form.addressLine2}
-                onChange={(e) => setField("addressLine2", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>City</label>
-              <input
-                className={inputClass}
-                value={form.city}
-                onChange={(e) => setField("city", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>Pincode</label>
-              <input
-                className={inputClass}
-                value={form.pincode}
-                onChange={(e) => setField("pincode", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>State</label>
-              <select
-                className={inputClass}
-                value={form.stateCode}
-                onChange={(e) => onStateChange(e.target.value)}
-                disabled={saving}
-              >
-                <option value="">Select state</option>
-                {INDIA_STATES.map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className={labelClass}>Country</label>
-              <input
-                className={inputClass}
-                value={form.country}
-                onChange={(e) => setField("country", e.target.value)}
-                disabled={saving}
-              />
-            </div>
-          </div>
-        </Section>
       </div>
+
+      <AdminTopSheet
+        open={openSheet === "contact"}
+        onClose={() => setOpenSheet(null)}
+        footer={
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => setOpenSheet(null)}
+            className="h-8"
+          >
+            Done
+          </Button>
+        }
+      >
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-lg font-medium text-foreground">Store contact details</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-3 px-5 py-4 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className={labelClass}>Store name</label>
+            <input
+              className={inputClass}
+              value={form.tradeName}
+              onChange={(e) => setField("tradeName", e.target.value)}
+              placeholder="My Store"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>Email</label>
+            <input
+              type="email"
+              className={inputClass}
+              value={form.email}
+              onChange={(e) => setField("email", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>Phone</label>
+            <input
+              className={inputClass}
+              value={form.phone}
+              onChange={(e) => setField("phone", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>Legal name</label>
+            <input
+              className={inputClass}
+              value={form.legalName}
+              onChange={(e) => setField("legalName", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>GSTIN</label>
+            <input
+              className={inputClass}
+              value={form.gstin}
+              onChange={(e) => setField("gstin", e.target.value.toUpperCase())}
+              placeholder="22AAAAA0000A1Z5"
+              maxLength={15}
+              disabled={saving}
+            />
+          </div>
+        </div>
+      </AdminTopSheet>
+
+      <AdminTopSheet
+        open={openSheet === "address"}
+        onClose={() => setOpenSheet(null)}
+        footer={
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => setOpenSheet(null)}
+            className="h-8"
+          >
+            Done
+          </Button>
+        }
+      >
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-lg font-medium text-foreground">Store address</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-3 px-5 py-4 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className={labelClass}>Address line 1</label>
+            <input
+              className={inputClass}
+              value={form.addressLine1}
+              onChange={(e) => setField("addressLine1", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className={labelClass}>Address line 2</label>
+            <input
+              className={inputClass}
+              value={form.addressLine2}
+              onChange={(e) => setField("addressLine2", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>City</label>
+            <input
+              className={inputClass}
+              value={form.city}
+              onChange={(e) => setField("city", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>Pincode</label>
+            <input
+              className={inputClass}
+              value={form.pincode}
+              onChange={(e) => setField("pincode", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>State</label>
+            <select
+              className={inputClass}
+              value={form.stateCode}
+              onChange={(e) => onStateChange(e.target.value)}
+              disabled={saving}
+            >
+              <option value="">Select state</option>
+              {INDIA_STATES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className={labelClass}>Country</label>
+            <input
+              className={inputClass}
+              value={form.country}
+              onChange={(e) => setField("country", e.target.value)}
+              disabled={saving}
+            />
+          </div>
+        </div>
+      </AdminTopSheet>
     </div>
   );
 }

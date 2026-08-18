@@ -9,6 +9,7 @@ import {
   AdminListLayout,
   AdminHeaderButton,
 } from "@/components/admin/list";
+import { Folder } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
 import { createMediaColumns } from "./columns";
 import { mediaFileKey } from "./mediaUtils";
@@ -203,10 +204,10 @@ export default function MediaLibrary() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl">
     <AdminListLayout
       fill={false}
       title="Files"
+      icon={Folder}
       actions={
         <>
           <input
@@ -292,6 +293,5 @@ export default function MediaLibrary() {
         }
       />
     </AdminListLayout>
-    </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   AdminViewMenu,
   AdminDateRangeButton,
 } from "@/components/admin/list";
+import { ShoppingBag } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
 import {
   createAbandonedColumns,
@@ -310,7 +311,7 @@ export default function AbandonedCheckoutsPage() {
   };
 
   return (
-    <AdminListLayout fill={false} title="Abandoned carts">
+    <AdminListLayout fill={false} title="Abandoned carts" icon={ShoppingBag}>
       <DataTable
         columns={columns}
         data={rows}

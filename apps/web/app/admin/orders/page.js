@@ -18,6 +18,7 @@ import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
 import { Download, FileText, Loader2, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
+import { ShoppingBag } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminHeaderButton,
@@ -590,7 +591,7 @@ export default function AdminOrdersPage() {
   };
 
   return (
-    <AdminListLayout fill={false} title="Orders">
+    <AdminListLayout fill={false} title="Orders" icon={ShoppingBag}>
       <DataTable
         columns={columns}
         data={displayOrders}

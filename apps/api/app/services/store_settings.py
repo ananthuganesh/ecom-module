@@ -15,6 +15,7 @@ NOTIFICATION_PREF_DEFAULTS = {
     "emailOrderCancelled": True,
     "emailAbandonedCart": True,
     "adminNewOrderAlert": True,  # staff new-order email
+    "adminMonthlyReport": True,  # staff previous-month sales email on the 1st
 }
 
 _NOTIFICATION_PREFS_CACHE: dict[str, bool] | None = None

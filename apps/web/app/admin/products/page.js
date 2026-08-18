@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { adminProductService, adminCategoryService } from "@/api";
 import { ChevronDown, Download, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Package } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminMetricRow,
@@ -257,6 +258,7 @@ export default function AdminProductsPage() {
       <AdminListLayout
         fill={false}
         title="Products"
+        icon={Package}
         actions={
           <AdminHeaderButton variant="primary" onClick={handleAddProduct}>
             Add product

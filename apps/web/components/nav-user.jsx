@@ -15,8 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronsUpDownIcon } from "lucide-react";
-
 export function NavUser({ user, onLogout }) {
   const initials = (user?.name || "A").charAt(0).toUpperCase();
 
@@ -26,22 +24,21 @@ export function NavUser({ user, onLogout }) {
         render={
           <Button
             variant="ghost"
-            className="h-8 gap-2 px-2 text-white hover:bg-white/10 hover:text-white data-popup-open:bg-white/10 data-popup-open:text-white"
+            className="h-[38px] gap-2 px-2 text-white hover:bg-white/10 hover:text-white data-popup-open:bg-white/10 data-popup-open:text-white"
           />
         }
       >
-        <Avatar className="size-6 rounded-lg grayscale">
+        <Avatar className="size-[38px] rounded-lg after:rounded-lg after:border-white/20 grayscale">
           {user?.avatar ? (
-            <AvatarImage src={user.avatar} alt={user.name} />
+            <AvatarImage src={user.avatar} alt={user.name} className="rounded-lg" />
           ) : null}
-          <AvatarFallback className="rounded-lg bg-white/15 text-[10px] text-white">
+          <AvatarFallback className="rounded-lg bg-white/15 text-sm text-white">
             {initials}
           </AvatarFallback>
         </Avatar>
         <span className="hidden max-w-[120px] truncate text-xs font-medium sm:inline">
           {user?.name || "Admin"}
         </span>
-        <ChevronsUpDownIcon className="size-3.5 text-white/60" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="min-w-56" align="end" sideOffset={4}>
         <DropdownMenuGroup>

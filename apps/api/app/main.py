@@ -46,6 +46,9 @@ async def lifespan(_: FastAPI):
     from app.services.dtdc_status_sync import shipment_status_sync_loop
 
     dtdc_sync_task = asyncio.create_task(shipment_status_sync_loop(stop_event))
+    from app.services.monthly_report import monthly_report_loop
+
+    monthly_report_task = asyncio.create_task(monthly_report_loop(stop_event))
     try:
         yield
     finally:
@@ -53,7 +56,8 @@ async def lifespan(_: FastAPI):
         abandoned_task.cancel()
         stock_task.cancel()
         dtdc_sync_task.cancel()
-        for task in (abandoned_task, stock_task, dtdc_sync_task):
+        monthly_report_task.cancel()
+        for task in (abandoned_task, stock_task, dtdc_sync_task, monthly_report_task):
             try:
                 await task
             except asyncio.CancelledError:

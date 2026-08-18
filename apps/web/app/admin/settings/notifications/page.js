@@ -10,7 +10,7 @@ const CUSTOMER_EMAIL_EVENTS = [
   {
     key: "emailOrderConfirmation",
     label: "Order confirmation",
-    description: "When an order is paid online (Razorpay)",
+    description: "When an order is paid",
   },
   {
     key: "emailOrderShipped",
@@ -40,6 +40,11 @@ const ADMIN_EMAIL_EVENTS = [
     label: "New order",
     description: "Alert to the store inbox on new orders",
   },
+  {
+    key: "adminMonthlyReport",
+    label: "Monthly report",
+    description: "Previous month’s sales, sent on the 1st",
+  },
 ];
 
 const ALL_EVENTS = [...CUSTOMER_EMAIL_EVENTS, ...ADMIN_EMAIL_EVENTS];
@@ -54,13 +59,10 @@ function normalizePrefs(data) {
   };
 }
 
-function EmailEventsCard({ title, description, events, preferences, loading, saving, onToggle }) {
+function EmailEventsCard({ title, events, preferences, loading, saving, onToggle }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-6 text-card-foreground space-y-6">
-      <div>
-        <h2 className="text-[13px] font-medium text-foreground">{title}</h2>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">{description}</p>
-      </div>
+    <div className="admin-surface space-y-4 rounded-xl bg-card p-5 text-card-foreground">
+      <h2 className="admin-card-heading">{title}</h2>
 
       <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
         {events.map((event) => (
@@ -203,25 +205,21 @@ export default function NotificationsPage() {
 
   return (
     <div className="w-full">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
           Notifications
         </h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Toggle email alerts per event. WhatsApp is managed under AiSensy.
-        </p>
       </div>
 
       {loading || !preferences ? (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="h-48 animate-pulse rounded-xl border border-border bg-muted/40" />
           <div className="h-28 animate-pulse rounded-xl border border-border bg-muted/40" />
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <EmailEventsCard
-            title="Email to Customer"
-            description="Customer emails for order and cart events"
+            title="Customer notifications"
             events={CUSTOMER_EMAIL_EVENTS}
             preferences={preferences}
             loading={loading}
@@ -230,7 +228,6 @@ export default function NotificationsPage() {
           />
           <EmailEventsCard
             title="Email to Admin"
-            description="Internal alerts for the store team"
             events={ADMIN_EMAIL_EVENTS}
             preferences={preferences}
             loading={loading}

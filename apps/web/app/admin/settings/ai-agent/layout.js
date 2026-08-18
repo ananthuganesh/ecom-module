@@ -1,6 +1,6 @@
 export const metadata = {
   title: {
-    absolute: "Whatsapp API | Admin",
+    absolute: "Ai Agent | Admin",
   },
 };
 
