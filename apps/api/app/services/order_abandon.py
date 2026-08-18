@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
+from pymongo import ReturnDocument
+
 from app.documents import Order
 
 # Customers who leave Razorpay without paying → abandoned after this idle window.
@@ -100,19 +102,42 @@ async def mark_order_abandoned(
     reason: str = "payment_gateway_exit",
     release_stock: bool = True,
 ) -> bool:
-    """Mark an unpaid gateway-exit order as abandoned (idempotent)."""
+    """Mark an unpaid gateway-exit order as abandoned (idempotent).
+
+    Uses $set so a stale in-memory transactionDetails cannot wipe stock flags
+    written by release_order_stock (stockReleased / stockReserved).
+    """
     if (order.status or "").strip().lower() == "abandoned":
         return False
     if not is_unpaid_gateway_candidate(order):
         return False
+    if not getattr(order, "id", None):
+        return False
+
+    now = datetime.utcnow()
+    col = Order.get_pymongo_collection()
+    updated = await col.find_one_and_update(
+        {
+            "_id": order.id,
+            "status": {"$nin": ["abandoned", "cancelled", "delivered"]},
+            "paymentStatus": {"$nin": list(PAID_LIKE)},
+        },
+        {
+            "$set": {
+                "status": "abandoned",
+                "transactionDetails.abandonedAt": now.isoformat(),
+                "transactionDetails.abandonedReason": reason,
+                "updatedAt": now,
+            }
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    if updated is None:
+        return False
 
     order.status = "abandoned"
-    details = dict(order.transactionDetails or {})
-    details["abandonedAt"] = datetime.utcnow().isoformat()
-    details["abandonedReason"] = reason
-    order.transactionDetails = details
-    order.updatedAt = datetime.utcnow()
-    await order.save()
+    order.transactionDetails = dict(updated.get("transactionDetails") or {})
+    order.updatedAt = now
 
     if release_stock:
         try:

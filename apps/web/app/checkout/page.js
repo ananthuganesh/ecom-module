@@ -835,9 +835,8 @@ function CheckoutPageContent() {
         ondismiss: () => {
           setLoading(false);
           setPaymentError("Payment cancelled. You can try again below.");
-          if (localOrderId) {
-            paymentService.releaseReservation(localOrderId);
-          }
+          // Do not release stock. UPI apps dismiss this modal while payment
+          // is still completing; the 30-minute TTL drops unpaid holds.
         },
       },
     };
@@ -851,9 +850,6 @@ function CheckoutPageContent() {
           err.reason ||
           "Payment failed. Please try another method or card."
       );
-      if (localOrderId) {
-        paymentService.releaseReservation(localOrderId);
-      }
     });
     rzp.open();
   };

@@ -26,7 +26,8 @@ export const paymentService = {
     client.post(e.verify, verificationData).then((res) => res.data),
 
   /**
-   * Release soft-reserved stock when Razorpay modal is dismissed.
+   * Record Razorpay modal dismiss. Does not drop the stock hold (UPI can
+   * still capture after the modal closes). Unpaid holds expire via TTL.
    */
   releaseReservation: (localOrderId) =>
     client

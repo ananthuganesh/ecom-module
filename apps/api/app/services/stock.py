@@ -571,6 +571,9 @@ async def release_order_stock(order) -> bool:
         await _release_coupon_reservation(order)
         return False
 
+    details["stockReleased"] = True
+    order.transactionDetails = details
+
     wh = await ensure_default_warehouse()
     wh_id = str(wh.id)
     released_lines: list[tuple[str, str, int]] = []
@@ -608,6 +611,8 @@ async def release_order_stock(order) -> bool:
             {"_id": order.id},
             {"$set": {"transactionDetails.stockReleased": False, "updatedAt": datetime.utcnow()}},
         )
+        details["stockReleased"] = False
+        order.transactionDetails = details
         raise
     await _release_coupon_reservation(order)
     return True
@@ -688,6 +693,35 @@ async def reverse_commit_reserved_stock(
     raise HTTPException(status_code=409, detail="Stock reverse conflict; retry")
 
 
+async def _reservation_held_on_ledger(order) -> bool:
+    """True when order flags and warehouse reserved qty still cover this order.
+
+    Flags alone are not enough: Razorpay modal dismiss used to release the
+    ledger hold then overwrite stockReleased, so payment thought the reserve
+    was still live and commit_reserved_stock failed (auto-refund).
+    """
+    details = dict(order.transactionDetails or {})
+    if details.get("stockApplied") or details.get("stockReleased") or not details.get("stockReserved"):
+        return False
+    wh = await ensure_default_warehouse()
+    wh_id = str(wh.id)
+    held_any = False
+    for item in order.items or []:
+        product_id = str(item.productId or "")
+        product = await Product.get(ObjectId(product_id)) if ObjectId.is_valid(product_id) else None
+        if not product:
+            return False
+        sku = _item_variant_sku(product, item)
+        qty = int(item.quantity or 0)
+        if qty <= 0:
+            continue
+        held_any = True
+        bal = await get_or_create_balance(product_id, wh_id, sku)
+        if int(bal.reserved or 0) < qty:
+            return False
+    return held_any
+
+
 async def ensure_stock_for_payment(order) -> None:
     """Guarantee a live soft-reserve before marking an order paid.
 
@@ -704,7 +738,7 @@ async def ensure_stock_for_payment(order) -> None:
     if details.get("stockApplied"):
         order.transactionDetails = details
         return
-    if details.get("stockReserved") and not details.get("stockReleased"):
+    if await _reservation_held_on_ledger(refreshed):
         order.transactionDetails = details
         return
 
@@ -845,14 +879,28 @@ async def apply_order_commitments(order) -> bool:
                 if qty <= 0:
                     continue
                 if still_reserved:
-                    await commit_reserved_stock(
-                        product_id=product_id,
-                        warehouse_id=wh_id,
-                        quantity=qty,
-                        variant_sku=line_sku,
-                        order_id=str(order.id),
-                    )
-                    completed.append(("commit", product_id, line_sku, qty))
+                    try:
+                        await commit_reserved_stock(
+                            product_id=product_id,
+                            warehouse_id=wh_id,
+                            quantity=qty,
+                            variant_sku=line_sku,
+                            order_id=str(order.id),
+                        )
+                        completed.append(("commit", product_id, line_sku, qty))
+                    except HTTPException as commit_exc:
+                        # Hold was released (stale flags) — sell from on-hand if available.
+                        if commit_exc.status_code != 400 or "Insufficient reserved stock" not in str(
+                            commit_exc.detail
+                        ):
+                            raise
+                        await apply_sale(
+                            product_id=product_id,
+                            quantity=qty,
+                            variant_sku=line_sku,
+                            order_id=str(order.id),
+                        )
+                        completed.append(("sale", product_id, line_sku, qty))
                 else:
                     await apply_sale(
                         product_id=product_id,

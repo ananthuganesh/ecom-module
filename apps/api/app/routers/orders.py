@@ -894,7 +894,12 @@ async def mark_paid(order_id: str, admin: PaymentsWriter, body: dict | None = No
 
 @router.post("/{order_id}/release-reservation")
 async def release_reservation(order_id: str, user: CurrentUser):
-    """Release soft-reserved stock when checkout is dismissed / payment abandoned."""
+    """Record Razorpay modal dismiss. Do not drop the stock hold.
+
+    UPI intent often closes the Razorpay modal while the customer is still
+    paying in GPay/PhonePe. Releasing here caused captured payments to
+    auto-refund (stock_commit_failed). Unpaid holds expire via the 30-minute TTL.
+    """
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -903,17 +908,22 @@ async def release_reservation(order_id: str, user: CurrentUser):
     pay = str(order.paymentStatus or "").lower()
     if pay in {"paid", "refunded", "partially_refunded"}:
         raise HTTPException(status_code=400, detail="Cannot release reservation for a paid order")
-    from app.services.order_abandon import mark_order_abandoned
-    from app.services.stock import release_order_stock
 
-    released = await release_order_stock(order)
-    # Payment modal closed → this is an abandoned cart order, not an open order.
-    abandoned = await mark_order_abandoned(
-        order,
-        reason="payment_dismissed",
-        release_stock=False,
+    now = datetime.utcnow()
+    await Order.get_pymongo_collection().update_one(
+        {
+            "_id": order.id,
+            "paymentStatus": {"$nin": ["paid", "refunded", "partially_refunded", "refund_pending"]},
+        },
+        {
+            "$set": {
+                "transactionDetails.paymentDismissedAt": now.isoformat(),
+                "transactionDetails.paymentDismissedReason": "razorpay_modal",
+                "updatedAt": now,
+            }
+        },
     )
-    return {"success": True, "released": bool(released), "abandoned": bool(abandoned)}
+    return {"success": True, "released": False, "abandoned": False}
 
 
 @router.put("/{order_id}/deliver")
