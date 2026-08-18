@@ -3,3 +3,7 @@ export const metadata = {
   description: "Secure checkout for Urban Aana.",
   robots: { index: false, follow: false },
 };
+
+export default function CheckoutLayout({ children }) {
+  return children;
+}
