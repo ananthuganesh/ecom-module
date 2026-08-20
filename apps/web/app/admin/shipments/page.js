@@ -9,6 +9,7 @@ import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
 import { Download, Loader2, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { Truck } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
@@ -303,7 +304,9 @@ export default function AdminShipmentsPage() {
         } catch {
           /* ignore */
         }
-        toast.error(detail);
+        toast.error(
+          userErrorMessage(detail, "No printable labels in this selection")
+        );
         return;
       }
       await printPdfBlob(blob, { autoPrint: true });
@@ -318,19 +321,7 @@ export default function AdminShipmentsPage() {
       setRowSelection({});
       fetchPage(1, { append: false });
     } catch (error) {
-      let detail = error?.message || "Label print failed";
-      const data = error?.response?.data;
-      if (data instanceof Blob) {
-        try {
-          const parsed = JSON.parse(await data.text());
-          if (parsed?.detail) detail = String(parsed.detail);
-        } catch {
-          /* ignore */
-        }
-      } else if (typeof data?.detail === "string") {
-        detail = data.detail;
-      }
-      toast.error(detail);
+      toast.error(await userErrorFromAxios(error, "Couldn’t print labels"));
     } finally {
       setIsPrintingLabels(false);
       setIsBulkLoading(false);

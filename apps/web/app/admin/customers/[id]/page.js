@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Bell, BellOff, Copy, Check, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminUserService } from "@/api";
 import { Users } from "@/components/admin/LocalIcons";
 import {
@@ -346,11 +347,7 @@ export default function AdminCustomerDetailPage() {
       toast.success("Customer deleted");
       router.push("/admin/customers");
     } catch (error) {
-      toast.error(
-        error.response?.data?.detail ||
-          error.response?.data?.message ||
-          "Could not delete customer"
-      );
+      toast.error(userErrorMessage(error, "Couldn’t delete that customer"));
     } finally {
       setDeleting(false);
     }

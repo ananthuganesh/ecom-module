@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { adminProductService, adminCategoryService } from "@/api";
 import { ChevronDown, Download, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { Package } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
@@ -243,11 +244,7 @@ export default function AdminProductsPage() {
         STATUS_OPTIONS.find((o) => o.value === status)?.label || status;
       toast.success(`Updated status to ${label}`);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.detail ||
-          err?.message ||
-          "Failed to update status"
-      );
+      toast.error(userErrorMessage(err, "Couldn’t update product status"));
     } finally {
       setBulkLoading(false);
     }

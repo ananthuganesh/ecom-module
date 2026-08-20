@@ -8,20 +8,12 @@ import {
   STORE_PHONE,
   STORE_PHONE_TEL,
 } from "@/lib/storeContact";
+import { userErrorMessage } from "@/lib/userMessage";
 
 const CONTACT_IMAGE = "/images/44.webp";
 
 const fieldClass =
   "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-3 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black";
-
-function apiErrorMessage(err, fallback) {
-  const detail = err?.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((d) => d?.msg).filter(Boolean).join(" ") || fallback;
-  }
-  return err?.response?.data?.message || fallback;
-}
 
 export default function ContactPage() {
   const [name, setName] = useState("");
@@ -53,9 +45,9 @@ export default function ContactPage() {
     } catch (err) {
       setStatus({
         type: "error",
-        text: apiErrorMessage(
+        text: userErrorMessage(
           err,
-          "Could not send your message. Please try again or email us directly."
+          "Couldn’t send your message. Please try again or email us directly."
         ),
       });
     } finally {

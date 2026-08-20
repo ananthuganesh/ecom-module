@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, MapPin } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminCompanyProfileService } from "@/api";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 import AdminTopSheet from "@/components/admin/AdminTopSheet";
@@ -224,8 +225,7 @@ export default function GeneralSettingsPage() {
       setSnapshot(saved);
       toast.success("Settings saved");
     } catch (err) {
-      const msg = err?.response?.data?.detail || err.message || "Save failed";
-      toast.error(typeof msg === "string" ? msg : "Save failed");
+      toast.error(userErrorMessage(err, "Couldn’t save settings"));
     } finally {
       setSaving(false);
     }

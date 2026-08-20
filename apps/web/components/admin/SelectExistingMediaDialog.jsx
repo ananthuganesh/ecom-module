@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminMediaService } from "@/api";
 import SafeImage from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
@@ -90,9 +91,7 @@ export default function SelectExistingMediaDialog({
       } catch (err) {
         if (!cancelled) {
           setFiles([]);
-          toast.error(
-            err?.response?.data?.detail || "Could not load media library"
-          );
+          toast.error(userErrorMessage(err, "Couldn’t load the media library"));
         }
       } finally {
         if (!cancelled) setLoading(false);

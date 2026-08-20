@@ -22,6 +22,7 @@ import {
   adminProductColorService,
 } from "@/api";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import {
   ChevronDown,
   ChevronUp,
@@ -492,15 +493,13 @@ export default function AdminProductDetailPage() {
         urls.length === 1 ? "Image uploaded" : `${urls.length} images uploaded`
       );
     } catch (e) {
-      const detail =
-        e?.response?.data?.detail ||
-        e?.response?.data?.message ||
-        e?.message ||
-        "Image upload failed";
       toast.error(
-        e?.response?.status === 401
-          ? "Session expired — log in again, then retry upload"
-          : detail
+        userErrorMessage(
+          e?.response?.status === 401
+            ? "Your session expired. Sign in again, then retry the upload."
+            : e,
+          "Couldn’t upload the image"
+        )
       );
     } finally {
       setUploadingMedia(false);
@@ -562,12 +561,7 @@ export default function AdminProductDetailPage() {
         router.replace(adminProductHref(updated));
       }
     } catch (err) {
-      toast.error(
-        err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "Failed to save product"
-      );
+      toast.error(userErrorMessage(err, "Couldn’t save the product"));
     } finally {
       setSaving(false);
     }
@@ -631,7 +625,7 @@ export default function AdminProductDetailPage() {
         copies: count,
       });
       if (!result.ok) {
-        toast.error(result.error || "Barcode print failed");
+        toast.error(userErrorMessage(result.error, "Couldn’t print barcodes"));
         return;
       }
       toast.success(
@@ -640,7 +634,7 @@ export default function AdminProductDetailPage() {
           : `Printing ${result.copies} barcodes`
       );
     } catch (err) {
-      toast.error(err?.message || "Barcode print failed");
+      toast.error(userErrorMessage(err, "Couldn’t print barcodes"));
     }
   };
 

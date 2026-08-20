@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { authService } from "@/api";
 import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { persistAdminAuth } from "@/lib/persistAuth";
+import { userErrorMessage } from "@/lib/userMessage";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,12 +72,7 @@ export function LoginForm({ className, mode = "customer", ...props }) {
       toast.success("Signed in");
       router.push("/admin/dashboard");
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      setError(
-        typeof detail === "string"
-          ? detail
-          : err.response?.data?.message || err.message || "Invalid email or password"
-      );
+      setError(userErrorMessage(err, "Invalid email or password"));
     } finally {
       setLoading(false);
     }

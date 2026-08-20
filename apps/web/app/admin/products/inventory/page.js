@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminStockService } from "@/api";
 import {
   AdminListLayout,
@@ -143,7 +144,7 @@ export default function ProductsInventoryPage() {
       setLoading(true);
       await fetchStock();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to adjust stock");
+      toast.error(userErrorMessage(error, "Couldn’t update stock"));
     } finally {
       setSaving(false);
     }

@@ -1,11 +1,7 @@
 /**
- * Deliver a PDF blob.
- *
- * autoPrint: false (default) — download + preview tab, no window.print().
- *   Avoids Chrome "Headers and footers" chrome (date, title, URL, page X/Y).
- * autoPrint: true — open PDF and call print() (shipping labels, etc.).
+ * Open a PDF blob and trigger the print dialog. Does not download a file.
  */
-export function printPdfBlob(blob, { filename = "document.pdf", autoPrint = false } = {}) {
+export function printPdfBlob(blob, { filename = "document.pdf", autoPrint = true } = {}) {
   return new Promise((resolve, reject) => {
     if (!(blob instanceof Blob)) {
       reject(new Error("Invalid PDF"));
@@ -40,34 +36,6 @@ export function printPdfBlob(blob, { filename = "document.pdf", autoPrint = fals
       URL.revokeObjectURL(url);
     };
 
-    // Always offer a clean download (no browser header overlay in the file).
-    try {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = safeName.endsWith(".pdf") ? safeName : `${safeName}.pdf`;
-      a.rel = "noopener";
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {
-      /* ignore */
-    }
-
-    if (!autoPrint) {
-      const preview = window.open(url, "_blank");
-      if (preview) {
-        try {
-          preview.opener = null;
-        } catch {
-          /* ignore */
-        }
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
-      resolve();
-      return;
-    }
-
     popup = window.open(url, "_blank");
     if (!popup) {
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -79,6 +47,12 @@ export function printPdfBlob(blob, { filename = "document.pdf", autoPrint = fals
       popup.opener = null;
     } catch {
       /* ignore */
+    }
+
+    if (!autoPrint) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      resolve();
+      return;
     }
 
     const tryPrint = () => {

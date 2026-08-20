@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminMediaService } from "@/api";
 import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import {
@@ -43,7 +44,7 @@ export default function MediaLibrary() {
       setFiles(Array.isArray(data) ? data : []);
       setRowSelection({});
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not load media files");
+      toast.error(userErrorMessage(err, "Couldn’t load media files"));
       setFiles([]);
     } finally {
       setIsLoading(false);
@@ -113,7 +114,7 @@ export default function MediaLibrary() {
         );
         cancelEditAlt();
       } catch (err) {
-        toast.error(err.response?.data?.detail || "Could not save alt text");
+        toast.error(userErrorMessage(err, "Couldn’t save alt text"));
       } finally {
         setSavingAltKey(null);
       }
@@ -171,7 +172,7 @@ export default function MediaLibrary() {
       }
       await loadFiles();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not upload file(s)");
+      toast.error(userErrorMessage(err, "Couldn’t upload files"));
     } finally {
       setIsUploading(false);
       event.target.value = "";
@@ -197,7 +198,7 @@ export default function MediaLibrary() {
       toast.success("Deleted");
       await loadFiles();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not delete file(s)");
+      toast.error(userErrorMessage(err, "Couldn’t delete files"));
     } finally {
       setBulkLoading(false);
     }

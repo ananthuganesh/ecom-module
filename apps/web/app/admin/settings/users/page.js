@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Save } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminErpService } from "@/api";
 import AdminTopSheet from "@/components/admin/AdminTopSheet";
 import { Button } from "@/components/ui/button";
@@ -81,7 +82,7 @@ export default function UsersSettingsPage() {
       toast.success("Role assigned");
       await load();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Assign failed");
+      toast.error(userErrorMessage(err, "Couldn’t assign that role"));
     }
   };
 
@@ -116,7 +117,7 @@ export default function UsersSettingsPage() {
       setCreateOpen(false);
       await load();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Failed to create user");
+      toast.error(userErrorMessage(err, "Couldn’t create that user"));
     } finally {
       setSaving(false);
     }

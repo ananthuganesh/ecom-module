@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Save } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminSettingsService } from "@/api";
 
 function Section({ title, action, children }) {
@@ -60,7 +61,7 @@ export default function ShippingSettingsPage() {
       });
       toast.success("Shipping settings saved");
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Save failed");
+      toast.error(userErrorMessage(err, "Couldn’t save shipping settings"));
     } finally {
       setSaving(false);
     }

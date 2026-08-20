@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminUserService } from "@/api";
 import AdminSideSheet from "@/components/admin/AdminSideSheet";
 import { Button } from "@/components/ui/button";
@@ -65,11 +66,7 @@ export default function CreateCustomerSheet({ open, onClose, onSuccess }) {
       onSuccess?.(created);
       onClose?.();
     } catch (error) {
-      toast.error(
-        error.response?.data?.detail ||
-          error.response?.data?.message ||
-          "Failed to create customer"
-      );
+      toast.error(userErrorMessage(error, "Couldn’t create that customer"));
     } finally {
       setSaving(false);
     }

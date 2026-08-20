@@ -18,6 +18,7 @@ import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
 import { Download, FileText, Loader2, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { ShoppingBag } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
@@ -416,7 +417,7 @@ export default function AdminOrdersPage() {
           : `Marked ${updated.length} order${updated.length === 1 ? "" : "s"} as fulfilled`
       );
     } catch (error) {
-      toast.error(error?.response?.data?.detail || error?.message || "Fulfillment failed");
+      toast.error(userErrorMessage(error, "Couldn’t mark orders as fulfilled"));
     } finally {
       setIsFulfilling(false);
       setIsBulkLoading(false);
@@ -440,7 +441,9 @@ export default function AdminOrdersPage() {
         } catch {
           /* ignore */
         }
-        toast.error(detail);
+        toast.error(
+          userErrorMessage(detail, "No printable labels in this selection")
+        );
         return;
       }
       await printPdfBlob(blob, { autoPrint: true });
@@ -453,19 +456,7 @@ export default function AdminOrdersPage() {
           : `Printing ${printed} label${printed === 1 ? "" : "s"}`
       );
     } catch (error) {
-      let detail = error?.message || "Label print failed";
-      const data = error?.response?.data;
-      if (data instanceof Blob) {
-        try {
-          const parsed = JSON.parse(await data.text());
-          if (parsed?.detail) detail = String(parsed.detail);
-        } catch {
-          /* ignore */
-        }
-      } else if (typeof data?.detail === "string") {
-        detail = data.detail;
-      }
-      toast.error(detail);
+      toast.error(await userErrorFromAxios(error, "Couldn’t print labels"));
     } finally {
       setIsPrintingLabels(false);
       setIsBulkLoading(false);
@@ -579,11 +570,11 @@ export default function AdminOrdersPage() {
       await printHtml(html, { title });
       toast.success(
         failed
-          ? `Downloaded ${entries.length} invoice${entries.length === 1 ? "" : "s"} (${failed} skipped)`
-          : `Downloaded ${entries.length} invoice${entries.length === 1 ? "" : "s"}`
+          ? `Printing ${entries.length} invoice${entries.length === 1 ? "" : "s"} (${failed} skipped)`
+          : `Printing ${entries.length} invoice${entries.length === 1 ? "" : "s"}`
       );
     } catch (error) {
-      toast.error(error?.response?.data?.detail || error?.message || "Invoice print failed");
+      toast.error(userErrorMessage(error, "Couldn’t print invoices"));
     } finally {
       setIsPrintingInvoices(false);
       setIsBulkLoading(false);

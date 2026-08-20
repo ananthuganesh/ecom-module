@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminMediaService } from "@/api";
 import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import {
@@ -44,7 +45,7 @@ export default function AdminReelsPage() {
       setFiles(Array.isArray(data) ? data : []);
       setRowSelection({});
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not load reels");
+      toast.error(userErrorMessage(err, "Couldn’t load reels"));
       setFiles([]);
     } finally {
       setIsLoading(false);
@@ -113,7 +114,7 @@ export default function AdminReelsPage() {
         );
         cancelEditAlt();
       } catch (err) {
-        toast.error(err.response?.data?.detail || "Could not save alt text");
+        toast.error(userErrorMessage(err, "Couldn’t save alt text"));
       } finally {
         setSavingAltKey(null);
       }
@@ -141,7 +142,7 @@ export default function AdminReelsPage() {
           mediaFileKey(f) === key ? { ...f, visible: prev } : f
         )
       );
-      toast.error(err.response?.data?.detail || "Could not update visibility");
+      toast.error(userErrorMessage(err, "Couldn’t update visibility"));
     } finally {
       setSavingVisibleKey(null);
     }
@@ -222,10 +223,9 @@ export default function AdminReelsPage() {
             id: toastId,
           });
         } catch (err) {
-          toast.error(
-            err.response?.data?.detail || `Failed: ${label}`,
-            { id: toastId }
-          );
+          toast.error(userErrorMessage(err, `Couldn’t upload ${label}`), {
+            id: toastId,
+          });
         }
       }
       if (ok) await loadFiles();
@@ -254,7 +254,7 @@ export default function AdminReelsPage() {
       toast.success("Deleted");
       await loadFiles();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Could not delete reel(s)");
+      toast.error(userErrorMessage(err, "Couldn’t delete reels"));
     } finally {
       setBulkLoading(false);
     }

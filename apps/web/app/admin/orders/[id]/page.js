@@ -14,6 +14,7 @@ import {
   touchesEqual,
 } from "@/lib/orderTimeline";
 import { toast } from "sonner";
+import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { printHtml } from "@/utils/printHtml";
 import { printPdfBlob } from "@/utils/printPdfBlob";
 import { buildInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
@@ -399,7 +400,7 @@ export default function AdminOrderDetailPage() {
       }
       return inv;
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Invoice failed");
+      toast.error(userErrorMessage(err, "Couldn’t create invoice"));
       return null;
     } finally {
       setInvoiceLoading(false);
@@ -455,9 +456,9 @@ export default function AdminOrderDetailPage() {
       await printHtml(html, {
         title: inv?.number || order?.invoiceNumber || order.orderNumber || "invoice",
       });
-      toast.success("Invoice PDF downloaded");
+      toast.success("Print dialog opened");
     } catch (err) {
-      toast.error(err?.message || "Invoice print failed");
+      toast.error(userErrorMessage(err, "Couldn’t print invoice"));
     } finally {
       setIsPrintingInvoice(false);
     }
@@ -507,9 +508,7 @@ export default function AdminOrderDetailPage() {
       }
     } catch (e) {
       console.error(e);
-      const msg =
-        e.response?.data?.detail || e.message || "DTDC booking failed";
-      toast.error(typeof msg === "string" ? msg : "DTDC booking failed");
+      toast.error(userErrorMessage(e, "Couldn’t book the shipment"));
     } finally {
       setFulfillLoading(false);
     }
@@ -534,7 +533,9 @@ export default function AdminOrderDetailPage() {
         } catch {
           /* ignore */
         }
-        toast.error(detail);
+        toast.error(
+          userErrorMessage(detail, "Couldn’t print the shipping label")
+        );
         return;
       }
       await printPdfBlob(blob, { filename: `label-${awb}.pdf`, autoPrint: true });
@@ -547,8 +548,7 @@ export default function AdminOrderDetailPage() {
       }
     } catch (e) {
       console.error(e);
-      const msg = e.response?.data?.detail || e.message || "Label print failed";
-      toast.error(typeof msg === "string" ? msg : "Label print failed");
+      toast.error(await userErrorFromAxios(e, "Couldn’t print the shipping label"));
     } finally {
       setIsPrintingLabel(false);
     }
@@ -620,8 +620,7 @@ export default function AdminOrderDetailPage() {
       );
     } catch (e) {
       console.error(e);
-      const msg = e.response?.data?.detail || e.message || "Cancel failed";
-      toast.error(typeof msg === "string" ? msg : "Cancel failed");
+      toast.error(userErrorMessage(e, "Couldn’t cancel this order"));
     } finally {
       setUpdating(false);
     }
@@ -652,8 +651,7 @@ export default function AdminOrderDetailPage() {
       toast.success("Razorpay refund issued");
     } catch (e) {
       console.error(e);
-      const msg = e.response?.data?.detail || e.message || "Refund failed";
-      toast.error(typeof msg === "string" ? msg : "Refund failed");
+      toast.error(userErrorMessage(e, "Couldn’t issue the refund"));
       try {
         const refreshed = await adminOrderService.getById(order._id);
         if (refreshed) setOrder(refreshed);
@@ -677,7 +675,7 @@ export default function AdminOrderDetailPage() {
       toast.success(next ? "Order archived" : "Order unarchived");
     } catch (e) {
       console.error(e);
-      toast.error(e.response?.data?.detail || e.message || "Archive failed");
+      toast.error(userErrorMessage(e, "Couldn’t update archive"));
     } finally {
       setUpdating(false);
     }

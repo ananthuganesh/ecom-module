@@ -41,7 +41,7 @@ export default function WishlistButton({
     e.preventDefault();
     e.stopPropagation();
     const added = toggle(product);
-    toast.success(added ? "Added to wishlist" : "Removed from wishlist");
+    toast.success(added ? "Saved to wishlist" : "Removed from wishlist");
   };
 
   return (

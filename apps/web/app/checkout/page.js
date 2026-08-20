@@ -32,6 +32,7 @@ import { normalizeIndianState } from "@/components/storefront/StateSearchSelect"
 import { trackBeginCheckout, stashPurchaseEvent, trackSelectPromotion, trackAddPaymentInfo, trackAddShippingInfo } from "@/lib/tracking";
 import { getAttributionSnapshot } from "@/lib/attribution";
 import { persistAuth } from "@/lib/persistAuth";
+import { userErrorMessage } from "@/lib/userMessage";
 
 const INPUT =
   "h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-0 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#222222] focus:outline-none focus:ring-1 focus:ring-[#222222]";
@@ -550,12 +551,9 @@ function CheckoutPageContent() {
         discount: result.discountAmount ?? result.discount ?? 0,
       });
     } catch (err) {
-      const msg =
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        err.message ||
-        "Invalid discount";
-      setCouponError(typeof msg === "string" ? msg : "Invalid discount");
+      setCouponError(
+        userErrorMessage(err, "That discount code isn’t valid.")
+      );
       setAppliedCoupon(null);
     } finally {
       setIsCouponLoading(false);
@@ -708,22 +706,12 @@ function CheckoutPageContent() {
       setResolvedEmail(email);
       return data;
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      let msg = err.response?.data?.message || "Could not verify email.";
-      if (typeof detail === "string") {
-        msg = detail;
-      } else if (Array.isArray(detail)) {
-        msg =
-          detail
-            .map((d) => String(d?.msg || "").replace(/^Value error,\s*/i, ""))
-            .filter(Boolean)
-            .join(" ") || msg;
-      }
+      const msg = userErrorMessage(err, "Enter a valid email.");
       setFormErrors((prev) => ({
         ...prev,
-        email: typeof msg === "string" ? msg : "Enter a valid email.",
+        email: msg,
       }));
-      setPaymentError(typeof msg === "string" ? msg : "Could not verify email.");
+      setPaymentError(msg);
       return null;
     } finally {
       setIsResolvingEmail(false);
@@ -860,9 +848,10 @@ function CheckoutPageContent() {
       console.error("Razorpay payment.failed", err);
       setLoading(false);
       setPaymentError(
-        err.description ||
-          err.reason ||
-          "Payment failed. Please try another method or card."
+        userErrorMessage(
+          err.description || err.reason,
+          "Payment didn’t go through. Please try another method."
+        )
       );
     });
     rzp.open();
@@ -974,17 +963,14 @@ function CheckoutPageContent() {
     } catch (error) {
       console.error("Error placing order:", error);
       const status = error.response?.status;
-      const detail =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.message ||
-        "Something went wrong.";
       if (status === 401) {
         setUserInfo(null);
         setPendingOrderId(null);
         setPaymentError("Your session expired. Confirm your email and try again.");
       } else {
-        setPaymentError(typeof detail === "string" ? detail : "Something went wrong.");
+        setPaymentError(
+          userErrorMessage(error, "We couldn’t place your order. Please try again.")
+        );
       }
       setLoading(false);
     }

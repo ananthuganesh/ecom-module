@@ -6,6 +6,7 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { useAuthStore } from "@/store/useAuthStore";
 import { authService } from "@/api";
 import { persistAuth } from "@/lib/persistAuth";
+import { userErrorMessage } from "@/lib/userMessage";
 import { normalizeIndianState } from "@/components/storefront/StateSearchSelect";
 import Link from "next/link";
 
@@ -123,9 +124,7 @@ export default function AddressesPage() {
       setShowForm(false);
     } catch (err) {
       setError(
-        err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          "Could not save address."
+        userErrorMessage(err, "Couldn’t save that address. Please try again.")
       );
     } finally {
       setSaving(false);

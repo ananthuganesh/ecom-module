@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { authService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { userErrorMessage } from "@/lib/userMessage";
 import { motion } from "framer-motion";
 
 const LABEL = "mb-1.5 block text-[13px] font-medium text-gray-700";
@@ -52,15 +53,6 @@ function toIndianMobile(value) {
 }
 
 const isIndianMobile = (phone) => /^[6-9]\d{9}$/.test(String(phone || ""));
-
-function apiErrorMessage(err, fallback) {
-  const detail = err?.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((d) => d?.msg).filter(Boolean).join(" ") || fallback;
-  }
-  return err?.response?.data?.message || fallback;
-}
 
 export default function SettingsPage() {
   const { userInfo, setUserInfo } = useAuthStore();
@@ -108,7 +100,10 @@ export default function SettingsPage() {
     } catch (error) {
       setMessage({
         type: "error",
-        text: apiErrorMessage(error, "Error updating profile"),
+        text: userErrorMessage(
+          error,
+          "We couldn’t update your profile. Please try again."
+        ),
       });
     } finally {
       setUpdating(false);

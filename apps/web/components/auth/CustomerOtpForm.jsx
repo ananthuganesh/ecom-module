@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { authService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { persistAuth } from "@/lib/persistAuth";
+import { userErrorMessage } from "@/lib/userMessage";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -13,15 +14,6 @@ import { Input } from "@/components/ui/input";
 
 const RESEND_COOLDOWN_SEC = 60;
 const OTP_LENGTH = 6;
-
-function apiError(err, fallback) {
-  const detail = err.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((d) => d?.msg).filter(Boolean).join(" ") || fallback;
-  }
-  return err.response?.data?.message || err.message || fallback;
-}
 
 function OtpDigitInputs({
   value,
@@ -181,7 +173,9 @@ export default function CustomerOtpForm({
       setCooldown(RESEND_COOLDOWN_SEC);
       toast.success("Code sent — check your email");
     } catch (err) {
-      setError(apiError(err, "Could not send code"));
+      setError(
+        userErrorMessage(err, "We couldn’t send a code. Please try again.")
+      );
     } finally {
       setLoading(false);
     }
@@ -206,7 +200,7 @@ export default function CustomerOtpForm({
       toast.success("Signed in");
       onSuccess?.(data);
     } catch (err) {
-      setError(apiError(err, "Invalid or expired code"));
+      setError(userErrorMessage(err, "That code is invalid or has expired."));
     } finally {
       setLoading(false);
     }
@@ -222,7 +216,9 @@ export default function CustomerOtpForm({
       setCooldown(RESEND_COOLDOWN_SEC);
       toast.success("New code sent");
     } catch (err) {
-      setError(apiError(err, "Could not resend code"));
+      setError(
+        userErrorMessage(err, "We couldn’t send a new code. Please try again.")
+      );
     } finally {
       setLoading(false);
     }

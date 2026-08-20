@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ChevronRightIcon } from "@/components/icons/storeIcons";
 import ProductCard from "@/components/storefront/ProductCard";
 import { productService } from "@/api";
+import { userErrorMessage } from "@/lib/userMessage";
 import { trackViewItemList } from "@/lib/tracking";
 import dynamic from "next/dynamic";
 
@@ -63,7 +64,7 @@ export default function CategoryPageClient({
       } catch (err) {
         if (!cancelled) {
           console.error("Error fetching category products:", err);
-          setError(err.message || "Failed to load category data");
+          setError(userErrorMessage(err, "Couldn’t load this collection. Please try again."));
         }
       }
     })();

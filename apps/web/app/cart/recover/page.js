@@ -10,6 +10,7 @@ import { abandonedCheckoutService } from "@/api";
 import { useCartStore } from "@/store/useCartStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { persistAuth } from "@/lib/persistAuth";
+import { userErrorMessage } from "@/lib/userMessage";
 
 const TOKEN_STORAGE_KEY = "cart_recover_token";
 
@@ -118,9 +119,10 @@ function RecoverContent() {
         clearStoredToken();
         setStatus("error");
         setError(
-          err.response?.data?.detail ||
-            err.response?.data?.message ||
+          userErrorMessage(
+            err,
             "This recovery link is invalid or has expired."
+          )
         );
       }
     })();

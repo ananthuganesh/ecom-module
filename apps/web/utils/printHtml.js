@@ -231,7 +231,7 @@ async function printHtmlAsPdf(docHtml, { title = "invoice" } = {}) {
         ? blob
         : new Blob([blob], { type: "application/pdf" });
 
-    await printPdfBlob(pdfBlob, { filename });
+    await printPdfBlob(pdfBlob, { filename, autoPrint: true });
   } finally {
     restoreComputedStyle();
     host.remove();
@@ -240,7 +240,7 @@ async function printHtmlAsPdf(docHtml, { title = "invoice" } = {}) {
 }
 
 /**
- * Print invoice HTML as a clean PDF (download + preview).
+ * Print invoice HTML as a clean PDF (print dialog, no download).
  * Avoids browser print chrome: date, INV title, about:blank, page X/Y.
  */
 export async function printHtml(html, { title = "invoice" } = {}) {

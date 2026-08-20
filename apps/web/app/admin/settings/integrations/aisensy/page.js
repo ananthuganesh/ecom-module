@@ -6,6 +6,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminAisensyService } from "@/api";
 import { Switch } from "@/components/ui/switch";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
@@ -129,11 +130,7 @@ export default function AisensySettingsPage() {
       setSnapshot(editableSlice(next));
       toast.success("AiSensy preferences saved");
     } catch (error) {
-      const msg =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        "Failed to save AiSensy settings";
-      toast.error(typeof msg === "string" ? msg : "Failed to save");
+      toast.error(userErrorMessage(error, "Couldn’t save AiSensy settings"));
     } finally {
       setSaving(false);
     }
@@ -215,11 +212,7 @@ export default function AisensySettingsPage() {
         `Synced ${data.imported || 0} contacts${data.errors ? ` · ${data.errors} failed` : ""}`
       );
     } catch (error) {
-      const msg =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        "Contact sync failed";
-      toast.error(typeof msg === "string" ? msg : "Contact sync failed");
+      toast.error(userErrorMessage(error, "Couldn’t sync contacts"));
     } finally {
       setSyncing(false);
     }
@@ -231,7 +224,12 @@ export default function AisensySettingsPage() {
       const data = await adminAisensyService.syncCatalog();
       setSettings((prev) => ({ ...prev, ...data }));
       if (data.ok === false) {
-        toast.error(data.error || data.lastCatalogError || "Catalogue sync finished with errors");
+        toast.error(
+          userErrorMessage(
+            data.error || data.lastCatalogError,
+            "Catalogue sync finished with errors"
+          )
+        );
       } else {
         toast.success(
           `Catalogue synced · ${data.created || 0} created${
@@ -240,11 +238,7 @@ export default function AisensySettingsPage() {
         );
       }
     } catch (error) {
-      const msg =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        "Catalogue sync failed";
-      toast.error(typeof msg === "string" ? msg : "Catalogue sync failed");
+      toast.error(userErrorMessage(error, "Couldn’t sync catalogue"));
     } finally {
       setSyncingCatalog(false);
     }

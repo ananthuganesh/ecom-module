@@ -19,6 +19,7 @@ import {
   adminCouponService,
   adminProductService,
 } from "@/api";
+import { userErrorMessage } from "@/lib/userMessage";
 import {
   AdminHeaderButton,
   AdminListLayout,
@@ -327,8 +328,7 @@ export default function AdminDiscountsPage() {
       setView("list");
       setEditingId(null);
     } catch (err) {
-      const msg = err.response?.data?.detail || err.response?.data?.message || "Failed to save discount";
-      setError(typeof msg === "string" ? msg : "Failed to save discount");
+      setError(userErrorMessage(err, "Couldn’t save that discount"));
     } finally {
       setSaving(false);
     }
@@ -339,8 +339,8 @@ export default function AdminDiscountsPage() {
     try {
       await adminCouponService.delete(id);
       await load();
-    } catch {
-      setError("Failed to delete");
+    } catch (err) {
+      setError(userErrorMessage(err, "Couldn’t delete that discount"));
     }
   };
 
