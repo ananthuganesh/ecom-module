@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -40,27 +41,26 @@ def retailer_id_for_variant(*, product_id: str, variant: dict | None, index: int
     return "-".join(parts)[:100]
 
 
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    if isinstance(value, dict):
+        return " ".join(_as_text(v) for v in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_as_text(v) for v in value)
+    return str(value)
+
+
 def is_duplicate_retailer_error(result: dict[str, Any] | None) -> bool:
     """Meta/AiSensy (#10800) when create-product hits an existing retailer_id."""
-    if not result or result.get("ok"):
+    if not result:
         return False
-    chunks: list[str] = [str(result.get("error") or "")]
-    resp = result.get("response")
-    if isinstance(resp, dict):
-        for key in ("message", "error", "name", "raw"):
-            if resp.get(key) is not None:
-                chunks.append(str(resp.get(key)))
-        # Nested Meta-style payloads
-        err_obj = resp.get("error")
-        if isinstance(err_obj, dict):
-            chunks.append(str(err_obj.get("message") or ""))
-            chunks.append(str(err_obj.get("code") or ""))
-    blob = " ".join(chunks).lower()
-    if "duplicate retailer_id" in blob:
+    blob = _as_text(result).lower()
+    if "10800" in blob:
         return True
-    if "10800" in blob and "duplicate" in blob:
-        return True
-    if "retailer_id" in blob and "already" in blob:
+    if "duplicate" in blob and "retailer" in blob:
         return True
     return False
 
@@ -202,22 +202,46 @@ class AiSensyProjectClient:
 
     async def create_product(self, payload: dict[str, Any]) -> dict[str, Any]:
         result = await self._request("POST", "create-product", json=payload)
-        if result.get("ok") or not is_duplicate_retailer_error(result):
+        if result.get("ok"):
             return result
+        if is_duplicate_retailer_error(result):
+            return {
+                "ok": True,
+                "alreadyExists": True,
+                "status": result.get("status"),
+                "response": result.get("response"),
+            }
+        return result
 
-        # Prefer updating an existing catalog item when retailer_id already exists.
-        for path in ("update-product", "edit-product"):
-            updated = await self._request("POST", path, json=payload)
-            if updated.get("ok"):
-                return {**updated, "updated": True, "alreadyExists": True}
-
-        return {
-            "ok": True,
-            "alreadyExists": True,
-            "status": result.get("status"),
-            "response": result.get("response"),
-            "error": result.get("error"),
-        }
+    async def list_catalog_retailer_ids(self, catalog_id: str) -> set[str]:
+        """Paginate AiSensy catalogue products (default list is only 20)."""
+        ids: set[str] = set()
+        skip = 0
+        limit = 100
+        catalog = quote(str(catalog_id or "").strip(), safe="")
+        if not catalog:
+            return ids
+        for _ in range(50):
+            result = await self._request(
+                "GET",
+                f"get-catalog-products?catalogId={catalog}&limit={limit}&skip={skip}",
+            )
+            if not result.get("ok"):
+                break
+            resp = result.get("response") or {}
+            rows = list(resp.get("catalogueProducts") or []) if isinstance(resp, dict) else []
+            if not rows:
+                break
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                rid = str(row.get("retailerId") or row.get("retailer_id") or "").strip()
+                if rid:
+                    ids.add(rid)
+            if len(rows) < limit:
+                break
+            skip += limit
+        return ids
 
     async def sync_catalog(self) -> dict[str, Any]:
         return await self._request("GET", "sync-catalog")

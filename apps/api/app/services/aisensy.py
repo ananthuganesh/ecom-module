@@ -14,6 +14,7 @@ from app.config import get_settings as get_env_settings
 from app.documents import AbandonedCheckout, Product, Setting, User
 from app.services.aisensy_project import (
     AiSensyProjectClient,
+    is_duplicate_retailer_error,
     price_to_minor_units,
     retailer_id_for_variant,
 )
@@ -608,6 +609,7 @@ async def sync_catalog() -> dict[str, Any]:
         return {"ok": False, "error": err, **public_settings(await get_settings())}
 
     catalog_id = str(ensured["catalogId"])
+    existing_ids = await client.list_catalog_retailer_ids(catalog_id)
     products = await Product.find(Product.status == "active").to_list()
 
     created = 0
@@ -671,12 +673,20 @@ async def sync_catalog() -> dict[str, Any]:
             if sale is not None:
                 payload["sale_price"] = price_to_minor_units(sale)
 
+            if payload["retailer_id"] in existing_ids:
+                updated += 1
+                continue
+
             result = await client.create_product(payload)
             if result.get("ok"):
                 if result.get("updated") or result.get("alreadyExists"):
                     updated += 1
                 else:
                     created += 1
+                    existing_ids.add(payload["retailer_id"])
+            elif is_duplicate_retailer_error(result):
+                updated += 1
+                existing_ids.add(payload["retailer_id"])
             else:
                 failed += 1
                 msg = str(result.get("error") or "create_product_failed")[:200]
