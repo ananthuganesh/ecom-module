@@ -14,33 +14,36 @@ import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 const EVENT_ROWS = [
   {
     key: "abandoned",
+    campaign: "abandoned_cart",
     label: "Abandoned cart",
-    description: "Name, amount, item count, cart link",
+    description: "Recovery WhatsApp for incomplete checkouts",
   },
   {
     key: "orderPlaced",
+    campaign: "order_placed",
     label: "Order placed",
-    description: "Name, order number, amount",
+    description: "When an order is created",
   },
   {
     key: "orderPaid",
+    campaign: "order_paid",
     label: "Order paid",
-    description: "Name, order number, amount",
+    description: "When payment is confirmed",
   },
   {
     key: "orderShipped",
+    campaign: "order_shipped",
     label: "Order shipped",
-    description: "Name, order number, AWB",
+    description: "When the order ships",
   },
   {
     key: "orderDelivered",
+    campaign: "order_delivered",
     label: "Order delivered",
-    description: "Name, order number",
+    description: "When delivery is complete",
   },
 ];
 
-const emptyCampaigns = () =>
-  Object.fromEntries(EVENT_ROWS.map((r) => [r.key, ""]));
 const emptyEnabled = () =>
   Object.fromEntries(EVENT_ROWS.map((r) => [r.key, true]));
 
@@ -49,7 +52,6 @@ function editableSlice(data) {
     siteUrl: data.siteUrl || "",
     abandonedMinutes: data.abandonedMinutes ?? 15,
     messagingEnabled: data.messagingEnabled !== false,
-    campaigns: { ...emptyCampaigns(), ...(data.campaigns || {}) },
     enabled: { ...emptyEnabled(), ...(data.enabled || {}) },
   };
 }
@@ -57,9 +59,7 @@ function editableSlice(data) {
 function isDirty(current, snapshot) {
   if (!snapshot) return false;
   return EVENT_ROWS.some(
-    (row) =>
-      !!current.enabled?.[row.key] !== !!snapshot.enabled?.[row.key] ||
-      String(current.campaigns?.[row.key] || "") !== String(snapshot.campaigns?.[row.key] || "")
+    (row) => !!current.enabled?.[row.key] !== !!snapshot.enabled?.[row.key]
   );
 }
 
@@ -118,7 +118,6 @@ export default function AisensySettingsPage() {
         siteUrl: settings.siteUrl,
         abandonedMinutes: settings.abandonedMinutes,
         messagingEnabled: settings.messagingEnabled,
-        campaigns: settings.campaigns,
         enabled: settings.enabled,
       });
       const next = {
@@ -266,36 +265,23 @@ export default function AisensySettingsPage() {
 
           <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
             {EVENT_ROWS.map((row) => (
-              <div key={row.key} className="space-y-3 bg-card px-4 py-3.5">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-foreground">{row.label}</p>
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">{row.description}</p>
-                  </div>
-                  <Switch
-                    checked={!!settings.enabled?.[row.key]}
-                    disabled={saving}
-                    onCheckedChange={(checked) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        enabled: { ...prev.enabled, [row.key]: !!checked },
-                      }))
-                    }
-                    aria-label={`Enable ${row.label} WhatsApp`}
-                  />
+              <div key={row.key} className="flex items-center justify-between gap-4 bg-card px-4 py-3.5">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-foreground">
+                    {row.label} ({row.campaign})
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">{row.description}</p>
                 </div>
-                <input
-                  type="text"
-                  value={settings.campaigns?.[row.key] || ""}
-                  onChange={(e) =>
+                <Switch
+                  checked={!!settings.enabled?.[row.key]}
+                  disabled={saving}
+                  onCheckedChange={(checked) =>
                     setSettings((prev) => ({
                       ...prev,
-                      campaigns: { ...prev.campaigns, [row.key]: e.target.value },
+                      enabled: { ...prev.enabled, [row.key]: !!checked },
                     }))
                   }
-                  placeholder="Exact AiSensy campaign name"
-                  disabled={saving || !settings.enabled?.[row.key]}
-                  className="h-9 w-full rounded-lg border-0 bg-zinc-100 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-50"
+                  aria-label={`Enable ${row.label} WhatsApp`}
                 />
               </div>
             ))}

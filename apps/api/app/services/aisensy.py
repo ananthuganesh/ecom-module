@@ -67,6 +67,19 @@ EVENTS = (
     "orderDelivered",
 )
 
+# Create Live API campaigns in AiSensy with these exact names.
+FIXED_CAMPAIGNS = {
+    "abandoned": "abandoned_cart",
+    "orderPlaced": "order_placed",
+    "orderPaid": "order_paid",
+    "orderShipped": "order_shipped",
+    "orderDelivered": "order_delivered",
+}
+
+
+def campaign_name_for(event: str) -> str:
+    return FIXED_CAMPAIGNS.get(event) or ""
+
 
 def env_secrets() -> dict[str, str]:
     s = get_env_settings()
@@ -118,7 +131,6 @@ async def get_settings() -> dict:
 
 def public_settings(raw: dict | None) -> dict:
     raw = dict(raw or {})
-    campaigns = dict(raw.get("campaigns") or {})
     enabled = dict(raw.get("enabled") or {})
     try:
         abandoned_minutes = int(raw.get("abandonedMinutes") or DEFAULT_ABANDONED_MINUTES)
@@ -138,7 +150,7 @@ def public_settings(raw: dict | None) -> dict:
         "catalogId": raw.get("catalogId") or "",
         "siteUrl": raw.get("siteUrl") or "",
         "abandonedMinutes": abandoned_minutes,
-        "campaigns": {k: campaigns.get(k) or "" for k in EVENTS},
+        "campaigns": {k: FIXED_CAMPAIGNS[k] for k in EVENTS},
         "enabled": {k: bool(enabled.get(k, True)) for k in EVENTS},
         "lastSyncedAt": raw.get("lastSyncedAt"),
         "lastSyncCount": raw.get("lastSyncCount"),
@@ -159,16 +171,8 @@ async def save_prefs(body: dict) -> dict:
     if s and isinstance(s.value, dict):
         db_current = dict(s.value)
 
-    campaigns_in = dict(body.get("campaigns") or {})
     enabled_in = dict(body.get("enabled") or {})
-    campaigns = {
-        k: str(
-            campaigns_in.get(k)
-            if k in campaigns_in
-            else (db_current.get("campaigns") or {}).get(k) or ""
-        ).strip()
-        for k in EVENTS
-    }
+    campaigns = dict(FIXED_CAMPAIGNS)
     enabled = {
         k: bool(enabled_in.get(k, (db_current.get("enabled") or {}).get(k, True)))
         for k in EVENTS
@@ -231,6 +235,111 @@ def normalize_phone(phone: str | None) -> str | None:
     return digits
 
 
+def _first_name(name: str | None) -> str:
+    first = str(name or "").strip().split()
+    return first[0] if first else "there"
+
+
+def _inr_amount(value: Any) -> str:
+    try:
+        n = float(value or 0)
+    except (TypeError, ValueError):
+        n = 0.0
+    if n == int(n):
+        return f"{int(n):,}"
+    return f"{n:,.2f}"
+
+
+def _media_filename(url: str) -> str:
+    name = str(url or "").split("?", 1)[0].rstrip("/").split("/")[-1] or "product.jpg"
+    if "." not in name:
+        name = f"{name}.jpg"
+    return name[:80]
+
+
+def _whatsapp_header_ok(url: str | None) -> bool:
+    """WhatsApp IMAGE headers accept jpeg/png; webp often fails to render."""
+    path = str(url or "").split("?", 1)[0].lower()
+    return bool(path) and not path.endswith((".webp", ".avif", ".gif", ".svg"))
+
+
+def _item_image_raw(item: dict | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    for key in ("image", "thumbnail", "productImage"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, list):
+            for entry in value:
+                if isinstance(entry, str) and entry.strip():
+                    return entry.strip()
+    return ""
+
+
+async def abandoned_header_media(checkout, *, site: str) -> dict[str, str] | None:
+    """Public product image for WhatsApp IMAGE header. First cart item, then brand fallback."""
+    url = None
+    for item in checkout.items or []:
+        candidate = absolute_http_url(_item_image_raw(item), base=site)
+        if _whatsapp_header_ok(candidate):
+            url = candidate
+            break
+    if not url:
+        from bson import ObjectId
+
+        for item in checkout.items or []:
+            if not isinstance(item, dict):
+                continue
+            pid = str(item.get("productId") or item.get("_id") or "").strip()
+            if not pid:
+                continue
+            product = None
+            try:
+                if ObjectId.is_valid(pid):
+                    product = await Product.get(ObjectId(pid))
+                if not product:
+                    product = await Product.find_one(Product.productId == pid)
+            except Exception:
+                product = None
+            if not product:
+                continue
+            color = str(item.get("color") or "").strip().lower()
+            size = str(item.get("size") or "").strip().lower()
+            vdict = None
+            for variant in product.variants or []:
+                if hasattr(variant, "model_dump"):
+                    row = variant.model_dump()
+                elif isinstance(variant, dict):
+                    row = variant
+                else:
+                    row = {
+                        "color": getattr(variant, "color", "") or "",
+                        "size": getattr(variant, "size", "") or "",
+                        "images": list(getattr(variant, "images", None) or []),
+                    }
+                if color and str(row.get("color") or "").strip().lower() != color:
+                    continue
+                if size and str(row.get("size") or "").strip().lower() != size:
+                    continue
+                vdict = row
+                break
+            candidate = _variant_image(product, vdict, site=site)
+            if _whatsapp_header_ok(candidate):
+                url = candidate
+                break
+    if not _whatsapp_header_ok(url):
+        url = None
+    if not url:
+        url = (
+            absolute_http_url("/urban/about-1.jpg", base=site)
+            or f"{site.rstrip('/')}/urban/about-1.jpg"
+        )
+    if not url:
+        return None
+    return {"url": url, "filename": _media_filename(url)}
+
+
 async def send_campaign(
     *,
     event: str,
@@ -240,6 +349,7 @@ async def send_campaign(
     source: str = "urban-aana",
     tags: list[str] | None = None,
     attributes: dict | None = None,
+    media: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     cfg = await get_settings()
     if not is_messaging_configured(cfg):
@@ -251,8 +361,7 @@ async def send_campaign(
     if not bool(enabled.get(event, True)):
         return {"skipped": True, "reason": "event_disabled"}
 
-    campaigns = dict(cfg.get("campaigns") or {})
-    campaign_name = str(campaigns.get(event) or "").strip()
+    campaign_name = campaign_name_for(event)
     if not campaign_name:
         return {"skipped": True, "reason": "campaign_not_mapped"}
 
@@ -270,6 +379,7 @@ async def send_campaign(
             source=source,
             tags=tags,
             attributes=attributes,
+            media=media,
         )
         if result.get("ok"):
             await _store_error(None)
@@ -299,6 +409,11 @@ async def send_campaign(
     }
     if template_params:
         payload["templateParams"] = [str(p) for p in template_params]
+    if media and media.get("url"):
+        payload["media"] = {
+            "url": str(media["url"]),
+            "filename": str(media.get("filename") or "product.jpg"),
+        }
     if tags:
         payload["tags"] = tags
     if attributes:
@@ -699,25 +814,31 @@ async def notify_abandoned(checkout) -> dict:
                     pass
 
     cfg = await get_settings()
-    site = str(cfg.get("siteUrl") or os.environ.get("PUBLIC_WEB_URL") or os.environ.get("NEXT_PUBLIC_SITE_URL") or "").rstrip("/")
+    site = resolve_public_site_url(cfg)
     from app.services import cart_recovery
 
     await cart_recovery.ensure_recovery_token(checkout)
     await checkout.save()
     token = checkout.recoveryToken
     cart_link = f"{site}/cart/recover?token={token}" if site else f"/cart/recover?token={token}"
-    amount = f"{float(checkout.totalAmount or 0):.2f}"
-    item_count = str(len(checkout.items or []))
+    greet = _first_name(name)
+    amount = _inr_amount(checkout.totalAmount)
+    n_items = len(checkout.items or [])
+    item_count = "1 piece" if n_items == 1 else f"{n_items} pieces"
+    media = await abandoned_header_media(checkout, site=site)
+    # Live template: {{1}} name, {{2}} pieces, {{3}} amount.
     return await send_campaign(
         event="abandoned",
         phone=phone,
         user_name=name,
-        template_params=[name, amount, item_count, cart_link],
+        template_params=[greet, item_count, amount],
         source="urban-aana-abandoned",
         tags=["abandoned_cart"],
+        media=media,
         attributes={
             "CartTotal": amount,
             "CartLink": cart_link,
+            "RecoveryToken": str(token or ""),
             "Email": details.get("email") or "",
         },
     )
@@ -733,7 +854,6 @@ async def process_due_abandoned_recoveries() -> dict[str, Any]:
         is_messaging_configured(cfg)
         and bool(cfg.get("messagingEnabled", True))
         and bool((cfg.get("enabled") or {}).get("abandoned", True))
-        and bool(str((cfg.get("campaigns") or {}).get("abandoned") or "").strip())
     )
     # Always attempt email path when Resend is configured; WA optional.
     from app.services import email_resend as email_svc

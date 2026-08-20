@@ -154,6 +154,7 @@ class AiSensyProjectClient:
         source: str | None = None,
         tags: list[str] | None = None,
         attributes: dict | None = None,
+        media: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "campaign_name": campaign_name,
@@ -170,6 +171,11 @@ class AiSensyProjectClient:
         if attributes:
             payload["attributes"] = {
                 str(k): str(v) for k, v in attributes.items() if v is not None
+            }
+        if media and media.get("url"):
+            payload["media"] = {
+                "url": str(media["url"]),
+                "filename": str(media.get("filename") or "product.jpg"),
             }
         return await self._request("POST", "campaign/api/send", json=payload)
 
