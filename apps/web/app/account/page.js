@@ -7,7 +7,23 @@ import { useAuthStore } from "@/store/useAuthStore";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import SafeImage from "@/components/SafeImage";
+import AccountOrderRow from "@/components/dashboard/AccountOrderRow";
+
+function formatShippingAddress(addr) {
+  if (!addr) return "";
+  if (typeof addr === "string") return addr;
+  return [
+    addr.name,
+    addr.house || addr.address || addr.address1 || addr.line1,
+    addr.address2 || addr.line2,
+    [addr.city, addr.state, addr.postalCode || addr.pincode]
+      .filter(Boolean)
+      .join(", "),
+    addr.country,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 export default function DashboardOverview() {
   const { userInfo } = useAuthStore();
@@ -33,25 +49,24 @@ export default function DashboardOverview() {
     String(o.orderStatus || o.status || "").toLowerCase();
   const stats = {
     totalOrders: orders.length,
-    pendingOrders: orders.filter((o) => {
-      const s = orderStatus(o);
-      return s && !["delivered", "cancelled", "returned"].includes(s);
-    }).length,
     completedOrders: orders.filter((o) => orderStatus(o) === "delivered").length,
   };
 
-  const formatPrice = (price) =>
-    `₹${Number(price || 0).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+  const savedAddresses = Array.isArray(userInfo?.addresses)
+    ? userInfo.addresses
+    : [];
+  const shippingAddress =
+    savedAddresses.find((a) => a.isDefault) ||
+    savedAddresses[0] ||
+    userInfo?.address ||
+    null;
+  const shippingAddressText = formatShippingAddress(shippingAddress);
 
   return (
     <DashboardLayout title={`Welcome, ${firstName}`} eyebrow="Your account">
-      <div className="mb-8 grid grid-cols-3 gap-2 sm:gap-4">
+      <div className="mb-8 grid grid-cols-2 gap-2 sm:gap-4">
         {[
           { label: "Total orders", value: stats.totalOrders },
-          { label: "Pending", value: stats.pendingOrders },
           { label: "Delivered", value: stats.completedOrders },
         ].map((stat, idx) => (
           <motion.div
@@ -99,53 +114,7 @@ export default function DashboardOverview() {
             </div>
           ) : (
             orders.slice(0, 3).map((order) => (
-              <div
-                key={order._id}
-                className="flex flex-col items-start justify-between gap-4 px-5 py-5 sm:flex-row sm:items-center sm:px-6"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="relative h-16 w-12 overflow-hidden rounded-md bg-gray-100">
-                    <SafeImage
-                      src={
-                        order.orderItems?.[0]?.image ||
-                        order.items?.[0]?.productId?.thumbnails?.[0]
-                      }
-                      alt="order"
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold text-gray-900">
-                      Order #{order._id?.slice(-8)}
-                    </p>
-                    <p className="mt-0.5 text-[12px] text-gray-500">
-                      {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex w-full items-center justify-between gap-6 sm:w-auto sm:justify-end">
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {formatPrice(order.totalPrice)}
-                    </p>
-                    <p className="mt-0.5 text-[12px] capitalize text-gray-500">
-                      {String(order.orderStatus || order.status || "Order placed")}
-                    </p>
-                  </div>
-                  <Link
-                    href={`/account/orders/${order._id}`}
-                    className="rounded-md border border-gray-200 p-2 text-gray-600 transition-colors hover:border-gray-900 hover:bg-gray-900 hover:text-white"
-                    aria-label="View order"
-                  >
-                    <ChevronRightIcon className="h-4 w-4" />
-                  </Link>
-                </div>
-              </div>
+              <AccountOrderRow key={order._id} order={order} />
             ))
           )}
         </div>
@@ -178,9 +147,11 @@ export default function DashboardOverview() {
           <h3 className="border-b border-gray-200 pb-3 text-[16px] font-semibold text-gray-900">
             Shipping address
           </h3>
-          {userInfo?.address ? (
+          {shippingAddressText ? (
             <div className="mt-5">
-              <p className="text-sm leading-relaxed text-gray-600">{userInfo.address}</p>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-gray-600">
+                {shippingAddressText}
+              </p>
               <Link
                 href="/account/addresses"
                 className="mt-4 inline-block text-[13px] font-medium text-[#DF1721] transition-colors hover:text-gray-900"

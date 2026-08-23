@@ -13,6 +13,9 @@ export const orderService = {
   getById: (id) =>
     client.get(e.byId(id)).then((res) => res.data),
 
+  getInvoice: (id) =>
+    client.get(e.invoice(id)).then((res) => res.data),
+
   updateToPaid: (id, paymentResult) =>
     client.put(e.pay(id), paymentResult).then((res) => res.data),
 };

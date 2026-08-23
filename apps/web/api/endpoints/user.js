@@ -28,6 +28,7 @@ const orders = {
   base: "orders",
   myOrders: "orders/myorders",
   byId: (id) => `orders/${id}`,
+  invoice: (id) => `orders/${id}/invoice`,
   pay: (id) => `orders/${id}/pay`,
   releaseReservation: (id) => `orders/${id}/release-reservation`,
 };

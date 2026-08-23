@@ -9,7 +9,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.deps import AdminUser, CurrentUser, PaymentsWriter
 from app.documents import Order, OrderItem, Product, Setting
-from app.serializers import remap_order
+from app.serializers import doc_to_dict, remap_order
 from app.services import erp_ops
 from app.services.attribution import sanitize_attribution
 from app.services.fulfillment import process_full_order_flow
@@ -102,8 +102,39 @@ async def _next_order_url_id() -> str:
     return f"{n:012d}"
 
 
+SHIPPED_STATUSES = {"shipped", "out for delivery", "delivered"}
+_PUBLIC_COMPANY_KEYS = (
+    "legalName",
+    "tradeName",
+    "gstin",
+    "email",
+    "phone",
+    "website",
+    "siteUrl",
+    "logoUrl",
+    "addressLine1",
+    "addressLine2",
+    "city",
+    "stateName",
+    "stateCode",
+    "pincode",
+    "country",
+)
+
+
 def _is_owner(order: Order, user) -> bool:
     return str(order.customerId) == str(user.id) or bool(user.isAdmin)
+
+
+def _order_is_paid(order: Order) -> bool:
+    pay = str(order.paymentStatus or "").lower()
+    return bool(getattr(order, "isPaid", False)) or pay == "paid"
+
+
+def _order_is_shipped(order: Order) -> bool:
+    status = str(getattr(order, "orderStatus", None) or getattr(order, "status", None) or "").lower()
+    shipping = str(order.shippingStatus or "").lower()
+    return status in SHIPPED_STATUSES or shipping in SHIPPED_STATUSES
 
 
 async def _storefront_shipping_price(address: dict) -> float:
@@ -852,6 +883,33 @@ async def list_orders(
     sk, lim, _pg = parse_pagination(page=page, skip=skip, limit=limit)
     orders = await Order.find_all().sort([("createdAt", -1)]).skip(sk).limit(lim).to_list()
     return [remap_order(o) for o in orders]
+
+
+@router.get("/{order_id}/invoice")
+async def get_order_invoice(order_id: str, user: CurrentUser):
+    """Official sales invoice for the customer, only after the order has shipped."""
+    if not ObjectId.is_valid(order_id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not _is_owner(order, user):
+        raise HTTPException(status_code=403, detail="Not authorized to view this order")
+    if not _order_is_paid(order):
+        raise HTTPException(status_code=400, detail="Invoice is available after payment")
+    if not _order_is_shipped(order):
+        raise HTTPException(status_code=400, detail="Invoice is available after the order is shipped")
+
+    invoice = await erp_ops.ensure_order_invoice(order, actor=user)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    company = await erp_ops.company_profile()
+    return {
+        "order": remap_order(order),
+        "invoice": doc_to_dict(invoice),
+        "company": {key: company.get(key, "") for key in _PUBLIC_COMPANY_KEYS},
+    }
 
 
 @router.get("/{order_id}")
