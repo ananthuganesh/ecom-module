@@ -20,8 +20,6 @@ export default function robots() {
           "/order/",
           "/api/",
           "/all-products?",
-          "/sentry-example-page",
-          "/test-route",
         ],
       },
     ],
