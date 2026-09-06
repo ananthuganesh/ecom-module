@@ -63,10 +63,7 @@ class Settings(BaseSettings):
     r2_key_prefix: str = ""
 
     delhivery_api_token: str = ""
-    delhivery_client_name: str = ""
     delhivery_pickup_location: str = ""
-    # "production" hits track.delhivery.com; anything else uses staging-express.
-    delhivery_env: str = "production"
 
     openrouter_api_key: str = ""
     openrouter_model: str = "google/gemini-3-pro-image"

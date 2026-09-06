@@ -19,8 +19,10 @@ from app.config import get_settings
 from app.documents import Order, Product, Setting, User, Warehouse
 from app.services.dtdc_est_cost import chargeable_weight_kg, order_unit_count
 
-PROD_BASE = "https://track.delhivery.com"
-STAGING_BASE = "https://staging-express.delhivery.com"
+# Delhivery issues separate staging and production tokens; ours is a production
+# token, so there is one base URL. Point this at staging-express.delhivery.com
+# if a sandbox token is ever issued.
+API_BASE = "https://track.delhivery.com"
 SETTING_KEY = "delhivery_settings"
 
 CARRIER_CODE = "delhivery"
@@ -31,12 +33,10 @@ def _env_delhivery() -> dict[str, Any]:
     settings = get_settings()
     return {
         "apiToken": (os.environ.get("DELHIVERY_API_TOKEN") or settings.delhivery_api_token or "").strip(),
-        "clientName": (os.environ.get("DELHIVERY_CLIENT_NAME") or settings.delhivery_client_name or "").strip(),
         # Must match the warehouse name registered with Delhivery *exactly* (case sensitive).
         "pickupLocation": (
             os.environ.get("DELHIVERY_PICKUP_LOCATION") or settings.delhivery_pickup_location or ""
         ).strip(),
-        "environment": (os.environ.get("DELHIVERY_ENV") or settings.delhivery_env or "production").strip(),
     }
 
 
@@ -48,14 +48,7 @@ async def get_delhivery_settings() -> dict:
     for key, value in _env_delhivery().items():
         if value:
             out[key] = value
-    if not out.get("environment"):
-        out["environment"] = "production"
     return out
-
-
-def base_url(cfg: dict | None = None) -> str:
-    env = str((cfg or {}).get("environment") or "production").strip().lower()
-    return PROD_BASE if env in ("production", "prod", "live") else STAGING_BASE
 
 
 async def require_delhivery_creds() -> dict:
@@ -148,7 +141,7 @@ async def check_serviceability(pincode: str, cfg: dict | None = None) -> dict[st
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.get(
-            f"{base_url(cfg)}/c/api/pin-codes/json/",
+            f"{API_BASE}/c/api/pin-codes/json/",
             headers=_headers(str(cfg["apiToken"])),
             params={"filter_codes": pin},
         )
@@ -377,7 +370,7 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(f"{base_url(cfg)}/api/cmu/create.json", headers=headers, content=body)
+        resp = await client.post(f"{API_BASE}/api/cmu/create.json", headers=headers, content=body)
         try:
             data = resp.json() if resp.content else {}
         except Exception:  # noqa: BLE001
@@ -508,7 +501,7 @@ async def create_reverse_pickup(order: Order, request: Any) -> dict[str, Any]:
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(f"{base_url(cfg)}/api/cmu/create.json", headers=headers, content=body)
+        resp = await client.post(f"{API_BASE}/api/cmu/create.json", headers=headers, content=body)
         try:
             data = resp.json() if resp.content else {}
         except Exception:  # noqa: BLE001
@@ -569,7 +562,7 @@ async def track_consignment(order: Order) -> dict:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
-            f"{base_url(cfg)}/api/v1/packages/json/",
+            f"{API_BASE}/api/v1/packages/json/",
             headers=_headers(str(cfg["apiToken"])),
             params={"waybill": waybill},
         )
@@ -622,7 +615,7 @@ async def cancel_consignment(order: Order) -> dict:
 
     async with httpx.AsyncClient(timeout=45.0) as client:
         resp = await client.post(
-            f"{base_url(cfg)}/api/p/edit",
+            f"{API_BASE}/api/p/edit",
             headers=_headers(str(cfg["apiToken"])),
             json={"waybill": waybill, "cancellation": "true"},
         )
@@ -669,7 +662,7 @@ async def label_pdf_bytes(order: Order) -> bytes:
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(
-            f"{base_url(cfg)}/api/p/packing_slip",
+            f"{API_BASE}/api/p/packing_slip",
             headers=_headers(str(cfg["apiToken"]), accept="application/pdf"),
             params={"wbns": waybill, "pdf": "true", "pdf_size": "4R"},
         )
@@ -698,7 +691,7 @@ async def register_warehouse(payload: dict) -> dict:
     cfg = await require_delhivery_creds()
     async with httpx.AsyncClient(timeout=45.0) as client:
         resp = await client.post(
-            f"{base_url(cfg)}/api/backend/clientwarehouse/create/",
+            f"{API_BASE}/api/backend/clientwarehouse/create/",
             headers=_headers(str(cfg["apiToken"])),
             json=payload,
         )
@@ -715,7 +708,7 @@ async def create_pickup_request(
     location = (await _pickup_location(cfg))["name"]
     async with httpx.AsyncClient(timeout=45.0) as client:
         resp = await client.post(
-            f"{base_url(cfg)}/fm/request/new/",
+            f"{API_BASE}/fm/request/new/",
             headers=_headers(str(cfg["apiToken"])),
             json={
                 "pickup_location": location,

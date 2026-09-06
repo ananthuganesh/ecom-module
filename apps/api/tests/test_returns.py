@@ -15,7 +15,6 @@ from app.services.stock import ensure_default_warehouse, get_or_create_balance
 def delhivery_env(monkeypatch):
     monkeypatch.setenv("DELHIVERY_API_TOKEN", "test-token")
     monkeypatch.setenv("DELHIVERY_PICKUP_LOCATION", "Urban Aana Warehouse")
-    monkeypatch.setenv("DELHIVERY_ENV", "staging")
     yield
 
 

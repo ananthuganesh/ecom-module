@@ -17,8 +17,6 @@ TOKEN = "test-delhivery-token"
 def delhivery_env(monkeypatch):
     monkeypatch.setenv("DELHIVERY_API_TOKEN", TOKEN)
     monkeypatch.setenv("DELHIVERY_PICKUP_LOCATION", "Urban Aana Warehouse")
-    monkeypatch.setenv("DELHIVERY_CLIENT_NAME", "urbanaana")
-    monkeypatch.setenv("DELHIVERY_ENV", "staging")
     yield
 
 
@@ -67,10 +65,8 @@ async def _paid_order(**overrides) -> Order:
 # ---------------------------------------------------------------- config
 
 
-def test_base_url_switches_on_environment():
-    assert delhivery.base_url({"environment": "production"}) == delhivery.PROD_BASE
-    assert delhivery.base_url({"environment": "staging"}) == delhivery.STAGING_BASE
-    assert delhivery.base_url({}) == delhivery.PROD_BASE
+def test_api_base_is_production():
+    assert delhivery.API_BASE == "https://track.delhivery.com"
 
 
 def test_auth_header_uses_token_scheme():

@@ -2786,11 +2786,9 @@ async def get_delhivery_settings(_: AdminUser):
     raw = await delhivery_svc.get_delhivery_settings()
     env_token = (os.environ.get("DELHIVERY_API_TOKEN") or "").strip()
     return {
-        "clientName": raw.get("clientName") or "",
         # Must match the warehouse name registered with Delhivery exactly.
         "pickupLocation": raw.get("pickupLocation") or "",
         "shippingMode": raw.get("shippingMode") or "Surface",
-        "environment": raw.get("environment") or "production",
         "hasApiToken": bool(raw.get("apiToken")),
         "isConnected": bool(raw.get("apiToken") and raw.get("pickupLocation")),
         "source": "env" if env_token else "settings",
@@ -2811,16 +2809,10 @@ async def save_delhivery_settings(body: dict, _: AdminUser):
     else:
         api_token = str(body.get("apiToken") or "").strip() or current.get("apiToken")
 
-    environment = str(body.get("environment") or current.get("environment") or "production").strip().lower()
-    if environment not in ("production", "staging"):
-        raise HTTPException(status_code=400, detail="environment must be production or staging")
-
     value = {
         **current,
-        "clientName": str(body.get("clientName") or current.get("clientName") or "").strip(),
         "pickupLocation": str(body.get("pickupLocation") or current.get("pickupLocation") or "").strip(),
         "shippingMode": str(body.get("shippingMode") or current.get("shippingMode") or "Surface").strip(),
-        "environment": environment,
     }
     if api_token:
         value["apiToken"] = api_token

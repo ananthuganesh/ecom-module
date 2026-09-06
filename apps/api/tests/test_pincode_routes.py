@@ -14,7 +14,6 @@ TOKEN = "test-delhivery-token"
 def carrier_env(monkeypatch):
     monkeypatch.setenv("DELHIVERY_API_TOKEN", TOKEN)
     monkeypatch.setenv("DELHIVERY_PICKUP_LOCATION", "Urban Aana Warehouse")
-    monkeypatch.setenv("DELHIVERY_ENV", "staging")
     pincode_routes.invalidate_cache()
     yield
     pincode_routes.invalidate_cache()

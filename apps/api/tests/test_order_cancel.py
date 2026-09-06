@@ -12,7 +12,6 @@ from app.services import couriers, order_cancel
 def carrier_env(monkeypatch):
     monkeypatch.setenv("DELHIVERY_API_TOKEN", "test-token")
     monkeypatch.setenv("DELHIVERY_PICKUP_LOCATION", "Urban Aana Warehouse")
-    monkeypatch.setenv("DELHIVERY_ENV", "staging")
     yield
 
 
