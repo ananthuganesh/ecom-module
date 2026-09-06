@@ -13,3 +13,4 @@ export { adminStockService } from "./stockService.js";
 export { adminErpService } from "./erpService.js";
 export { adminSettingsService } from "./settingsService.js";
 export { adminMediaService } from "./mediaService.js";
+export { adminAiMediaService } from "./adminAiMediaService.js";

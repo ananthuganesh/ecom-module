@@ -2,17 +2,19 @@
 
 import React from "react";
 import Image from "next/image";
+import { orderMoneySummary } from "@/utils/orderMoneySummary";
 
 export default function Invoice({ order }) {
     if (!order) return null;
 
     const items = order.orderItems || order.items || [];
     const shipping = order.shippingAddress || {};
-    const totalPrice = order.totalPrice || order.finalPrice || 0;
-    const shippingPrice = order.shippingPrice || order.deliveryAmount || 0;
-    const taxPrice = order.taxPrice || 0;
-    const giftFee = order.isGift ? (order.giftFee || 39) : 0;
-    const subtotal = totalPrice - shippingPrice - taxPrice - giftFee;
+    const money = orderMoneySummary(order);
+    const totalPrice = money.total;
+    const shippingPrice = money.shipping;
+    const taxPrice = money.tax;
+    const giftFee = money.gift;
+    const subtotal = money.subtotal;
 
     return (
         <div className="invoice-container p-6 bg-white text-black font-sans leading-tight max-w-[800px] mx-auto hidden print:block">

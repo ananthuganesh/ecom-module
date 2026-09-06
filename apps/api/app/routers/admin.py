@@ -4,7 +4,7 @@ from io import StringIO
 from pathlib import Path
 import os
 import re
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from bson import ObjectId
@@ -2188,12 +2188,27 @@ def _ai_media_config() -> tuple[str, str, str]:
     return openrouter_key, model or "google/gemini-3-pro-image", "openrouter"
 
 
+def _ai_image_config() -> tuple[str, str, str]:
+    """Model used by OpenRouter Image API (`POST /api/v1/images`)."""
+    from app.services.openrouter import IMAGE_MODEL
+
+    settings = get_settings()
+    openrouter_key = str(settings.openrouter_api_key or "").strip()
+    configured = str(settings.openrouter_model or "").strip()
+    if configured.startswith("openai/gpt-5.4-image"):
+        model = configured
+    else:
+        model = IMAGE_MODEL
+    return openrouter_key, model, "openrouter"
+
+
 @router.get("/ai-media/status")
 async def ai_media_status(_: AdminUser):
-    api_key, _, provider = _ai_media_config()
+    api_key, image_model, provider = _ai_image_config()
     return {
         "enabled": bool(api_key),
         "provider": provider,
+        "model": image_model,
     }
 
 
@@ -2291,6 +2306,88 @@ async def ai_media_generate(
     return doc_to_dict(job)
 
 
+@router.post("/ai-media/images", status_code=202)
+async def ai_media_generate_image(
+    background_tasks: BackgroundTasks,
+    user: AdminUser,
+    prompt: str = Form(...),
+    aspect_ratio: str = Form("3:4"),
+    quality: str = Form("high"),
+    background: str = Form("auto"),
+    n: int = Form(1),
+    references: Annotated[list[UploadFile] | None, File()] = None,
+    _: None = Depends(rate_limit_dependency("ai-media", limit=10)),
+):
+    """Text-to-image (optional references) via OpenRouter Image API."""
+    from app.services.openrouter import ASPECT_RATIOS, BACKGROUNDS, IMAGE_MODEL, QUALITIES
+
+    api_key, model, _provider = _ai_image_config()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="AI image generation is not configured (set OPENROUTER_API_KEY)",
+        )
+
+    text = (prompt or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    if len(text) > 4000:
+        raise HTTPException(status_code=400, detail="Prompt is too long")
+
+    ratio = (aspect_ratio or "3:4").strip() or "3:4"
+    if ratio not in ASPECT_RATIOS:
+        raise HTTPException(status_code=400, detail="Unsupported aspect ratio")
+    q = (quality or "high").strip() or "high"
+    if q not in QUALITIES:
+        raise HTTPException(status_code=400, detail="Unsupported quality")
+    bg = (background or "auto").strip() or "auto"
+    if bg not in BACKGROUNDS:
+        raise HTTPException(status_code=400, detail="Unsupported background")
+    count = int(n or 1)
+    if count < 1 or count > 4:
+        raise HTTPException(status_code=400, detail="n must be between 1 and 4")
+
+    uploads = [f for f in (references or []) if f and getattr(f, "filename", None)]
+    if len(uploads) > 8:
+        raise HTTPException(status_code=400, detail="At most 8 reference images are allowed")
+
+    ref_urls: list[str] = []
+    ref_paths: list[str] = []
+    for upload in uploads:
+        ref_url, ref_path = await _save_upload_temp(upload, AI_UPLOAD_DIR)
+        ref_urls.append(ref_url)
+        ref_paths.append(str(ref_path))
+
+    job = AiMediaJob(
+        prompt=text,
+        referenceUrl=ref_urls[0] if ref_urls else None,
+        productImageUrls=ref_urls[1:],
+        status="pending",
+        reviewStatus="pending",
+        model=model or IMAGE_MODEL,
+        aspectRatio=ratio,
+        quality=q,
+        createdBy=getattr(user, "id", None),
+    )
+    await job.insert()
+
+    from app.services import ai_media as ai_media_svc
+
+    background_tasks.add_task(
+        ai_media_svc.run_studio_image_generation,
+        job_id=str(job.id),
+        reference_paths=ref_paths,
+        prompt=text,
+        api_key=api_key,
+        model=model or IMAGE_MODEL,
+        aspect_ratio=ratio,
+        quality=q,
+        background=bg,
+        n=count,
+    )
+    return doc_to_dict(job)
+
+
 @router.get("/ai-media/jobs")
 async def ai_media_jobs(_: AdminUser):
     jobs = await AiMediaJob.find_all().sort([("createdAt", -1)]).limit(50).to_list()
@@ -2310,7 +2407,12 @@ async def ai_media_delete_job(job_id: str, _: AdminUser):
     job = await AiMediaJob.get(ObjectId(job_id)) if ObjectId.is_valid(job_id) else None
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    for url in [job.outputUrl, job.referenceUrl, *(job.productImageUrls or [])]:
+    for url in [
+        job.outputUrl,
+        job.referenceUrl,
+        *(job.outputUrls or []),
+        *(job.productImageUrls or []),
+    ]:
         if not url or not str(url).startswith("/uploads/ai/"):
             continue
         path = Path(__file__).resolve().parents[2] / str(url).lstrip("/")

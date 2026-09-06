@@ -24,4 +24,5 @@ export {
   adminErpService,
   adminSettingsService,
   adminMediaService,
+  adminAiMediaService,
 } from "./services/index.js";

@@ -15,6 +15,7 @@ from bson import ObjectId
 from app.documents import AiMediaJob, Product
 from app.services.openrouter import (
     file_to_data_url,
+    generate_images,
     generate_product_image,
     save_ai_image,
     save_image,
@@ -157,6 +158,59 @@ async def run_ai_media_generation(
                 ref.unlink()
             except OSError:
                 pass
+
+
+async def run_studio_image_generation(
+    *,
+    job_id: str,
+    reference_paths: list[str],
+    prompt: str,
+    api_key: str,
+    model: str,
+    aspect_ratio: str = "3:4",
+    quality: str = "high",
+    background: str = "auto",
+    n: int = 1,
+) -> None:
+    job = await AiMediaJob.get(ObjectId(job_id)) if ObjectId.is_valid(job_id) else None
+    if not job:
+        return
+
+    job.status = "processing"
+    job.updatedAt = datetime.utcnow()
+    await job.save()
+
+    paths = [Path(p) for p in reference_paths if p]
+    try:
+        image_data_urls = [file_to_data_url(p) for p in paths if p.is_file()]
+        images, _ = await generate_images(
+            api_key=api_key,
+            prompt=prompt,
+            model=model,
+            aspect_ratio=aspect_ratio,
+            quality=quality,
+            background=background,
+            n=n,
+            image_data_urls=image_data_urls,
+        )
+        urls = [save_ai_image(raw, ext) for raw, ext in images]
+        job.outputUrl = urls[0] if urls else None
+        job.outputUrls = urls
+        job.status = "succeeded"
+        job.reviewStatus = "pending"
+        job.error = None
+    except Exception as exc:
+        job.status = "failed"
+        job.error = str(exc)[:500]
+    finally:
+        job.updatedAt = datetime.utcnow()
+        await job.save()
+        for path in paths:
+            if path.is_file():
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
 
 
 async def approve_job_to_content(

@@ -667,11 +667,14 @@ class AiMediaJob(Document):
     referenceUrl: Optional[str] = None
     productImageUrls: list[str] = Field(default_factory=list)
     outputUrl: Optional[str] = None
+    outputUrls: list[str] = Field(default_factory=list)
     publishedUrl: Optional[str] = None
     status: str = "pending"  # pending | processing | succeeded | failed
     reviewStatus: str = "pending"  # pending | approved | rejected
     error: Optional[str] = None
     model: Optional[str] = None
+    aspectRatio: Optional[str] = None
+    quality: Optional[str] = None
     productId: Optional[Any] = None
     createdBy: Optional[Any] = None
     approvedBy: Optional[Any] = None

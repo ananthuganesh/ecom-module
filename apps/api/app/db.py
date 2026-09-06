@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 _client = None
 _db_name: str | None = None
 
+# Keep one live socket so Atlas TLS handshakes are not done on every idle request.
+# Fail a bit faster than PyMongo's 20s connect default when a handshake stalls.
+MONGO_CLIENT_KWARGS = {
+    "retryReads": True,
+    "retryWrites": True,
+    "minPoolSize": 1,
+    "connectTimeoutMS": 10_000,
+    "serverSelectionTimeoutMS": 15_000,
+}
+
 _INDEX_NAME_RE = re.compile(r'name:\s*"([^"]+)"')
 
 
@@ -101,7 +111,7 @@ async def init_db(mongo_uri: str | None = None, client=None, db_name: str | None
     if client is not None:
         _client = client
     else:
-        _client = AsyncIOMotorClient(uri)
+        _client = AsyncIOMotorClient(uri, **MONGO_CLIENT_KWARGS)
     db = _client[name]
 
     # Avoid startup crash when Atlas already has same-name indexes with different options

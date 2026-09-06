@@ -113,15 +113,45 @@ function hrefIsActive(href, pathname, searchParams) {
   return true;
 }
 
-function isMenuFamilyActive(item, pathname, searchParams) {
+function subItemMatches(sub, pathname, searchParams) {
+  if (hrefIsActive(sub.href, pathname, searchParams)) return true;
   if (
-    item.subItems?.some((sub) => {
-      if (hrefIsActive(sub.href, pathname, searchParams)) return true;
-      return sub.subItems?.some((nested) =>
-        hrefIsActive(nested.href, pathname, searchParams)
-      );
-    })
+    sub.subItems?.some((nested) =>
+      hrefIsActive(nested.href, pathname, searchParams)
+    )
   ) {
+    return true;
+  }
+  const subPath = parseHref(sub.href).path;
+  return Boolean(subPath) && pathname.startsWith(`${subPath}/`);
+}
+
+function findActiveSubIndex(subItems, pathname, searchParams) {
+  if (!subItems?.length) return -1;
+  const exact = subItems.findIndex(
+    (sub) =>
+      hrefIsActive(sub.href, pathname, searchParams) ||
+      sub.subItems?.some((nested) =>
+        hrefIsActive(nested.href, pathname, searchParams)
+      )
+  );
+  if (exact >= 0) return exact;
+
+  let best = -1;
+  let bestLen = -1;
+  subItems.forEach((sub, index) => {
+    const subPath = parseHref(sub.href).path;
+    if (!pathname.startsWith(`${subPath}/`)) return;
+    if (subPath.length > bestLen) {
+      best = index;
+      bestLen = subPath.length;
+    }
+  });
+  return best;
+}
+
+function isMenuFamilyActive(item, pathname, searchParams) {
+  if (item.subItems?.some((sub) => subItemMatches(sub, pathname, searchParams))) {
     return true;
   }
 
@@ -168,7 +198,9 @@ const menuItems = [
     href: "/admin/content",
     icon: Folder,
     subItems: [
+      { name: "Files", href: "/admin/content" },
       { name: "Reels", href: "/admin/content/reels" },
+      { name: "AI Studio", href: "/admin/content/ai-studio" },
     ],
   },
 ];
@@ -235,14 +267,11 @@ export default function AdminSidebar(props) {
                 const isActive = !hasSubItems && isActiveHref(item.href);
                 const familyActive = isMenuFamilyActive(item, pathname, searchParams);
                 const isExpanded = !!expandedMenus[item.name];
-                const subMatchIndex = item.subItems
-                  ? item.subItems.findIndex(
-                      (sub) =>
-                        isActiveHref(sub.href) ||
-                        sub.subItems?.some((nested) => isActiveHref(nested.href)) ||
-                        pathname.startsWith(`${parseHref(sub.href).path}/`)
-                    )
-                  : -1;
+                const subMatchIndex = findActiveSubIndex(
+                  item.subItems,
+                  pathname,
+                  searchParams
+                );
                 const parentPath = parseHref(item.href).path;
                 const isDetailOfParent =
                   pathname.startsWith(`${parentPath}/`) && subMatchIndex < 0;

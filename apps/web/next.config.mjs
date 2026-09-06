@@ -102,8 +102,7 @@ const nextConfig = {
       { source: "/admin/coupons", destination: "/admin/discounts", permanent: false },
       { source: "/admin/inventory", destination: "/admin/products/inventory", permanent: false },
       { source: "/admin/warehouses", destination: "/admin/settings/general", permanent: false },
-      { source: "/admin/content/ai-media", destination: "/admin/content", permanent: false },
-      { source: "/admin/content/ai-studio", destination: "/admin/content", permanent: false },
+      { source: "/admin/content/ai-media", destination: "/admin/content/ai-studio", permanent: false },
       { source: "/admin/reels", destination: "/admin/content/reels", permanent: false },
       { source: "/admin/reels/:path*", destination: "/admin/content/reels", permanent: false },
       { source: "/admin/integrations/aisensy", destination: "/admin/settings/integrations/aisensy", permanent: false },
@@ -132,16 +131,22 @@ const nextConfig = {
         value: "public, max-age=2592000, stale-while-revalidate=86400",
       },
     ];
+    const staticAssetHeaders =
+      process.env.NODE_ENV === "production"
+        ? [
+            {
+              source: "/_next/static/:path*",
+              headers: [
+                {
+                  key: "Cache-Control",
+                  value: "public, max-age=31536000, immutable",
+                },
+              ],
+            },
+          ]
+        : [];
     return [
-      {
-        source: "/_next/static/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
-        ],
-      },
+      ...staticAssetHeaders,
       { source: "/banner/:path*", headers: longCache },
       { source: "/images/:path*", headers: longCache },
       { source: "/urban/:path*", headers: longCache },

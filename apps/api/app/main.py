@@ -1,14 +1,19 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pymongo.errors import ConnectionFailure
 
 from app.config import get_settings
 from app.db import close_db, init_db
 from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
+
+logger = logging.getLogger(__name__)
 
 
 def _init_sentry() -> None:
@@ -78,6 +83,14 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
         redoc_url=redoc_url,
         openapi_url=openapi_url,
     )
+
+    @app.exception_handler(ConnectionFailure)
+    async def mongodb_unavailable(_request, exc: ConnectionFailure):
+        logger.warning("MongoDB connection failure: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database temporarily unavailable"},
+        )
 
     origins = settings.cors_origins
     if origins is None:
