@@ -281,6 +281,9 @@ class Order(Document):
     razorpayPaymentId: Optional[str] = None
     awb: Optional[str] = None
     courier: Optional[str] = None
+    # Normalized carrier code ("dtdc" / "delhivery") used to route track/cancel/label
+    # calls. `courier` stays the human label the carrier API reports back.
+    carrier: Optional[str] = None
     shippingStatus: Optional[str] = None
     invoiceId: Optional[str] = None
     invoiceNumber: Optional[str] = None
@@ -648,6 +651,98 @@ class PartyPayment(Document):
         name = "partypayments"
 
 
+class ReturnItem(MongoModel):
+    """One line the customer asked to send back."""
+
+    productId: Optional[str] = None
+    productName: str = ""
+    image: Optional[str] = None
+    color: str = ""
+    size: str = ""
+    variantSku: str = ""
+    quantity: int = 1
+    unitPrice: float = 0
+    # Item value only — delivery is not refunded on a return.
+    lineRefund: float = 0
+
+
+class ReturnRequest(Document):
+    """A customer's request to send items back, and its approval workflow.
+
+    Distinct from `SalesReturn`, which is the accounting document posted once the
+    goods are physically back. A ReturnRequest becomes a SalesReturn on receipt.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    number: str
+    orderId: str
+    orderNumber: Optional[str] = None
+    customerId: Optional[str] = None
+    customerName: Optional[str] = None
+    items: list[ReturnItem] = Field(default_factory=list)
+    reason: str = ""
+    customerNote: str = ""
+    # requested -> approved -> picked_up -> received, or rejected / cancelled
+    status: str = "requested"
+    refundAmount: float = 0
+    rejectionReason: Optional[str] = None
+    # Reverse pickup (always Delhivery) — absent when the pincode cannot be collected.
+    carrier: Optional[str] = None
+    awb: Optional[str] = None
+    pickupServiceable: Optional[bool] = None
+    pickupNote: Optional[str] = None
+    salesReturnId: Optional[str] = None
+    requestedAt: datetime = Field(default_factory=datetime.utcnow)
+    approvedAt: Optional[datetime] = None
+    rejectedAt: Optional[datetime] = None
+    pickedUpAt: Optional[datetime] = None
+    receivedAt: Optional[datetime] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "return_requests"
+        indexes = [
+            IndexModel([("number", 1)], unique=True),
+            IndexModel([("orderId", 1)]),
+            IndexModel([("customerId", 1), ("createdAt", -1)]),
+            IndexModel([("status", 1), ("createdAt", -1)]),
+            IndexModel([("createdAt", -1)]),
+        ]
+
+
+class PincodeRoute(Document):
+    """Destination pincode → carrier override.
+
+    Seeded from DTDC's IP-dispatch branch list: pincodes DTDC will not deliver
+    normally, which route to Delhivery instead. Anything absent here falls back
+    to the default carrier.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    pincode: str
+    carrier: str
+    reason: str = ""
+    # Which import produced this row, so a re-import can replace one cleanly.
+    source: str = ""
+    city: Optional[str] = None
+    state: Optional[str] = None
+    branch: Optional[str] = None
+    tatDays: Optional[int] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "pincode_routes"
+        indexes = [
+            IndexModel([("pincode", 1)], unique=True),
+            IndexModel([("carrier", 1)]),
+            IndexModel([("source", 1)]),
+        ]
+
+
 class Role(Document):
     name: Indexed(str, unique=True)  # type: ignore[valid-type]
     description: Optional[str] = None
@@ -733,4 +828,6 @@ ALL_DOCUMENTS = [
     Role,
     AiMediaJob,
     MediaAsset,
+    PincodeRoute,
+    ReturnRequest,
 ]

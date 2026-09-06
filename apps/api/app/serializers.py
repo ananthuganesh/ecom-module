@@ -184,9 +184,16 @@ def remap_order(
     )
     po["paymentMethod"] = order.paymentMethod or (order.transactionDetails or {}).get("paymentMethod")
     po["awbCode"] = order.awb
-    po["courierName"] = order.courier or ("DTDC" if order.awb else None)
+    from app.services import couriers
+
+    meta = couriers.shipment_meta(order)
+    po["courierName"] = order.courier or meta["carrierLabel"]
     po["awb"] = order.awb
     po["courier"] = order.courier
+    po["carrier"] = meta["carrier"]
+    po["trackUrl"] = meta["trackUrl"]
+    # Resolved from whichever carrier booked it, so clients never read raw details.
+    po["shipmentTimestamps"] = _jsonify(meta["timestamps"])
     details = order.transactionDetails or {}
     dtdc = details.get("dtdc") if isinstance(details.get("dtdc"), dict) else {}
     po["dtdcServiceType"] = details.get("dtdcServiceType") or dtdc.get("service_type_id")

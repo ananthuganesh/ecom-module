@@ -11,7 +11,7 @@ from pymongo.errors import ConnectionFailure
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, shipping, stock_admin, users
+from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, returns, shipping, stock_admin, users
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ async def lifespan(_: FastAPI):
     from app.services.stock_reserve_sweeper import stock_reserve_sweeper_loop
 
     stock_task = asyncio.create_task(stock_reserve_sweeper_loop(stop_event))
-    from app.services.dtdc_status_sync import shipment_status_sync_loop
+    from app.services.shipment_status_sync import shipment_status_sync_loop
 
     dtdc_sync_task = asyncio.create_task(shipment_status_sync_loop(stop_event))
     from app.services.monthly_report import monthly_report_loop
@@ -138,6 +138,8 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(stock_admin.router)
     app.include_router(erp.router)
     app.include_router(abandoned.router)
+    app.include_router(returns.router)
+    app.include_router(returns.admin_router)
 
     upload_root = Path(__file__).resolve().parent.parent / "uploads"
     upload_root.mkdir(parents=True, exist_ok=True)

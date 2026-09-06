@@ -162,6 +162,17 @@ export const Truck = ({ active, ...props }) => (
   </svg>
 );
 
+/** Returns — arrow curving back to the left */
+export const ReturnArrow = ({ active, ...props }) => (
+  <svg {...base16} {...props}>
+    {active ? (
+      <path fillRule="evenodd" d="M6.28 3.22a.75.75 0 0 1 0 1.06L4.81 5.75h6.44a5.75 5.75 0 0 1 0 11.5h-3.5a.75.75 0 0 1 0-1.5h3.5a4.25 4.25 0 0 0 0-8.5H4.81l1.47 1.47a.75.75 0 1 1-1.06 1.06l-2.75-2.75a.75.75 0 0 1 0-1.06l2.75-2.75a.75.75 0 0 1 1.06 0Z"/>
+    ) : (
+      <path fillRule="evenodd" d="M6.28 3.22a.75.75 0 0 1 0 1.06L4.81 5.75h6.44a5.75 5.75 0 0 1 0 11.5h-3.5a.75.75 0 0 1 0-1.5h3.5a4.25 4.25 0 0 0 0-8.5H4.81l1.47 1.47a.75.75 0 1 1-1.06 1.06l-2.75-2.75a.75.75 0 0 1 0-1.06l2.75-2.75a.75.75 0 0 1 1.06 0Z"/>
+    )}
+  </svg>
+);
+
 /** Settings */
 export const Settings = ({ active, ...props }) => (
   <svg {...base16} {...props}>

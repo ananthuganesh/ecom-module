@@ -32,6 +32,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
 import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
 import {
@@ -320,6 +327,11 @@ export default function AdminOrderDetailPage() {
   const [isPrintingInvoice, setIsPrintingInvoice] = useState(false);
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
   const [fulfillLoading, setFulfillLoading] = useState(false);
+  const [carriers, setCarriers] = useState([]);
+  const [carrier, setCarrier] = useState("");
+  const [carrierTouched, setCarrierTouched] = useState(false);
+  const [serviceability, setServiceability] = useState(null);
+  const [suggested, setSuggested] = useState(null);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
   const [showAttributionTech, setShowAttributionTech] = useState(false);
 
@@ -327,6 +339,24 @@ export default function AdminOrderDetailPage() {
     const inv = await adminErpService.salesInvoices.byOrder(orderId);
     setInvoice(inv || null);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    adminShippingService
+      .getCarriers()
+      .then((data) => {
+        if (cancelled) return;
+        const list = (data?.carriers || []).filter((c) => c.configured);
+        setCarriers(list);
+        setCarrier((current) => current || data?.default || list[0]?.code || "");
+      })
+      .catch(() => {
+        if (!cancelled) setCarriers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -488,19 +518,55 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const destinationPincode = String(
+    order?.shippingAddress?.postalCode || order?.shippingAddress?.zip || ""
+  ).trim();
+
+  useEffect(() => {
+    if (!destinationPincode || destinationPincode.length !== 6) {
+      setServiceability(null);
+      return;
+    }
+    let cancelled = false;
+    adminShippingService
+      .checkServiceability(destinationPincode)
+      .then((data) => {
+        if (cancelled) return;
+        setServiceability(data?.carriers || []);
+        setSuggested(data?.suggested || null);
+        // Preselect the auto-routed carrier unless the admin already chose one.
+        const auto = data?.suggested?.carrier;
+        if (auto && !carrierTouched) setCarrier(auto);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setServiceability(null);
+          setSuggested(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationPincode]);
+
+  /** null = carrier can't answer; true/false = a real answer from the carrier. */
+  const serviceabilityFor = (code) =>
+    (serviceability || []).find((row) => row.carrier === code) || null;
+
   const handleMarkFulfilled = async () => {
     if (!order || fulfillLoading) return;
     if (order.awbCode || order.awb) {
-      toast.message("DTDC consignment already booked");
+      toast.message("Consignment already booked");
       return;
     }
     setFulfillLoading(true);
     try {
-      const response = await adminShippingService.createShipment(order._id);
+      const response = await adminShippingService.createShipment(order._id, carrier);
       if (response?.order) {
         setOrder(response.order);
       }
-      toast.success("DTDC consignment booked");
+      const booked = carriers.find((c) => c.code === (response?.carrier || carrier));
+      toast.success(`${booked?.label || "Consignment"} booked`);
       try {
         await ensureInvoice({ silent: true });
       } catch {
@@ -518,7 +584,7 @@ export default function AdminOrderDetailPage() {
     if (!order || isPrintingLabel) return;
     const awb = order.awbCode || order.awb;
     if (!awb) {
-      toast.error("No DTDC label yet — mark as fulfilled first");
+      toast.error("No shipping label yet — mark as fulfilled first");
       return;
     }
     setIsPrintingLabel(true);
@@ -602,22 +668,35 @@ export default function AdminOrderDetailPage() {
       toast.message("Order is already cancelled");
       return;
     }
-    const hasShipment = Boolean(order.awbCode || order.awb || order.transactionDetails?.dtdc?.reference_number);
-    const message = hasShipment
-      ? "Cancel this order? DTDC consignment will be cancelled, stock restocked, and the order archived. Customer will be emailed."
-      : "Cancel this order? Stock will be restocked and the order archived. Customer will be emailed.";
+    const hasShipment = Boolean(order.awbCode || order.awb);
+    const carrierName = order.courierName || order.courier || "The courier";
+    const willRefund = ["paid", "captured"].includes(
+      String(order.paymentStatus || "").toLowerCase()
+    );
+    const message = [
+      "Cancel this order?",
+      hasShipment ? `${carrierName} shipment will be cancelled.` : null,
+      "Stock will be restocked and the order archived.",
+      willRefund ? "The customer will be refunded in full." : null,
+      "Customer will be emailed.",
+    ]
+      .filter(Boolean)
+      .join(" ");
     if (!confirm(message)) return;
 
     setUpdating(true);
     try {
       const updated = await adminOrderService.cancel(order._id);
       setOrder((prev) => (prev ? { ...prev, ...(updated || {}), status: "cancelled", archived: true } : null));
-      const dtdcOk = updated?.cancelResult?.dtdcCancelled;
-      toast.success(
-        dtdcOk
-          ? "Order cancelled · DTDC consignment cancelled · stock restocked"
-          : "Order cancelled · stock restocked · archived"
-      );
+      const cancelResult = updated?.cancelResult || {};
+      const parts = ["Order cancelled"];
+      if (cancelResult.shipmentCancelled) parts.push("shipment cancelled");
+      if (cancelResult.restocked) parts.push("stock restocked");
+      if (cancelResult.refunded) parts.push("refunded");
+      toast.success(parts.join(" · "));
+      if (cancelResult.refundError) {
+        toast.error("Refund didn't go through — retry it from Refund payment.");
+      }
     } catch (e) {
       console.error(e);
       toast.error(userErrorMessage(e, "Couldn’t cancel this order"));
@@ -1065,12 +1144,22 @@ export default function AdminOrderDetailPage() {
                     </Badge>
                   </div>
                   {(order.awbCode || order.awb) && (
-                    <div>
-                      <p className="mb-1 admin-card-label">AWB / Ref</p>
-                      <p className="font-mono admin-card-muted">
-                        {order.awbCode || order.awb}
-                      </p>
-                    </div>
+                    <>
+                      <div>
+                        <p className="mb-1 admin-card-label">Carrier</p>
+                        <p className="admin-card-muted">
+                          {order.courier ||
+                            carriers.find((c) => c.code === order.carrier)?.label ||
+                            "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="mb-1 admin-card-label">AWB / Ref</p>
+                        <p className="font-mono admin-card-muted">
+                          {order.awbCode || order.awb}
+                        </p>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -1151,11 +1240,36 @@ export default function AdminOrderDetailPage() {
                 })}
               </div>
               {fulfillment.key === "Unfulfilled" && !hasAwb ? (
-                <div className="admin-fulfillment-actions">
+                <div className="admin-fulfillment-actions flex flex-wrap items-center gap-2">
+                  {carriers.length > 1 ? (
+                    <Select
+                      value={carrier}
+                      onValueChange={(value) => {
+                        setCarrierTouched(true);
+                        setCarrier(value);
+                      }}
+                    >
+                      <SelectTrigger className="w-32" aria-label="Carrier">
+                        <SelectValue placeholder="Carrier">
+                          {(value) =>
+                            carriers.find((c) => c.code === value)?.label ||
+                            "Carrier"
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {carriers.map((option) => (
+                          <SelectItem key={option.code} value={option.code}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
                   <Button
                     type="button"
                     size="lg"
-                    disabled={updating || fulfillLoading}
+                    disabled={updating || fulfillLoading || !carrier}
                     onClick={handleMarkFulfilled}
                   >
                     {fulfillLoading ? (
@@ -1167,6 +1281,19 @@ export default function AdminOrderDetailPage() {
                       "Mark as fulfilled"
                     )}
                   </Button>
+                  {suggested?.override &&
+                  suggested.carrier === carrier &&
+                  !carrierTouched ? (
+                    <p className="admin-card-muted basis-full">
+                      Auto-selected {suggested.label} — {suggested.reason.toLowerCase()}
+                    </p>
+                  ) : null}
+                  {serviceabilityFor(carrier)?.serviceable === false ? (
+                    <p className="admin-card-muted basis-full text-destructive">
+                      {carriers.find((c) => c.code === carrier)?.label} does not deliver to{" "}
+                      {destinationPincode}. Pick another carrier.
+                    </p>
+                  ) : null}
                 </div>
               ) : showPrintInvoice ? (
                 <div className="admin-fulfillment-actions flex flex-wrap gap-2">

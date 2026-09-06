@@ -31,9 +31,8 @@ EMAIL_PREF_BY_TYPE: dict[EmailType, str] = {
     "CANCELLED": "emailOrderCancelled",
 }
 
-DTDC_TRACK_URL = (
-    "https://www.dtdc.in/tracking/tracking_results.asp?Ttype=awb_no&strCnno={awb}"
-)
+# Tracking URLs live on the carrier registry — an AWB alone does not say which
+# carrier holds it, and guessing sent Delhivery customers to dtdc.in.
 
 
 def _resend_api_key() -> str:
@@ -126,10 +125,9 @@ def _admin_order_url(order) -> str:
 
 
 def _track_url(order) -> str:
-    awb = str(getattr(order, "awb", None) or "").strip()
-    if awb:
-        return DTDC_TRACK_URL.format(awb=awb)
-    return _order_url(order)
+    from app.services import couriers
+
+    return couriers.track_url(order) or _order_url(order)
 
 
 def _payment_status_label(order) -> str:
@@ -468,10 +466,11 @@ def _kv_rows(pairs: list[tuple[str, str]]) -> str:
 
 
 def _shipped_at(order) -> datetime:
-    details = order.transactionDetails or {}
-    dtdc = details.get("dtdc") if isinstance(details.get("dtdc"), dict) else {}
+    from app.services import couriers
+
+    stamps = couriers.shipment_meta(order)["timestamps"]
     for key in ("shippedAt", "readyToShipAt", "fulfilledAt"):
-        raw = details.get(key) or dtdc.get(key)
+        raw = stamps.get(key)
         if isinstance(raw, datetime):
             return raw
         if isinstance(raw, str) and raw.strip():

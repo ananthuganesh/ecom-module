@@ -78,6 +78,50 @@ DTDC_TRACK_STATUS_MAP = {
 }
 
 
+# Delhivery track status → store shippingStatus.
+# Delhivery reports a plain `Status` string; "Pending" means it is sitting at a
+# facility mid-journey, not awaiting pickup, so it maps to In Transit.
+DELHIVERY_TRACK_STATUS_MAP = {
+    "manifested": "Awaiting Shipment",
+    "not picked": "Awaiting Shipment",
+    "not_picked": "Awaiting Shipment",
+    "open": "Awaiting Shipment",
+    "pickup scheduled": "Ready To Ship",
+    "pickup_scheduled": "Ready To Ship",
+    "in transit": "In Transit",
+    "in_transit": "In Transit",
+    "pending": "In Transit",
+    "reached destination": "In Transit",
+    "dispatched": "Out for Delivery",
+    "out for delivery": "Out for Delivery",
+    "delivered": "Delivered",
+    "canceled": "Cancelled",
+    "cancelled": "Cancelled",
+    "rto": "Returned",
+    "rto in transit": "Returned",
+    "rto_in_transit": "Returned",
+    "rto delivered": "Returned",
+    "returned": "Returned",
+}
+
+
+def map_delhivery_track_status(raw: str | None) -> str | None:
+    """Map a Delhivery track status to a store shippingStatus, or None if unknown."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if text in STORE_SHIPPING_STATUSES:
+        return text
+    lowered = text.lower()
+    return (
+        DELHIVERY_TRACK_STATUS_MAP.get(lowered)
+        or DELHIVERY_TRACK_STATUS_MAP.get(lowered.replace("_", " "))
+        or DELHIVERY_TRACK_STATUS_MAP.get(lowered.replace(" ", "_"))
+    )
+
+
 def shipping_status_for_order_status(status: str | None) -> str | None:
     """Map package/fulfillment order status to DTDC shippingStatus (or None)."""
     key = str(status or "").strip().lower()
@@ -158,6 +202,13 @@ def mark_ready_to_ship_after_label(order: Order) -> bool:
     return True
 
 
+def _provider(order: Order) -> str:
+    """Carrier holding this order, or the one it would route to if unbooked."""
+    from app.services import couriers
+
+    return couriers.carrier_for_order(order)
+
+
 async def process_full_order_flow(order: Order, user: User | None = None) -> dict:
     """No auto carrier create. Admin creates DTDC consignment from the order page.
 
@@ -167,10 +218,10 @@ async def process_full_order_flow(order: Order, user: User | None = None) -> dic
     if not payment_ok:
         order.shippingStatus = "Payment Pending"
         await order.save()
-        return {"skipped": True, "reason": "payment_pending", "provider": "dtdc"}
+        return {"skipped": True, "reason": "payment_pending", "provider": _provider(order)}
 
     if order.awb:
-        return {"skipped": True, "reason": "already_shipped", "provider": "dtdc"}
+        return {"skipped": True, "reason": "already_shipped", "provider": _provider(order)}
 
     # Paid but not yet booked with DTDC — show Unfulfilled on Orders list
     if str(order.shippingStatus or "").strip().lower() == "payment pending":
@@ -185,4 +236,4 @@ async def process_full_order_flow(order: Order, user: User | None = None) -> dic
         await erp_ops.ensure_order_invoice_safe(order, actor=user, context="fulfillment_paid")
     except Exception:
         pass
-    return {"ok": True, "manual": True, "provider": "dtdc", "shippingStatus": None}
+    return {"ok": True, "manual": True, "provider": _provider(order), "shippingStatus": None}

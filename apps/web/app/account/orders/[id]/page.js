@@ -17,6 +17,7 @@ import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { buildInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
 import { printHtml } from "@/utils/printHtml";
 import { userErrorMessage } from "@/lib/userMessage";
+import ReturnRequestPanel from "@/components/account/ReturnRequestPanel";
 
 const SHIPPED_STATUSES = new Set([
   "shipped",
@@ -53,38 +54,34 @@ function buildTrackingSteps(order) {
   const status = String(order.orderStatus || order.status || "order placed").toLowerCase();
   const shipping = String(order.shippingStatus || "").trim().toLowerCase();
   const details = order.transactionDetails || {};
-  const dtdc = details.dtdc && typeof details.dtdc === "object" ? details.dtdc : {};
+  // Resolved server-side from whichever carrier booked the order, so this no
+  // longer depends on the shipment living under a DTDC-shaped key.
+  const stamps = order.shipmentTimestamps || {};
 
   const createdAt = firstTimestamp(order.createdAt);
   const paidAt = firstTimestamp(details.paidAt, order.paidAt, createdAt);
   const processingAt = firstTimestamp(
     details.processingAt,
-    details.readyToShipAt,
-    dtdc.readyToShipAt,
+    stamps.readyToShipAt,
     paidAt,
     createdAt
   );
   const shippedAt = firstTimestamp(
-    dtdc.shippedAt,
-    details.shippedAt,
+    stamps.shippedAt,
     order.shippedAt,
-    dtdc.createdAt,
-    details.fulfilledAt,
-    dtdc.fulfilledAt,
+    stamps.createdAt,
+    stamps.fulfilledAt,
     order.shipmentCreatedAt,
-    order.shippingCreatedAt,
-    details.shipment?.createdAt
+    order.shippingCreatedAt
   );
   const outForDeliveryAt = firstTimestamp(
-    dtdc.outForDeliveryAt,
-    details.outForDeliveryAt,
-    dtdc.ofdAt
+    stamps.outForDeliveryAt,
+    stamps.ofdAt
   );
   const deliveredAt = firstTimestamp(
     order.deliveredAt,
     order.deliveryDate,
-    dtdc.deliveredAt,
-    details.deliveredAt
+    stamps.deliveredAt
   );
 
   const processingDone =
@@ -265,6 +262,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
         <div className="space-y-4 lg:col-span-2">
+          <ReturnRequestPanel orderRef={orderId} />
           <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
             <div className="border-b border-gray-200 px-5 py-4 sm:px-6">
               <h2 className="text-[16px] font-semibold text-gray-900">

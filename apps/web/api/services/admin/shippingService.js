@@ -1,12 +1,27 @@
 import api from "../../axios/client";
 
 export const adminShippingService = {
-  createShipment: async (orderId) => {
-    const response = await api.post(`/shipping/create/${orderId}`);
+  /** Carrier options for the booking dropdown (code, label, configured). */
+  getCarriers: async () => {
+    const response = await api.get(`/shipping/carriers`);
     return response.data;
   },
 
-  /** Soft-refresh DTDC statuses for open AWB orders; returns updated order payloads. */
+  /** Per-carrier serviceability for a destination pincode. */
+  checkServiceability: async (pincode) => {
+    const response = await api.get(`/shipping/serviceability/${pincode}`);
+    return response.data;
+  },
+
+  createShipment: async (orderId, carrier) => {
+    const response = await api.post(
+      `/shipping/create/${orderId}`,
+      carrier ? { carrier } : {}
+    );
+    return response.data;
+  },
+
+  /** Soft-refresh carrier statuses for open AWB orders; returns updated order payloads. */
   syncStatuses: async (orderIds) => {
     const response = await api.post(`/shipping/sync-statuses`, { orderIds });
     return response.data;

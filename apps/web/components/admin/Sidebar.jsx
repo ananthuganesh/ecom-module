@@ -24,6 +24,7 @@ import {
   Folder,
   Film,
   Truck,
+  ReturnArrow,
 } from "./LocalIcons";
 
 /** L-shaped curved connector; tip centered with submenu text. */
@@ -169,6 +170,16 @@ const menuItems = [
     icon: ShoppingBag,
     subItems: [
       { name: "Abandoned carts", href: "/admin/orders/abandoned" },
+    ],
+  },
+  {
+    name: "Returns",
+    href: "/admin/returns",
+    icon: ReturnArrow,
+    subItems: [
+      { name: "Pending", href: "/admin/returns?status=requested" },
+      { name: "Approved", href: "/admin/returns?status=approved" },
+      { name: "Received", href: "/admin/returns?status=received" },
     ],
   },
   {

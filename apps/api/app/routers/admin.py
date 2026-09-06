@@ -1636,7 +1636,8 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     prev_status = (order.status or "").lower()
-    # Dedicated cancel flow handles DTDC + restock + archive + email.
+    # Dedicated cancel flow handles carrier cancel + restock + refund + archive + email.
+    # Kept identical to POST /orders/{id}/cancel so both routes behave the same.
     if str(body.get("status") or "").lower() == "cancelled" and prev_status != "cancelled":
         from app.services.order_cancel import cancel_order
 
@@ -1682,7 +1683,7 @@ async def order_cancel(
     admin: OrdersWriter,
     body: dict = None,
 ):
-    """Cancel order: DTDC cancel if AWB, restock, archive, customer email."""
+    """Cancel order: carrier cancel if AWB, restock, refund, archive, customer email."""
     from app.services.order_cancel import cancel_order
 
     _ = admin
@@ -1691,7 +1692,14 @@ async def order_cancel(
         raise HTTPException(status_code=404, detail="Order not found")
     payload_body = body if isinstance(body, dict) else {}
     reason = str(payload_body.get("reason") or "admin_cancel").strip() or "admin_cancel"
-    result = await cancel_order(order, actor="admin", reason=reason)
+    # Paid orders refund by default; pass refund=false to cancel without one.
+    refund = payload_body.get("refund")
+    result = await cancel_order(
+        order,
+        actor="admin",
+        reason=reason,
+        refund=True if refund is None else bool(refund),
+    )
     payload = (await enrich_orders([order]))[0]
     payload["cancelResult"] = result
     return payload
@@ -2769,6 +2777,62 @@ async def save_shipping_settings(body: dict, _: AdminUser):
     else:
         await Setting(key="shipping_settings", value=value).insert()
     return await load_shipping_settings()
+
+
+@router.get("/delhivery/settings")
+async def get_delhivery_settings(_: AdminUser):
+    from app.services import delhivery as delhivery_svc
+
+    raw = await delhivery_svc.get_delhivery_settings()
+    env_token = (os.environ.get("DELHIVERY_API_TOKEN") or "").strip()
+    return {
+        "clientName": raw.get("clientName") or "",
+        # Must match the warehouse name registered with Delhivery exactly.
+        "pickupLocation": raw.get("pickupLocation") or "",
+        "shippingMode": raw.get("shippingMode") or "Surface",
+        "environment": raw.get("environment") or "production",
+        "hasApiToken": bool(raw.get("apiToken")),
+        "isConnected": bool(raw.get("apiToken") and raw.get("pickupLocation")),
+        "source": "env" if env_token else "settings",
+    }
+
+
+@router.put("/delhivery/settings")
+async def save_delhivery_settings(body: dict, _: AdminUser):
+    from app.services import delhivery as delhivery_svc
+
+    s = await Setting.find_one(Setting.key == delhivery_svc.SETTING_KEY)
+    current = dict(s.value) if s and isinstance(s.value, dict) else {}
+    # Token is env-only when DELHIVERY_API_TOKEN is set; admin never becomes the
+    # source of truth for the secret, matching how DTDC behaves.
+    env_token = (os.environ.get("DELHIVERY_API_TOKEN") or "").strip()
+    if env_token:
+        api_token = current.get("apiToken")
+    else:
+        api_token = str(body.get("apiToken") or "").strip() or current.get("apiToken")
+
+    environment = str(body.get("environment") or current.get("environment") or "production").strip().lower()
+    if environment not in ("production", "staging"):
+        raise HTTPException(status_code=400, detail="environment must be production or staging")
+
+    value = {
+        **current,
+        "clientName": str(body.get("clientName") or current.get("clientName") or "").strip(),
+        "pickupLocation": str(body.get("pickupLocation") or current.get("pickupLocation") or "").strip(),
+        "shippingMode": str(body.get("shippingMode") or current.get("shippingMode") or "Surface").strip(),
+        "environment": environment,
+    }
+    if api_token:
+        value["apiToken"] = api_token
+
+    if s:
+        s.value = value
+        s.updatedAt = datetime.utcnow()
+        await s.save()
+    else:
+        await Setting(key=delhivery_svc.SETTING_KEY, value=value).insert()
+
+    return await get_delhivery_settings(_)
 
 
 @router.get("/dtdc/settings")

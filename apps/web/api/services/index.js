@@ -8,6 +8,7 @@ export {
   couponService,
   reelsService,
   contactService,
+  returnService,
 } from "./user/index.js";
 
 // Admin services
@@ -28,4 +29,5 @@ export {
   adminSettingsService,
   adminMediaService,
   adminAiMediaService,
+  adminReturnsService,
 } from "./admin/index.js";

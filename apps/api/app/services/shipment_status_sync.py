@@ -1,4 +1,4 @@
-"""Periodic + on-demand DTDC tracking sync for open shipments."""
+"""Periodic + on-demand carrier tracking sync for open shipments (DTDC + Delhivery)."""
 
 from __future__ import annotations
 
@@ -28,18 +28,14 @@ SYNC_INTERVAL_SECONDS = 300.0  # 5 minutes
 SYNC_MAX_IDS = 50
 
 
-def dtdc_reference(order: Order) -> str | None:
-    awb = str(order.awb or "").strip()
-    if awb:
-        return awb
-    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
-    dtdc = details.get("dtdc") if isinstance(details.get("dtdc"), dict) else {}
-    ref = str(dtdc.get("reference_number") or "").strip()
-    return ref or None
+def shipment_reference(order: Order) -> str | None:
+    from app.services import couriers
+
+    return couriers.shipment_reference(order)
 
 
-def is_open_for_dtdc_track(order: Order) -> bool:
-    if not order or not dtdc_reference(order):
+def is_open_for_track(order: Order) -> bool:
+    if not order or not shipment_reference(order):
         return False
     if bool(getattr(order, "isDelivered", False)):
         return False
@@ -63,22 +59,27 @@ async def sync_orders_tracking(
     stamp_unchanged: when True (cron), touch dtdcLastTrackAt so the batch rotates.
     Soft refresh should pass False to avoid rewriting every row on each page load.
     """
-    from app.services import dtdc as dtdc_svc
+    from app.services import couriers
 
-    try:
-        await dtdc_svc.require_dtdc_creds()
-    except HTTPException as exc:
+    configured = {
+        row["code"] for row in await couriers.available_carriers() if row.get("configured")
+    }
+    if not configured:
         return {
             "ok": False,
             "skipped": True,
-            "reason": str(exc.detail or "DTDC not configured"),
+            "reason": "No carrier is configured",
             "scanned": 0,
             "updated": [],
             "unchanged": 0,
             "errors": [],
         }
 
-    targets = [o for o in orders if is_open_for_dtdc_track(o)]
+    targets = [
+        o
+        for o in orders
+        if is_open_for_track(o) and couriers.carrier_for_order(o) in configured
+    ]
     if not targets:
         return {
             "ok": True,
@@ -97,7 +98,7 @@ async def sync_orders_tracking(
         async with sem:
             before = str(order.shippingStatus or "")
             try:
-                await dtdc_svc.track_consignment(order)
+                await couriers.track_shipment(order)
                 after = str(order.shippingStatus or "")
                 if after != before:
                     details = dict(order.transactionDetails or {})
@@ -164,7 +165,7 @@ async def sync_orders_by_ids(
 
 
 async def sync_open_shipments_batch(*, limit: int = SYNC_BATCH_LIMIT) -> dict[str, Any]:
-    """Cron batch: oldest-tracked open AWB orders first."""
+    """Cron batch: oldest-tracked open AWB orders first, across every carrier."""
     lim = max(1, min(int(limit), SYNC_BATCH_LIMIT))
     query: dict[str, Any] = {
         "status": {"$nin": ["abandoned", "delivered", "cancelled", "canceled", "returned"]},
@@ -172,6 +173,7 @@ async def sync_open_shipments_batch(*, limit: int = SYNC_BATCH_LIMIT) -> dict[st
         "$or": [
             {"awb": {"$exists": True, "$nin": [None, ""]}},
             {"transactionDetails.dtdc.reference_number": {"$exists": True, "$nin": [None, ""]}},
+            {"transactionDetails.delhivery.waybill": {"$exists": True, "$nin": [None, ""]}},
         ],
         "shippingStatus": {
             "$not": {
@@ -210,11 +212,11 @@ async def shipment_status_sync_loop(
             updated_n = len(result.get("updated") or [])
             if updated_n or result.get("errors"):
                 print(
-                    f"[DTDC] Status sync: scanned={result.get('scanned')} "
+                    f"[Shipping] Status sync: scanned={result.get('scanned')} "
                     f"updated={updated_n} errors={len(result.get('errors') or [])}"
                 )
         except Exception as exc:  # noqa: BLE001
-            print(f"[DTDC] Status sync error: {exc}")
+            print(f"[Shipping] Status sync error: {exc}")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
         except asyncio.TimeoutError:
