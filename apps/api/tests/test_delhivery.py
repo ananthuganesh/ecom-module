@@ -369,7 +369,7 @@ async def test_label_follows_the_presigned_pdf_link(mock_http):
             assert "pdf" not in request.headers.get("Accept", "").split("/")[-1:][0].lower() or True
             return httpx.Response(
                 200,
-                json={"packages": [{"pdf_download_link": "https://s3.example/label.pdf"}]},
+                json={"packages": [{"pdf_download_link": "https://s3.amazonaws.com/label.pdf"}]},
             )
         seen["pdf_url"] = str(request.url)
         # The presigned link must not carry our Delhivery token.
@@ -379,7 +379,61 @@ async def test_label_follows_the_presigned_pdf_link(mock_http):
     mock_http(handler)
     order = await _paid_order(awb="1234567890", carrier="delhivery")
     assert (await delhivery.label_pdf_bytes(order)).startswith(b"%PDF")
-    assert seen["pdf_url"] == "https://s3.example/label.pdf"
+    assert seen["pdf_url"] == "https://s3.amazonaws.com/label.pdf"
+
+
+def test_label_url_must_be_https_and_on_a_provider_host():
+    """The link comes from an external response — it must not aim us anywhere."""
+    ok = "https://express-hq-prod.s3.ap-south-1.amazonaws.com/packing-slip/1.pdf"
+    assert delhivery._validated_label_url(ok) == ok
+
+    for hostile in (
+        "http://express-hq-prod.s3.ap-south-1.amazonaws.com/1.pdf",  # not https
+        "https://169.254.169.254/latest/meta-data/",                  # cloud metadata
+        "https://127.0.0.1/label.pdf",                                # loopback
+        "https://internal.mycompany.local/label.pdf",                 # internal host
+        "https://amazonaws.com.evil.test/label.pdf",                  # suffix spoof
+        "file:///etc/passwd",
+    ):
+        with pytest.raises(HTTPException):
+            delhivery._validated_label_url(hostile)
+
+
+@pytest.mark.usefixtures("db")
+async def test_label_rejects_a_link_to_an_unexpected_host(mock_http):
+    mock_http(
+        lambda request: httpx.Response(
+            200,
+            json={"packages": [{"pdf_download_link": "https://169.254.169.254/latest/meta-data/"}]},
+        )
+    )
+    order = await _paid_order(awb="1234567890", carrier="delhivery")
+    with pytest.raises(HTTPException) as exc:
+        await delhivery.label_pdf_bytes(order)
+    assert "unexpected host" in str(exc.value.detail)
+
+
+@pytest.mark.usefixtures("db")
+async def test_label_caps_an_oversized_response(mock_http, monkeypatch):
+    monkeypatch.setattr(delhivery, "MAX_LABEL_BYTES", 1024)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/p/packing_slip":
+            return httpx.Response(
+                200,
+                json={
+                    "packages": [
+                        {"pdf_download_link": "https://x.amazonaws.com/label.pdf"}
+                    ]
+                },
+            )
+        return httpx.Response(200, content=b"%PDF" + b"A" * 5000)
+
+    mock_http(handler)
+    order = await _paid_order(awb="1234567890", carrier="delhivery")
+    with pytest.raises(HTTPException) as exc:
+        await delhivery.label_pdf_bytes(order)
+    assert "too large" in str(exc.value.detail)
 
 
 @pytest.mark.usefixtures("db")
@@ -396,7 +450,7 @@ async def test_label_rejects_a_non_pdf_body(mock_http):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/p/packing_slip":
             return httpx.Response(
-                200, json={"packages": [{"pdf_download_link": "https://s3.example/label.pdf"}]}
+                200, json={"packages": [{"pdf_download_link": "https://s3.amazonaws.com/label.pdf"}]}
             )
         return httpx.Response(200, content=b"<html>expired link</html>")
 

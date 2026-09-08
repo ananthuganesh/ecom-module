@@ -10,6 +10,7 @@ import json
 import os
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from bson import ObjectId
@@ -27,6 +28,27 @@ SETTING_KEY = "delhivery_settings"
 
 CARRIER_CODE = "delhivery"
 CARRIER_LABEL = "Delhivery"
+
+# The packing-slip PDF lives behind a link Delhivery hands us, so the second hop
+# is a URL from an external response. Constrain it: a compromised or spoofed
+# response must not be able to aim our server at cloud metadata or an internal
+# host. Observed bucket is express-hq-prod.s3.ap-south-1.amazonaws.com, but the
+# bucket can change, so allow the provider domains rather than one hostname.
+LABEL_HOST_SUFFIXES = (".amazonaws.com", ".delhivery.com")
+MAX_LABEL_BYTES = 10 * 1024 * 1024
+
+
+def _validated_label_url(link: str) -> str:
+    parsed = urlparse(link)
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=502, detail="Delhivery label link was not https")
+    host = (parsed.hostname or "").lower()
+    if not any(host == suffix.lstrip(".") or host.endswith(suffix) for suffix in LABEL_HOST_SUFFIXES):
+        raise HTTPException(
+            status_code=502,
+            detail="Delhivery label link pointed at an unexpected host",
+        )
+    return link
 
 
 def _env_delhivery() -> dict[str, Any]:
@@ -685,11 +707,21 @@ async def label_pdf_bytes(order: Order) -> bytes:
                 ),
             )
 
-        # Presigned URL — must not carry our Authorization header.
-        pdf = await client.get(link, follow_redirects=True)
-        if pdf.status_code >= 400:
-            raise HTTPException(status_code=502, detail="Delhivery label link could not be downloaded")
-        content = pdf.content or b""
+        # Presigned URL — no Authorization header, no redirects (S3 answers 200
+        # directly, and a redirect would escape the host check above), and a
+        # size cap so a hostile response cannot exhaust memory.
+        content = b""
+        async with client.stream(
+            "GET", _validated_label_url(link), follow_redirects=False
+        ) as pdf:
+            if pdf.status_code >= 400:
+                raise HTTPException(
+                    status_code=502, detail="Delhivery label link could not be downloaded"
+                )
+            async for chunk in pdf.aiter_bytes():
+                content += chunk
+                if len(content) > MAX_LABEL_BYTES:
+                    raise HTTPException(status_code=502, detail="Delhivery label was too large")
 
     if content[:4] != b"%PDF":
         raise HTTPException(status_code=502, detail="Delhivery label was not a PDF")
