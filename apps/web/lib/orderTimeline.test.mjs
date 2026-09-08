@@ -63,8 +63,8 @@ describe("buildOrderTimeline", () => {
         "confirmation",
         "payment",
         "fulfilled",
-        "dtdc_awb",
-        "dtdc_shipped",
+        "shipment_awb",
+        "shipment_shipped",
       ]
     );
     assert.equal(
@@ -72,8 +72,54 @@ describe("buildOrderTimeline", () => {
       "Confirmation #UA1242 was generated for this order."
     );
     assert.equal(steps.find((s) => s.id === "order_placed").title, "Order placed");
-    assert.match(steps.find((s) => s.id === "dtdc_awb").title, /DTDC assigned AWB 7X117566894/);
-    assert.equal(steps.find((s) => s.id === "dtdc_shipped").title, "DTDC shipped");
+    assert.match(steps.find((s) => s.id === "shipment_awb").title, /assigned AWB 7X117566894/);
+    assert.match(steps.find((s) => s.id === "shipment_shipped").title, /shipped$/);
+  });
+
+  it("names the carrier that actually holds the parcel", () => {
+    // Regression: every fulfilment step said "DTDC" regardless of carrier, so a
+    // Delhivery booking showed "DTDC assigned AWB ..." on the order activity.
+    const delhivery = buildOrderTimeline({
+      _id: "b1",
+      createdAt: "2026-09-08T10:00:00Z",
+      awb: "63413910000011",
+      courierName: "Delhivery",
+      carrier: "delhivery",
+      shippingStatus: "In Transit",
+      status: "shipped",
+    });
+    assert.match(
+      delhivery.find((s) => s.id === "shipment_awb").title,
+      /^Delhivery assigned AWB 63413910000011$/
+    );
+    assert.equal(
+      delhivery.find((s) => s.id === "fulfilled").subtitle,
+      "Delhivery consignment booked"
+    );
+    assert.match(delhivery.find((s) => s.id === "shipment_shipped").title, /^Delhivery shipped$/);
+
+    const dtdc = buildOrderTimeline({
+      _id: "b2",
+      createdAt: "2026-09-08T10:00:00Z",
+      awb: "7X117566894",
+      courierName: "DTDC",
+      shippingStatus: "In Transit",
+      status: "shipped",
+    });
+    assert.match(dtdc.find((s) => s.id === "shipment_awb").title, /^DTDC assigned AWB/);
+  });
+
+  it("reads shipment timestamps from either carrier", () => {
+    const steps = buildOrderTimeline({
+      _id: "b3",
+      createdAt: "2026-09-08T10:00:00Z",
+      awb: "63413910000011",
+      courierName: "Delhivery",
+      shipmentTimestamps: { createdAt: "2026-09-08T17:56:00Z" },
+      shippingStatus: "Awaiting Shipment",
+      status: "processing",
+    });
+    assert.equal(steps.find((s) => s.id === "fulfilled").at, "2026-09-08T17:56:00Z");
   });
 
   it("includes delivered and refund/cancel when present", () => {
@@ -94,7 +140,7 @@ describe("buildOrderTimeline", () => {
       },
     });
     const ids = steps.map((s) => s.id);
-    assert.ok(ids.includes("dtdc_delivered"));
+    assert.ok(ids.includes("shipment_delivered"));
     assert.ok(ids.includes("cancelled"));
     assert.ok(ids.includes("refund"));
   });
@@ -162,9 +208,9 @@ describe("buildOrderTimeline", () => {
     });
     const groups = groupTimelineByDay(steps, new Date("2026-07-31T12:00:00"));
     const ids = groups.flatMap((g) => g.steps.map((s) => s.id));
-    const iDelivered = ids.indexOf("dtdc_delivered");
-    const iShipped = ids.indexOf("dtdc_shipped");
-    const iAwb = ids.indexOf("dtdc_awb");
+    const iDelivered = ids.indexOf("shipment_delivered");
+    const iShipped = ids.indexOf("shipment_shipped");
+    const iAwb = ids.indexOf("shipment_awb");
     const iFulfilled = ids.indexOf("fulfilled");
     assert.ok(iDelivered < iShipped);
     assert.ok(iShipped < iAwb);

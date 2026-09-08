@@ -29,14 +29,33 @@ function awbCode(order) {
   return String(order.awbCode || order.awb || "").trim() || null;
 }
 
-function dtdcBookedAt(order) {
+/** Carrier holding the parcel — DTDC or Delhivery — for timeline copy. */
+function carrierLabel(order) {
+  return (
+    order.courierName ||
+    order.courier ||
+    order.transactionDetails?.dtdc?.courier_partner ||
+    "Courier"
+  );
+}
+
+function shipmentBookedAt(order) {
   return firstPresent(
+    // Resolved server-side from whichever carrier booked it.
+    order.shipmentTimestamps?.createdAt,
     order.transactionDetails?.dtdc?.createdAt,
     order.shippedAt,
     order.shipmentCreatedAt,
     order.shippingCreatedAt,
     order.transactionDetails?.shipment?.createdAt,
     order.transactionDetails?.shipping?.createdAt
+  );
+}
+
+function shipmentShippedAt(order) {
+  return firstPresent(
+    order.shipmentTimestamps?.shippedAt,
+    order.transactionDetails?.dtdc?.shippedAt
   );
 }
 
@@ -303,8 +322,8 @@ const EMAIL_ACTIVITY = [
 
 /**
  * Order activity timeline (ops-focused):
- * Order placed → Confirmation → Payment → Emails → Fulfilled → DTDC AWB →
- * DTDC shipped → DTDC delivered → Cancel / Refund
+ * Order placed → Confirmation → Payment → Emails → Fulfilled → carrier AWB →
+ * shipped → delivered → Cancel / Refund
  */
 export function buildOrderTimeline(order) {
   if (!order) return [];
@@ -322,7 +341,7 @@ export function buildOrderTimeline(order) {
   const paidAt =
     order.transactionDetails?.paidAt || order.paidAt || createdAt || null;
   const awb = awbCode(order);
-  const bookedAt = dtdcBookedAt(order);
+  const bookedAt = shipmentBookedAt(order);
   const shipLabel = shippingStatusOf(order);
   const deliveredAt = order.deliveredAt || null;
 
@@ -332,10 +351,10 @@ export function buildOrderTimeline(order) {
     confirmation: 20,
     payment: 30,
     fulfilled: 40,
-    dtdc_awb: 50,
-    dtdc_shipped: 60,
-    dtdc_ofd: 70,
-    dtdc_delivered: 80,
+    shipment_awb: 50,
+    shipment_shipped: 60,
+    shipment_ofd: 70,
+    shipment_delivered: 80,
     cancelled: 90,
     refund: 100,
   };
@@ -413,26 +432,27 @@ export function buildOrderTimeline(order) {
     });
   }
 
-  // 4–7) Fulfillment / DTDC — never use updatedAt for early steps (it jumps after delivery)
+  // 4–7) Fulfillment / carrier — never use updatedAt for early steps (it jumps after delivery)
   if (hasAwb(order)) {
     const fulfillAt = bookedAt || paidAt || createdAt;
+    const carrier = carrierLabel(order);
     steps.push({
       id: "fulfilled",
       type: "fulfilled",
       seq: SEQ.fulfilled,
       title: "Marked as fulfilled",
-      subtitle: "DTDC consignment booked",
+      subtitle: `${carrier} consignment booked`,
       at: bookedAt || null,
       sortAt: fulfillAt,
       tone: "success",
     });
 
     steps.push({
-      id: "dtdc_awb",
+      id: "shipment_awb",
       type: "shipped",
-      seq: SEQ.dtdc_awb,
-      title: `DTDC assigned AWB ${awb}`,
-      subtitle: order.courier || order.transactionDetails?.dtdc?.courier_partner || "DTDC",
+      seq: SEQ.shipment_awb,
+      title: `${carrier} assigned AWB ${awb}`,
+      subtitle: null,
       at: bookedAt || null,
       sortAt: fulfillAt,
       tone: "info",
@@ -440,16 +460,14 @@ export function buildOrderTimeline(order) {
 
     if (isInTransitLike(order) || isDelivered(order)) {
       const shippedWhen =
-        order.transactionDetails?.dtdc?.shippedAt ||
-        (isDelivered(order) ? deliveredAt : null) ||
-        fulfillAt;
+        shipmentShippedAt(order) || (isDelivered(order) ? deliveredAt : null) || fulfillAt;
       steps.push({
-        id: "dtdc_shipped",
+        id: "shipment_shipped",
         type: "shipped",
-        seq: SEQ.dtdc_shipped,
-        title: "DTDC shipped",
+        seq: SEQ.shipment_shipped,
+        title: `${carrier} shipped`,
         subtitle: shipLabel && !/^delivered$/i.test(shipLabel) ? shipLabel : "In transit",
-        at: order.transactionDetails?.dtdc?.shippedAt || null,
+        at: shipmentShippedAt(order) || null,
         sortAt: shippedWhen,
         tone: "success",
       });
@@ -457,10 +475,10 @@ export function buildOrderTimeline(order) {
 
     if (shippingStatusKey(order).includes("out for delivery")) {
       steps.push({
-        id: "dtdc_ofd",
+        id: "shipment_ofd",
         type: "shipped",
-        seq: SEQ.dtdc_ofd,
-        title: "DTDC out for delivery",
+        seq: SEQ.shipment_ofd,
+        title: `${carrier} out for delivery`,
         subtitle: null,
         at: deliveredAt || fulfillAt,
         sortAt: deliveredAt || fulfillAt,
@@ -470,10 +488,10 @@ export function buildOrderTimeline(order) {
 
     if (isDelivered(order)) {
       steps.push({
-        id: "dtdc_delivered",
+        id: "shipment_delivered",
         type: "delivered",
-        seq: SEQ.dtdc_delivered,
-        title: "DTDC delivered",
+        seq: SEQ.shipment_delivered,
+        title: `${carrier} delivered`,
         subtitle: null,
         at: deliveredAt,
         sortAt: deliveredAt || fulfillAt,
@@ -492,17 +510,23 @@ export function buildOrderTimeline(order) {
     const cancelledAwb =
       order.transactionDetails?.dtdcCancelled?.reference_number ||
       order.transactionDetails?.dtdcCancel?.reference_number ||
+      order.transactionDetails?.delhiveryCancelled?.waybill ||
       (hasAwb(order) ? awb : null);
-    const dtdcCancelled = Boolean(order.transactionDetails?.dtdcCancelled);
+    const shipmentCancelled = Boolean(
+      order.transactionDetails?.dtdcCancelled ||
+        order.transactionDetails?.delhiveryCancelled ||
+        order.transactionDetails?.shipmentCancelled
+    );
+    const cancelCarrier = carrierLabel(order);
     steps.push({
       id: "cancelled",
       type: "cancelled",
       seq: SEQ.cancelled,
       title: "Order cancelled",
-      subtitle: dtdcCancelled
+      subtitle: shipmentCancelled
         ? cancelledAwb
-          ? `DTDC cancelled · AWB ${cancelledAwb}`
-          : "DTDC consignment cancelled"
+          ? `${cancelCarrier} cancelled · AWB ${cancelledAwb}`
+          : `${cancelCarrier} consignment cancelled`
         : cancelledAwb
           ? `AWB ${cancelledAwb}`
           : "Stock restocked · order archived",
