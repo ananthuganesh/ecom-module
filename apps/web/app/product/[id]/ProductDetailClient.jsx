@@ -15,6 +15,7 @@ import ProductCard from "@/components/storefront/ProductCard";
 import ProductDetailSkeleton from "@/components/ProductDetailSkeleton";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import { filterInStock } from "@/lib/productStock";
+import { expectedDeliveryLabel } from "@/lib/deliveryEstimate";
 import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
@@ -60,16 +61,6 @@ function toSentenceCase(value) {
   if (upperRatio < 0.6) return text;
   const lower = text.toLowerCase();
   return lower.charAt(0).toUpperCase() + lower.slice(1);
-}
-
-function estimateDeliveryWindow(from = new Date()) {
-  const start = new Date(from);
-  start.setDate(start.getDate() + 3);
-  const end = new Date(from);
-  end.setDate(end.getDate() + 6);
-  const fmt = (d) =>
-    d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
-  return `${fmt(start)}–${fmt(end)}`;
 }
 
 export default function ProductDetailPage({ initialProduct = null }) {
@@ -443,7 +434,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
       const data = await response.json();
       const result = Array.isArray(data) ? data[0] : null;
       if (result?.Status === "Success" && result.PostOffice?.length > 0) {
-        setDeliveryLabel(`Delivery by ${estimateDeliveryWindow()}`);
+        setDeliveryLabel(expectedDeliveryLabel());
       } else {
         setPinError("Invalid PIN code. Please check and try again.");
       }
