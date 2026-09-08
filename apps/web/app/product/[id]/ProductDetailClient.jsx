@@ -1071,8 +1071,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
                     {deliveryWindow}
                   </span>
                 </p>
-                <p className="mt-1 text-[12px] text-gray-500">
-                  Packed and shipped within 24 hours.
+                <p className="mt-1 text-[13px] text-gray-700">
+                  Packed and shipped within{" "}
+                  <span className="font-semibold text-gray-900">24 hours.</span>
                 </p>
               </div>
             ) : null}
