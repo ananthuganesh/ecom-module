@@ -1075,6 +1075,12 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   Packed and shipped within{" "}
                   <span className="font-semibold text-gray-900">24 hours.</span>
                 </p>
+                <p className="mt-1 text-[13px] text-gray-700">
+                  Trusted by{" "}
+                  <span className="font-semibold text-gray-900">
+                    1,000+ customers.
+                  </span>
+                </p>
               </div>
             ) : null}
 
