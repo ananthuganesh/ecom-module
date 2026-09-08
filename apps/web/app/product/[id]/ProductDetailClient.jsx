@@ -2,8 +2,11 @@
 
 import {
   CaretIcon,
+  CheckBurstIcon,
   CloseIcon,
+  PackageIcon,
   RulerIcon,
+  TruckIcon,
 } from "@/components/icons/storeIcons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -1064,21 +1067,32 @@ export default function ProductDetailPage({ initialProduct = null }) {
             </div>
 
             {deliveryWindow ? (
-              <div className="mt-5 rounded-md bg-gray-100 px-3 py-2.5">
-                <p className="text-[13px] text-gray-700">
-                  Expected Delivery:{" "}
-                  <span className="font-semibold text-gray-900">
-                    {deliveryWindow}
+              <div className="mt-5 flex flex-col gap-1.5 rounded-md bg-gray-100 px-3 py-2.5">
+                <p className="flex items-start gap-2 text-[13px] text-gray-700">
+                  <TruckIcon className="mt-px size-4 shrink-0 text-gray-500" />
+                  <span>
+                    Expected Delivery:{" "}
+                    <span className="font-semibold text-gray-900">
+                      {deliveryWindow}
+                    </span>
                   </span>
                 </p>
-                <p className="mt-1 text-[13px] text-gray-700">
-                  Packed and shipped within{" "}
-                  <span className="font-semibold text-gray-900">24 hours.</span>
+                <p className="flex items-start gap-2 text-[13px] text-gray-700">
+                  <PackageIcon className="mt-px size-4 shrink-0 text-gray-500" />
+                  <span>
+                    Packed and shipped within{" "}
+                    <span className="font-semibold text-gray-900">
+                      24 hours.
+                    </span>
+                  </span>
                 </p>
-                <p className="mt-1 text-[13px] text-gray-700">
-                  Trusted by{" "}
-                  <span className="font-semibold text-gray-900">
-                    1,000+ customers.
+                <p className="flex items-start gap-2 text-[13px] text-gray-700">
+                  <CheckBurstIcon className="mt-px size-4 shrink-0 text-gray-500" />
+                  <span>
+                    Trusted by{" "}
+                    <span className="font-semibold text-gray-900">
+                      1,000+ customers.
+                    </span>
                   </span>
                 </p>
               </div>
