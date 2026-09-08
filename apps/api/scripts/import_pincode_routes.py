@@ -172,6 +172,7 @@ async def main() -> int:
         if args.replace:
             removed = await pincode_routes.clear_source(args.source)
             print(f"  removed {removed} existing rows for source '{args.source}'")
+        print(f"  writing {len(rows)} routes…")
         result = await pincode_routes.upsert_routes(rows, source=args.source)
         total = await pincode_routes.route_count()
         print(

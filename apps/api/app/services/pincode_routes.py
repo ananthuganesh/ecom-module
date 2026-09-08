@@ -7,6 +7,7 @@ hitting Mongo on every booking.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime
 from typing import Any
@@ -19,6 +20,10 @@ DTDC_IP_DISPATCH_SOURCE = "dtdc-ip-dispatch"
 _CACHE: dict[str, str] | None = None
 _CACHE_AT = 0.0
 _CACHE_TTL_SEC = 300.0
+
+# Upserts issued at once; enough to saturate the connection pool without
+# opening thousands of concurrent operations.
+BULK_CHUNK = 200
 
 
 def normalize_pincode(value: Any) -> str | None:
@@ -61,42 +66,61 @@ async def route_count(carrier: str | None = None) -> int:
 async def upsert_routes(rows: list[dict[str, Any]], *, source: str) -> dict[str, int]:
     """Insert or update pincode routes. Returns counts, and refreshes the cache.
 
+    Upserts run concurrently in batches. The table is ~9k rows, and doing them
+    one at a time against Atlas takes minutes and leaves the import half
+    applied if it is interrupted.
+
     `rows` items need `pincode` and `carrier`; city/state/branch/tatDays/reason
     are optional metadata carried through from the import.
     """
-    created = 0
-    updated = 0
+    now = datetime.utcnow()
+    pending: list[tuple[str, dict[str, Any]]] = []
+    seen: set[str] = set()
     skipped = 0
-
-    existing = {r.pincode: r for r in await PincodeRoute.find_all().to_list()}
 
     for row in rows:
         pin = normalize_pincode(row.get("pincode"))
         carrier = str(row.get("carrier") or "").strip().lower()
-        if not pin or not carrier:
+        if not pin or not carrier or pin in seen:
             skipped += 1
             continue
+        seen.add(pin)
+        pending.append(
+            (
+                pin,
+                {
+                    "carrier": carrier,
+                    "reason": str(row.get("reason") or ""),
+                    "source": source,
+                    "city": row.get("city") or None,
+                    "state": row.get("state") or None,
+                    "branch": row.get("branch") or None,
+                    "tatDays": row.get("tatDays"),
+                    "updatedAt": now,
+                },
+            )
+        )
 
-        fields = {
-            "carrier": carrier,
-            "reason": str(row.get("reason") or ""),
-            "source": source,
-            "city": row.get("city") or None,
-            "state": row.get("state") or None,
-            "branch": row.get("branch") or None,
-            "tatDays": row.get("tatDays"),
-            "updatedAt": datetime.utcnow(),
-        }
+    created = 0
+    updated = 0
+    if pending:
+        collection = PincodeRoute.get_pymongo_collection()
 
-        current = existing.get(pin)
-        if current is None:
-            await PincodeRoute(pincode=pin, **fields).insert()
-            created += 1
-        else:
-            for key, value in fields.items():
-                setattr(current, key, value)
-            await current.save()
-            updated += 1
+        async def _one(pin: str, fields: dict[str, Any]):
+            return await collection.update_one(
+                {"pincode": pin},
+                {"$set": fields, "$setOnInsert": {"pincode": pin, "createdAt": now}},
+                upsert=True,
+            )
+
+        for start in range(0, len(pending), BULK_CHUNK):
+            batch = pending[start : start + BULK_CHUNK]
+            results = await asyncio.gather(*[_one(pin, f) for pin, f in batch])
+            for result in results:
+                if getattr(result, "upserted_id", None) is not None:
+                    created += 1
+                else:
+                    updated += 1
 
     invalidate_cache()
     return {"created": created, "updated": updated, "skipped": skipped}
@@ -104,8 +128,7 @@ async def upsert_routes(rows: list[dict[str, Any]], *, source: str) -> dict[str,
 
 async def clear_source(source: str) -> int:
     """Drop every route from one import (so a re-import can replace it)."""
-    routes = await PincodeRoute.find(PincodeRoute.source == source).to_list()
-    for route in routes:
-        await route.delete()
+    collection = PincodeRoute.get_pymongo_collection()
+    result = await collection.delete_many({"source": source})
     invalidate_cache()
-    return len(routes)
+    return int(result.deleted_count or 0)
