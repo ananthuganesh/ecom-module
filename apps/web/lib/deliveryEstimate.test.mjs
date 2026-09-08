@@ -4,7 +4,6 @@ import {
   DELIVERY_MAX_DAYS,
   DELIVERY_MIN_DAYS,
   estimateDeliveryWindow,
-  expectedDeliveryLabel,
   formatDeliveryDate,
   ordinal,
 } from "./deliveryEstimate.js";
@@ -84,18 +83,5 @@ describe("estimateDeliveryWindow", () => {
 
   it("returns empty for an invalid date", () => {
     assert.equal(estimateDeliveryWindow("nope"), "");
-  });
-});
-
-describe("expectedDeliveryLabel", () => {
-  it("prefixes the window", () => {
-    assert.equal(
-      expectedDeliveryLabel(new Date(2026, 8, 7)),
-      "Expected Delivery: Thu, Sep 10th - Sun, Sep 13th"
-    );
-  });
-
-  it("is empty when the date is unusable", () => {
-    assert.equal(expectedDeliveryLabel("nope"), "");
   });
 });

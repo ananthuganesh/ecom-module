@@ -14,7 +14,7 @@ import ProductCard from "@/components/storefront/ProductCard";
 import ProductDetailSkeleton from "@/components/ProductDetailSkeleton";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import { filterInStock } from "@/lib/productStock";
-import { expectedDeliveryLabel } from "@/lib/deliveryEstimate";
+import { estimateDeliveryWindow } from "@/lib/deliveryEstimate";
 import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
@@ -75,7 +75,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [sizeGuideUnit, setSizeGuideUnit] = useState("in");
   const [openSection, setOpenSection] = useState("description");
-  const [deliveryLabel, setDeliveryLabel] = useState("");
+  const [deliveryWindow, setDeliveryWindow] = useState("");
   const [ctaPending, setCtaPending] = useState(null);
   const [showStickyCta, setShowStickyCta] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -416,7 +416,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
   );
 
   useEffect(() => {
-    setDeliveryLabel(expectedDeliveryLabel());
+    setDeliveryWindow(estimateDeliveryWindow());
   }, []);
 
   useEffect(() => {
@@ -1063,10 +1063,13 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </button>
             </div>
 
-            {deliveryLabel ? (
+            {deliveryWindow ? (
               <div className="mt-5 rounded-md bg-gray-100 px-3 py-2.5">
-                <p className="text-[13px] font-medium text-gray-700">
-                  {deliveryLabel}
+                <p className="text-[13px] text-gray-700">
+                  Expected Delivery:{" "}
+                  <span className="font-semibold text-gray-900">
+                    {deliveryWindow}
+                  </span>
                 </p>
               </div>
             ) : null}

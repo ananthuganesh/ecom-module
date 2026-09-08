@@ -63,9 +63,3 @@ export function estimateDeliveryWindow(from = new Date()) {
   const end = formatDeliveryDate(addDays(base, DELIVERY_MAX_DAYS));
   return `${start} - ${end}`;
 }
-
-/** Full line as shown under the pincode box. */
-export function expectedDeliveryLabel(from = new Date()) {
-  const window = estimateDeliveryWindow(from);
-  return window ? `Expected Delivery: ${window}` : "";
-}
