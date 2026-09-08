@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Heart } from "lucide-react";
-import { toast } from "sonner";
 import { useWishlistStore } from "@/store/useWishlistStore";
 
 /**
@@ -40,8 +39,8 @@ export default function WishlistButton({
   const onClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const added = toggle(product);
-    toast.success(added ? "Saved to wishlist" : "Removed from wishlist");
+    // No toast: the filled heart and the navbar count already show the result.
+    toggle(product);
   };
 
   return (
