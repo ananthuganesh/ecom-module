@@ -25,6 +25,8 @@ UPLOAD_FOLDERS = {
     "products": UPLOAD_ROOT / "products",
     "ai": UPLOAD_ROOT / "ai",
     "reels": UPLOAD_ROOT / "reels",
+    # Homepage hero slides, managed under Store Theme.
+    "banner": UPLOAD_ROOT / "banner",
 }
 LIBRARY_FOLDERS = ("products", "ai")
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
@@ -37,7 +39,7 @@ def _folders(folder: str) -> list[tuple[str, Path]]:
     if folder in UPLOAD_FOLDERS:
         return [(folder, UPLOAD_FOLDERS[folder])]
     raise HTTPException(
-        status_code=400, detail="folder must be products, ai, reels, or all"
+        status_code=400, detail="folder must be products, ai, reels, banner, or all"
     )
 
 
@@ -81,7 +83,7 @@ def _serialize_file(folder: str, path: Path) -> dict:
 
 def _resolve_file(folder: str, name: str) -> Path:
     if folder not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, reels, or banner")
     if not name or Path(name).name != name or ".." in Path(name).parts:
         raise HTTPException(status_code=400, detail="Invalid file name")
 
@@ -246,7 +248,7 @@ async def upload_media(
 ):
     """Upload into products, ai, or reels. Images → WebP; reels folder accepts video."""
     if folder not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, reels, or banner")
     upload = file or image
     if not upload:
         raise HTTPException(status_code=422, detail="file or image is required")
@@ -352,7 +354,7 @@ async def update_media_alt(body: dict, _: AdminUser):
     if len(alt_text) > 500:
         raise HTTPException(status_code=400, detail="Alt text must be 500 characters or fewer")
     if folder not in UPLOAD_FOLDERS:
-        raise HTTPException(status_code=400, detail="folder must be products, ai, or reels")
+        raise HTTPException(status_code=400, detail="folder must be products, ai, reels, or banner")
     if not name or Path(name).name != name or ".." in Path(name).parts:
         raise HTTPException(status_code=400, detail="Invalid file name")
 

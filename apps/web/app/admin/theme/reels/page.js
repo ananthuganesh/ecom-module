@@ -12,8 +12,8 @@ import {
 } from "@/components/admin/list";
 import { Film } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
-import { createMediaColumns } from "../columns";
-import { mediaFileKey } from "../mediaUtils";
+import { createMediaColumns } from "@/app/admin/content/columns";
+import { mediaFileKey } from "@/app/admin/content/mediaUtils";
 
 export default function AdminReelsPage() {
   const userInfo = useAdminAuthStore((s) => s.userInfo);

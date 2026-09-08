@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from app.config import get_settings
 
-ALLOWED_FOLDERS = {"products", "ai", "reels"}
+ALLOWED_FOLDERS = {"products", "ai", "reels", "banner"}
 # Content library "All" excludes reels (managed under Content → Reels).
 LIBRARY_FOLDERS = {"products", "ai"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".bmp", ".ico"}

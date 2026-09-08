@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import HeroBanner from "@/components/storefront/HeroBanner";
 import ProductGrid from "@/components/storefront/ProductGrid";
 import { HERO_LCP_SRC } from "@/components/storefront/heroSlides";
+import { fetchHeroSlides } from "@/lib/fetchHeroSlides";
 import { getCatalogConfig } from "@/lib/catalogConfig";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
 import { filterInStock } from "@/lib/productStock";
@@ -24,7 +25,12 @@ export const metadata = {
 export const revalidate = 60;
 
 export default async function Home() {
-  preload(HERO_LCP_SRC, { as: "image", fetchPriority: "high" });
+  const heroSlides = await fetchHeroSlides();
+  // Preload whichever slide actually renders first, not the shipped default.
+  preload(heroSlides[0]?.src || HERO_LCP_SRC, {
+    as: "image",
+    fetchPriority: "high",
+  });
 
   const { homePageSize } = getCatalogConfig();
   // Over-fetch: sold-out drops are hidden below, and the API has no stock
@@ -37,7 +43,7 @@ export default async function Home() {
 
   return (
     <div className="w-full bg-white font-sans">
-      <HeroBanner />
+      <HeroBanner slides={heroSlides} />
 
       <section
         id="latest-drops"

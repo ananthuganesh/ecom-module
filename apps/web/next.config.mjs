@@ -103,8 +103,11 @@ const nextConfig = {
       { source: "/admin/inventory", destination: "/admin/products/inventory", permanent: false },
       { source: "/admin/warehouses", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/content/ai-media", destination: "/admin/content/ai-studio", permanent: false },
-      { source: "/admin/reels", destination: "/admin/content/reels", permanent: false },
-      { source: "/admin/reels/:path*", destination: "/admin/content/reels", permanent: false },
+      { source: "/admin/reels", destination: "/admin/theme/reels", permanent: false },
+      { source: "/admin/reels/:path*", destination: "/admin/theme/reels", permanent: false },
+      // Reels moved from Content to Store Theme.
+      { source: "/admin/content/reels", destination: "/admin/theme/reels", permanent: false },
+      { source: "/admin/theme", destination: "/admin/theme/banners", permanent: false },
       { source: "/admin/integrations/aisensy", destination: "/admin/settings/integrations/aisensy", permanent: false },
       { source: "/admin/sales/invoices", destination: "/admin/orders", permanent: false },
       { source: "/admin/sales/returns", destination: "/admin/orders", permanent: false },

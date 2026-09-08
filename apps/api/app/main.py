@@ -11,7 +11,7 @@ from pymongo.errors import ConnectionFailure
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, returns, shipping, stock_admin, users
+from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, returns, shipping, stock_admin, store_theme, users
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +140,8 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(abandoned.router)
     app.include_router(returns.router)
     app.include_router(returns.admin_router)
+    app.include_router(store_theme.router)
+    app.include_router(store_theme.admin_router)
 
     upload_root = Path(__file__).resolve().parent.parent / "uploads"
     upload_root.mkdir(parents=True, exist_ok=True)

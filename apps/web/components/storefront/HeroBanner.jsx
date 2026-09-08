@@ -6,11 +6,13 @@ import { HERO_SLIDES } from "./heroSlides";
 
 const AUTO_MS = 10000;
 
-const HeroBanner = () => {
+/** `slides` comes from Store Theme -> Banner; the shipped set is the fallback. */
+const HeroBanner = ({ slides }) => {
+  const heroSlides = slides?.length ? slides : HERO_SLIDES;
   const [[page], setPage] = useState([0, 1]);
   const idx =
-    ((page % HERO_SLIDES.length) + HERO_SLIDES.length) % HERO_SLIDES.length;
-  const slide = HERO_SLIDES[idx];
+    ((page % heroSlides.length) + heroSlides.length) % heroSlides.length;
+  const slide = heroSlides[idx];
 
   const paginate = useCallback((newDir) => {
     setPage(([p]) => [p + newDir, newDir]);
@@ -43,7 +45,7 @@ const HeroBanner = () => {
       <h1 className="sr-only">Urban Aana</h1>
 
       <div className="absolute bottom-1 left-1/2 z-20 flex -translate-x-1/2 md:bottom-8">
-        {HERO_SLIDES.map((item, i) => (
+        {heroSlides.map((item, i) => (
           <button
             key={item.src}
             type="button"

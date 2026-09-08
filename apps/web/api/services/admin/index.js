@@ -14,4 +14,5 @@ export { adminErpService } from "./erpService.js";
 export { adminSettingsService } from "./settingsService.js";
 export { adminMediaService } from "./mediaService.js";
 export { adminReturnsService } from "./returnsService.js";
+export { adminStoreThemeService } from "./storeThemeService.js";
 export { adminAiMediaService } from "./adminAiMediaService.js";

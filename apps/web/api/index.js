@@ -26,5 +26,6 @@ export {
   adminSettingsService,
   adminMediaService,
   adminReturnsService,
+  adminStoreThemeService,
   adminAiMediaService,
 } from "./services/index.js";

@@ -30,4 +30,5 @@ export {
   adminMediaService,
   adminAiMediaService,
   adminReturnsService,
+  adminStoreThemeService,
 } from "./admin/index.js";

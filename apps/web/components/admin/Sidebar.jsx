@@ -25,6 +25,7 @@ import {
   Film,
   Truck,
   ReturnArrow,
+  Sparkles,
 } from "./LocalIcons";
 
 /** L-shaped curved connector; tip centered with submenu text. */
@@ -210,8 +211,16 @@ const menuItems = [
     icon: Folder,
     subItems: [
       { name: "Files", href: "/admin/content" },
-      { name: "Reels", href: "/admin/content/reels" },
       { name: "AI Studio", href: "/admin/content/ai-studio" },
+    ],
+  },
+  {
+    name: "Store Theme",
+    href: "/admin/theme/banners",
+    icon: Sparkles,
+    subItems: [
+      { name: "Banner", href: "/admin/theme/banners" },
+      { name: "Reels", href: "/admin/theme/reels" },
     ],
   },
 ];
