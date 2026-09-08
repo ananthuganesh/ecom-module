@@ -2,11 +2,8 @@
 
 import {
   CaretIcon,
-  CheckBurstIcon,
   CloseIcon,
-  PackageIcon,
   RulerIcon,
-  TruckIcon,
 } from "@/components/icons/storeIcons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -1069,7 +1066,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
             {deliveryWindow ? (
               <div className="mt-5 flex flex-col gap-1.5 rounded-md bg-gray-100 px-3 py-2.5">
                 <p className="flex items-start gap-2 text-[13px] text-gray-700">
-                  <TruckIcon className="mt-px size-4 shrink-0 text-gray-500" />
+                  <span aria-hidden className="shrink-0 leading-none">🚚</span>
                   <span>
                     Expected Delivery:{" "}
                     <span className="font-semibold text-gray-900">
@@ -1078,7 +1075,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   </span>
                 </p>
                 <p className="flex items-start gap-2 text-[13px] text-gray-700">
-                  <PackageIcon className="mt-px size-4 shrink-0 text-gray-500" />
+                  <span aria-hidden className="shrink-0 leading-none">📦</span>
                   <span>
                     Packed and shipped within{" "}
                     <span className="font-semibold text-gray-900">
@@ -1087,7 +1084,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   </span>
                 </p>
                 <p className="flex items-start gap-2 text-[13px] text-gray-700">
-                  <CheckBurstIcon className="mt-px size-4 shrink-0 text-gray-500" />
+                  <span aria-hidden className="shrink-0 leading-none">✅</span>
                   <span>
                     Trusted by{" "}
                     <span className="font-semibold text-gray-900">
