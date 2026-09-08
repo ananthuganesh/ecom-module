@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Heart } from "lucide-react";
-import ProductCard from "@/components/storefront/ProductCard";
+import ProductGrid from "@/components/storefront/ProductGrid";
 import { productService } from "@/api";
 import { useWishlistStore } from "@/store/useWishlistStore";
 
@@ -43,6 +43,21 @@ export default function WishlistPage() {
     };
   }, [idsKey]);
 
+  // Live data wins for stock; the snapshot still covers a product that has
+  // since been deleted or failed to load.
+  const shownItems = items.map((product) => {
+    const id = String(product._id || product.id || "");
+    const live = fresh[id];
+    if (!live) return product;
+    return {
+      ...product,
+      ...live,
+      _id: id,
+      variants: live.variants ?? product.variants,
+      totalStock: live.totalStock ?? product.totalStock,
+    };
+  });
+
   return (
     <div className="min-h-[60vh] bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
       <header className="mb-6 text-center md:mb-8">
@@ -66,31 +81,12 @@ export default function WishlistPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6 lg:gap-4">
-          {items.map((product) => {
-            const id = String(product._id || product.id || "");
-            const live = fresh[id];
-            // Live data wins for stock; the snapshot still covers a product
-            // that has since been deleted or failed to load.
-            const shown = live
-              ? {
-                  ...product,
-                  ...live,
-                  _id: id,
-                  variants: live.variants ?? product.variants,
-                  totalStock: live.totalStock ?? product.totalStock,
-                }
-              : product;
-            return (
-              <ProductCard
-                key={id || product.slug}
-                product={shown}
-                listName="Wishlist"
-                listId="wishlist"
-              />
-            );
-          })}
-        </div>
+        <ProductGrid
+          products={shownItems}
+          listName="Wishlist"
+          listId="wishlist"
+          priorityCount={0}
+        />
       )}
     </div>
   );
