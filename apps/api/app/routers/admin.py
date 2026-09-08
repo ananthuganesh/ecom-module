@@ -2789,6 +2789,9 @@ async def get_delhivery_settings(_: AdminUser):
         # Must match the warehouse name registered with Delhivery exactly.
         "pickupLocation": raw.get("pickupLocation") or "",
         "shippingMode": raw.get("shippingMode") or "Surface",
+        # "4x6" re-cuts Delhivery's A4 packing slip to a thermal label; "a4"
+        # passes their sheet through untouched.
+        "labelSize": raw.get("labelSize") or "4x6",
         "hasApiToken": bool(raw.get("apiToken")),
         "isConnected": bool(raw.get("apiToken") and raw.get("pickupLocation")),
         "source": "env" if env_token else "settings",
@@ -2813,6 +2816,7 @@ async def save_delhivery_settings(body: dict, _: AdminUser):
         **current,
         "pickupLocation": str(body.get("pickupLocation") or current.get("pickupLocation") or "").strip(),
         "shippingMode": str(body.get("shippingMode") or current.get("shippingMode") or "Surface").strip(),
+        "labelSize": str(body.get("labelSize") or current.get("labelSize") or "4x6").strip().lower(),
     }
     if api_token:
         value["apiToken"] = api_token

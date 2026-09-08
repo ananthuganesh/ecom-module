@@ -37,6 +37,64 @@ CARRIER_LABEL = "Delhivery"
 LABEL_HOST_SUFFIXES = (".amazonaws.com", ".delhivery.com")
 MAX_LABEL_BYTES = 10 * 1024 * 1024
 
+# Delhivery ignores `pdf_size` and always returns A4 with the label printed
+# small in the top-left corner, which prints badly next to DTDC's native 4x6.
+# These are the label's ink bounds on that A4 page, measured from a real
+# packing slip (waybill 63413910000011). If Delhivery changes the template the
+# crop is validated below and we fall back to the untouched A4.
+LABEL_CROP_A4 = (20.0, 402.0, 271.0, 837.0)  # x0, y0, x1, y1 in points
+LABEL_4X6 = (288.0, 432.0)  # 4in x 6in in points
+LABEL_MARGIN = 4.0
+
+
+def _crop_label_to_4x6(raw: bytes) -> bytes:
+    """Re-cut Delhivery's A4 packing slip down to a real 4x6 label.
+
+    Returns the input untouched if the page is not the A4 layout we measured,
+    so a template change degrades to a working-but-small label rather than a
+    broken one.
+    """
+    from io import BytesIO
+
+    from pypdf import PdfReader, PdfWriter, Transformation
+
+    try:
+        reader = PdfReader(BytesIO(raw))
+        if len(reader.pages) != 1:
+            return raw
+        page = reader.pages[0]
+        page_w = float(page.mediabox.width)
+        page_h = float(page.mediabox.height)
+
+        # Only touch the A4 layout these bounds were measured against.
+        if not (590 <= page_w <= 600 and 838 <= page_h <= 846):
+            return raw
+
+        x0, y0, x1, y1 = LABEL_CROP_A4
+        crop_w, crop_h = x1 - x0, y1 - y0
+        if crop_w <= 0 or crop_h <= 0 or x1 > page_w or y1 > page_h:
+            return raw
+
+        target_w, target_h = LABEL_4X6
+        avail_w = target_w - 2 * LABEL_MARGIN
+        avail_h = target_h - 2 * LABEL_MARGIN
+        scale = min(avail_w / crop_w, avail_h / crop_h)
+        dx = (target_w - crop_w * scale) / 2
+        dy = (target_h - crop_h * scale) / 2
+
+        writer = PdfWriter()
+        sheet = writer.add_blank_page(width=target_w, height=target_h)
+        sheet.merge_transformed_page(
+            page,
+            Transformation().translate(-x0, -y0).scale(scale).translate(dx, dy),
+        )
+        out = BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Delhivery] Label 4x6 crop failed, using original: {exc}")
+        return raw
+
 
 def _validated_label_url(link: str) -> str:
     parsed = urlparse(link)
@@ -725,7 +783,10 @@ async def label_pdf_bytes(order: Order) -> bytes:
 
     if content[:4] != b"%PDF":
         raise HTTPException(status_code=502, detail="Delhivery label was not a PDF")
-    return content
+
+    if str(cfg.get("labelSize") or "4x6").strip().lower() == "a4":
+        return content
+    return _crop_label_to_4x6(content)
 
 
 # --------------------------------------------------------------------------

@@ -436,6 +436,64 @@ async def test_label_caps_an_oversized_response(mock_http, monkeypatch):
     assert "too large" in str(exc.value.detail)
 
 
+def _a4_pdf_with_label() -> bytes:
+    """Stand-in for Delhivery's A4 sheet: content only in the top-left."""
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=595, height=842)
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def test_crop_turns_the_a4_sheet_into_a_4x6_label():
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    out = delhivery._crop_label_to_4x6(_a4_pdf_with_label())
+    box = PdfReader(BytesIO(out)).pages[0].mediabox
+    assert (round(float(box.width)), round(float(box.height))) == (288, 432)
+
+
+def test_crop_leaves_a_non_a4_page_alone():
+    """A template change must degrade to the original, never to a broken label."""
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=288, height=432)
+    out = BytesIO()
+    writer.write(out)
+    already_4x6 = out.getvalue()
+    assert delhivery._crop_label_to_4x6(already_4x6) == already_4x6
+
+
+def test_crop_returns_input_on_garbage():
+    assert delhivery._crop_label_to_4x6(b"not a pdf") == b"not a pdf"
+
+
+@pytest.mark.usefixtures("db")
+async def test_label_size_setting_can_pass_a4_through(mock_http, monkeypatch):
+    a4 = _a4_pdf_with_label()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/p/packing_slip":
+            return httpx.Response(
+                200, json={"packages": [{"pdf_download_link": "https://s3.amazonaws.com/l.pdf"}]}
+            )
+        return httpx.Response(200, content=a4)
+
+    mock_http(handler)
+    await Setting(key="delhivery_settings", value={"labelSize": "a4"}).insert()
+    order = await _paid_order(awb="1234567890", carrier="delhivery")
+    assert await delhivery.label_pdf_bytes(order) == a4
+
+
 @pytest.mark.usefixtures("db")
 async def test_label_errors_when_no_pdf_link(mock_http):
     mock_http(lambda request: httpx.Response(200, json={"packages": [], "packages_found": 0}))
