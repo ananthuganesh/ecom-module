@@ -5,6 +5,7 @@ import ProductGrid from "@/components/storefront/ProductGrid";
 import { HERO_LCP_SRC } from "@/components/storefront/heroSlides";
 import { getCatalogConfig } from "@/lib/catalogConfig";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
+import { filterInStock } from "@/lib/productStock";
 import { canonicalUrl } from "@/lib/siteUrl";
 
 const InstagramReels = dynamic(() => import("@/components/storefront/InstagramReels"));
@@ -26,10 +27,13 @@ export default async function Home() {
   preload(HERO_LCP_SRC, { as: "image", fetchPriority: "high" });
 
   const { homePageSize } = getCatalogConfig();
-  const products = await fetchStoreProducts({
-    pageSize: homePageSize,
+  // Over-fetch: sold-out drops are hidden below, and the API has no stock
+  // filter, so asking for exactly homePageSize would leave gaps in the grid.
+  const fetched = await fetchStoreProducts({
+    pageSize: Math.min(100, homePageSize * 3),
     sort: "newest",
   });
+  const products = filterInStock(fetched).slice(0, homePageSize);
 
   return (
     <div className="w-full bg-white font-sans">

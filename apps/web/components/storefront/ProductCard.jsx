@@ -30,8 +30,6 @@ export default function ProductCard({
   const [quickAddingSize, setQuickAddingSize] = useState("");
   const [showHover, setShowHover] = useState(false);
 
-  if (!product) return null;
-
   const {
     id,
     title,
@@ -43,12 +41,12 @@ export default function ProductCard({
     image,
     hoverImage,
     href,
-  } = adaptProductForCard(product);
+  } = adaptProductForCard(product || {});
   const variants =
-    product.variants?.filter((v) => !v.isDeleted) || product.variants || [];
+    product?.variants?.filter((v) => !v.isDeleted) || product?.variants || [];
 
   const totalStock =
-    product.totalStock ??
+    product?.totalStock ??
     variants.reduce(
       (acc, variant) => acc + (variant.quantity ?? variant.stock ?? 0),
       0
@@ -56,7 +54,7 @@ export default function ProductCard({
 
   const isOutOfStock = totalStock <= 0;
 
-  const availableSizes = getProductSizeOptions(product);
+  const availableSizes = getProductSizeOptions(product || {});
 
   const addSizeToCart = (sizeLabel, qty = 1) => {
     const sizeData = availableSizes.find((s) => s.size === sizeLabel);
@@ -119,6 +117,10 @@ export default function ProductCard({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [showPicker]);
+
+  // Guard after the hooks, never before — an early return above them changes
+  // the hook count between renders and React throws.
+  if (!product) return null;
 
   return (
     <>
@@ -184,7 +186,7 @@ export default function ProductCard({
 
               {!isOutOfStock && availableSizes.length > 0 ? (
                 <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex translate-y-full flex-wrap justify-center gap-1 px-1.5 pb-2 transition-transform duration-300 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 max-lg:hidden"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex translate-y-full flex-nowrap justify-center gap-1 px-1.5 pb-2 transition-transform duration-300 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 max-lg:hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {availableSizes.map((sizeObj) => {
@@ -201,7 +203,7 @@ export default function ProductCard({
                         onClick={(e) =>
                           handleQuickAddSize(e, sizeLabel, stock)
                         }
-                        className={`relative min-w-[2rem] overflow-hidden rounded border px-2 py-1.5 text-[11px] font-semibold uppercase shadow-sm transition-colors lg:min-w-[2.25rem] lg:text-xs ${
+                        className={`relative min-w-0 shrink overflow-hidden rounded border px-1.5 py-1.5 text-[11px] font-semibold uppercase shadow-sm transition-colors lg:px-2 lg:text-xs ${
                           outOfStock
                             ? "cursor-not-allowed border-[#eee] bg-transparent text-[#c9cbcc]"
                             : busy

@@ -14,6 +14,7 @@ import SafeImage from "@/components/SafeImage";
 import ProductCard from "@/components/storefront/ProductCard";
 import ProductDetailSkeleton from "@/components/ProductDetailSkeleton";
 import RecentlyViewed from "@/components/RecentlyViewed";
+import { filterInStock } from "@/lib/productStock";
 import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
@@ -198,7 +199,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
         } catch (relatedError) {
           console.error("Error fetching related products:", relatedError);
         }
-        setSimilarProducts(related.slice(0, 8));
+        setSimilarProducts(filterInStock(related).slice(0, 8));
       } catch (error) {
         console.error("Error fetching product:", error);
       } finally {
