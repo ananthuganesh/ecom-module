@@ -35,7 +35,8 @@ def test_normalize_keeps_hidden_slides():
 
 def test_normalize_caps_the_list():
     many = [{"url": f"/b{i}.webp"} for i in range(25)]
-    assert len(store_theme.normalize_slides(many)) == store_theme.MAX_HERO_SLIDES
+    assert store_theme.MAX_HERO_SLIDES == 5
+    assert len(store_theme.normalize_slides(many)) == 5
 
 
 def test_normalize_survives_garbage():

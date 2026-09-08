@@ -19,7 +19,7 @@ import { AdminListLayout, AdminHeaderButton } from "@/components/admin/list";
 import { Input } from "@/components/ui/input";
 import SafeImage from "@/components/SafeImage";
 
-const MAX_SLIDES = 10;
+const MAX_SLIDES = 5;
 
 export default function AdminBannersPage() {
   const [slides, setSlides] = useState([]);
@@ -135,7 +135,7 @@ export default function AdminBannersPage() {
       actions={
         <>
           <AdminHeaderButton
-            variant="outline"
+            variant="primary"
             disabled={uploading || slides.length >= MAX_SLIDES}
             onClick={() => fileRef.current?.click()}
           >
@@ -144,9 +144,13 @@ export default function AdminBannersPage() {
             ) : (
               <Upload className="w-3.5 h-3.5" />
             )}
-            Add banner
+            {uploading ? "Uploading…" : "Add banner"}
           </AdminHeaderButton>
-          <AdminHeaderButton disabled={!dirty || saving} onClick={handleSave}>
+          <AdminHeaderButton
+            variant="outline"
+            disabled={!dirty || saving}
+            onClick={handleSave}
+          >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
             Save
           </AdminHeaderButton>
@@ -163,6 +167,12 @@ export default function AdminBannersPage() {
       />
 
       <div className="flex flex-col gap-3 px-4 pb-6">
+        {slides.length >= MAX_SLIDES ? (
+          <p className="rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+            {MAX_SLIDES} banners is the maximum — remove one to add another.
+          </p>
+        ) : null}
+
         {usingDefaults ? (
           <p className="rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
             Showing the banners that ship with the store. Save to replace them

@@ -13,7 +13,7 @@ from app.documents import Setting
 
 SETTING_KEY = "store_theme"
 
-MAX_HERO_SLIDES = 10
+MAX_HERO_SLIDES = 5
 
 # Shipped with the app; used until an admin saves their own. Keeping a default
 # means the homepage never renders an empty hero.
