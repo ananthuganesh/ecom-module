@@ -648,12 +648,12 @@ async def cancel_consignment(order: Order) -> dict:
 
 
 async def label_pdf_bytes(order: Order) -> bytes:
-    """Packing slip as PDF.
+    """Packing slip as PDF bytes.
 
-    The documented `/api/p/packing_slip` returns JSON. Delhivery also serves a
-    rendered PDF from the same route with `pdf=true`, which is what the panel
-    uses — we ask for that and fail loudly if we get JSON back, rather than
-    hand-rendering a label that a courier may refuse to scan.
+    Delhivery never serves the PDF inline: `/api/p/packing_slip` always answers
+    JSON (and rejects an `Accept: application/pdf` request outright). With
+    `pdf=true` the JSON carries a short-lived presigned S3 link, which is what
+    actually holds the label, so this is a two-hop fetch.
     """
     cfg = await require_delhivery_creds()
     waybill = waybill_for(order)
@@ -663,22 +663,37 @@ async def label_pdf_bytes(order: Order) -> bytes:
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(
             f"{API_BASE}/api/p/packing_slip",
-            headers=_headers(str(cfg["apiToken"]), accept="application/pdf"),
+            headers=_headers(str(cfg["apiToken"])),
             params={"wbns": waybill, "pdf": "true", "pdf_size": "4R"},
         )
         if resp.status_code >= 400:
             raise HTTPException(status_code=502, detail=resp.text[:300] or "Label download failed")
-        content = resp.content or b""
 
-    if content[:4] == b"%PDF":
-        return content
-    raise HTTPException(
-        status_code=502,
-        detail=(
-            "Delhivery returned a packing slip without a PDF. Print this label from the "
-            "Delhivery panel, or ask Delhivery to enable PDF packing slips for this account."
-        ),
-    )
+        try:
+            data = resp.json() if resp.content else {}
+        except Exception:  # noqa: BLE001
+            data = {}
+
+        package = _extract_package(data)
+        link = str((package or {}).get("pdf_download_link") or "").strip()
+        if not link:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Delhivery returned no packing-slip PDF link for this waybill. "
+                    "Print the label from the Delhivery panel."
+                ),
+            )
+
+        # Presigned URL — must not carry our Authorization header.
+        pdf = await client.get(link, follow_redirects=True)
+        if pdf.status_code >= 400:
+            raise HTTPException(status_code=502, detail="Delhivery label link could not be downloaded")
+        content = pdf.content or b""
+
+    if content[:4] != b"%PDF":
+        raise HTTPException(status_code=502, detail="Delhivery label was not a PDF")
+    return content
 
 
 # --------------------------------------------------------------------------

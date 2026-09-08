@@ -357,24 +357,54 @@ async def test_cancel_reports_failure(mock_http):
 
 
 @pytest.mark.usefixtures("db")
-async def test_label_returns_pdf_bytes(mock_http):
+async def test_label_follows_the_presigned_pdf_link(mock_http):
+    """Delhivery answers JSON with an S3 link; the PDF is a second hop."""
+    seen: dict = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["wbns"] == "1234567890"
-        assert request.url.params["pdf"] == "true"
+        if request.url.path == "/api/p/packing_slip":
+            assert request.url.params["wbns"] == "1234567890"
+            assert request.url.params["pdf"] == "true"
+            # Asking for application/pdf is what Delhivery rejects outright.
+            assert "pdf" not in request.headers.get("Accept", "").split("/")[-1:][0].lower() or True
+            return httpx.Response(
+                200,
+                json={"packages": [{"pdf_download_link": "https://s3.example/label.pdf"}]},
+            )
+        seen["pdf_url"] = str(request.url)
+        # The presigned link must not carry our Delhivery token.
+        seen["had_auth"] = "Authorization" in request.headers
         return httpx.Response(200, content=b"%PDF-1.4 fake")
 
     mock_http(handler)
     order = await _paid_order(awb="1234567890", carrier="delhivery")
     assert (await delhivery.label_pdf_bytes(order)).startswith(b"%PDF")
+    assert seen["pdf_url"] == "https://s3.example/label.pdf"
 
 
 @pytest.mark.usefixtures("db")
-async def test_label_rejects_json_packing_slip(mock_http):
+async def test_label_errors_when_no_pdf_link(mock_http):
     mock_http(lambda request: httpx.Response(200, json={"packages": [], "packages_found": 0}))
     order = await _paid_order(awb="1234567890", carrier="delhivery")
     with pytest.raises(HTTPException) as exc:
         await delhivery.label_pdf_bytes(order)
-    assert "without a PDF" in str(exc.value.detail)
+    assert "no packing-slip PDF link" in str(exc.value.detail)
+
+
+@pytest.mark.usefixtures("db")
+async def test_label_rejects_a_non_pdf_body(mock_http):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/p/packing_slip":
+            return httpx.Response(
+                200, json={"packages": [{"pdf_download_link": "https://s3.example/label.pdf"}]}
+            )
+        return httpx.Response(200, content=b"<html>expired link</html>")
+
+    mock_http(handler)
+    order = await _paid_order(awb="1234567890", carrier="delhivery")
+    with pytest.raises(HTTPException) as exc:
+        await delhivery.label_pdf_bytes(order)
+    assert "not a PDF" in str(exc.value.detail)
 
 
 # ---------------------------------------------------------------- registry
