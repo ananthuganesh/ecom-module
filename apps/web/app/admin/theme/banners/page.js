@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminMediaService, adminStoreThemeService } from "@/api";
 import { userErrorMessage } from "@/lib/userMessage";
+import { bustStorefrontCatalogCache } from "@/lib/bustStorefrontCatalogCache";
 import { toast } from "sonner";
 import {
   ArrowDown,
@@ -113,6 +114,8 @@ export default function AdminBannersPage() {
       setSlides(data?.heroSlides || []);
       setUsingDefaults(Boolean(data?.usingDefaults));
       setDirty(false);
+      // Drop the cached hero so shoppers see this without waiting for the TTL.
+      await bustStorefrontCatalogCache();
       toast.success("Banners published");
     } catch (e) {
       toast.error(userErrorMessage(e, "Couldn’t save banners"));

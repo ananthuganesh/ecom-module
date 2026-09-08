@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getInternalApiBase } from "@/lib/siteUrl";
 
 /**
- * Bust storefront catalog ISR cache after admin product edits.
+ * Bust storefront ISR cache after admin edits (products, hero banners).
  * Auth: forwards cookies to FastAPI admin profile.
  */
 export async function POST(request) {
@@ -31,6 +31,8 @@ export async function POST(request) {
 
   revalidateTag("store-catalog");
   revalidateTag("store-filters");
+  // Hero banners edited under Store Theme.
+  revalidateTag("store-theme");
   revalidatePath("/");
   revalidatePath("/all-products");
   revalidatePath("/category", "layout");
