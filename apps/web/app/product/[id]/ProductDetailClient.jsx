@@ -3,7 +3,6 @@
 import {
   CaretIcon,
   CloseIcon,
-  LocationIcon,
   RulerIcon,
 } from "@/components/icons/storeIcons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -76,9 +75,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [sizeGuideUnit, setSizeGuideUnit] = useState("in");
   const [openSection, setOpenSection] = useState("description");
-  const [pinCode, setPinCode] = useState("");
-  const [pinChecking, setPinChecking] = useState(false);
-  const [pinError, setPinError] = useState("");
   const [deliveryLabel, setDeliveryLabel] = useState("");
   const [ctaPending, setCtaPending] = useState(null);
   const [showStickyCta, setShowStickyCta] = useState(false);
@@ -419,37 +415,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
     (item) => item._id === product?._id && (item.size || "") === selectedSize
   );
 
-  const checkDeliveryPin = async (rawCode = pinCode) => {
-    const code = String(rawCode || "").trim();
-    setPinError("");
-    setDeliveryLabel("");
-    if (!/^\d{6}$/.test(code)) {
-      return;
-    }
-    setPinChecking(true);
-    try {
-      const response = await fetch(
-        `https://api.postalpincode.in/pincode/${code}`
-      );
-      const data = await response.json();
-      const result = Array.isArray(data) ? data[0] : null;
-      if (result?.Status === "Success" && result.PostOffice?.length > 0) {
-        setDeliveryLabel(expectedDeliveryLabel());
-      } else {
-        setPinError("Invalid PIN code. Please check and try again.");
-      }
-    } catch {
-      setPinError("Could not check delivery. Try again.");
-    } finally {
-      setPinChecking(false);
-    }
-  };
-
   useEffect(() => {
-    if (pinCode.length !== 6) return;
-    void checkDeliveryPin(pinCode);
-     
-  }, [pinCode]);
+    setDeliveryLabel(expectedDeliveryLabel());
+  }, []);
 
   useEffect(() => {
     const target = primaryCtaRef.current;
@@ -1095,41 +1063,13 @@ export default function ProductDetailPage({ initialProduct = null }) {
               </button>
             </div>
 
-            <div className="mt-5 rounded-lg p-0">
-              <p className="mb-2 text-[12px] font-medium text-gray-600">
-                Delivery check
-              </p>
-              <label className="relative block">
-                <LocationIcon className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={pinCode}
-                  onChange={(e) => {
-                    const next = e.target.value.replace(/\D/g, "").slice(0, 6);
-                    setPinCode(next);
-                    setPinError("");
-                    setDeliveryLabel("");
-                  }}
-                  placeholder="Enter 6-digit PIN"
-                  className="h-10 w-full rounded-md border border-gray-200 bg-white pr-10 pl-8 text-sm outline-none focus:border-black"
-                />
-                {pinChecking ? (
-                  <span className="absolute top-1/2 right-3 -translate-y-1/2">
-                    <CtaSpinner tone="dark" />
-                  </span>
-                ) : null}
-              </label>
-              {pinError ? (
-                <p className="mt-2 text-[12px] font-medium text-[#DF1721]">{pinError}</p>
-              ) : null}
-              {deliveryLabel ? (
-                <p className="mt-2 text-[12px] font-semibold text-emerald-700">
+            {deliveryLabel ? (
+              <div className="mt-5 rounded-md bg-gray-100 px-3 py-2.5">
+                <p className="text-[13px] font-medium text-gray-700">
                   {deliveryLabel}
                 </p>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
             {productInfoBlock}
           </div>
