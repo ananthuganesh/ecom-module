@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adminProductService, adminCategoryService } from "@/api";
-import { ChevronDown, Download, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Download, GripVertical, Loader2, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { Package } from "@/components/admin/LocalIcons";
@@ -14,6 +14,7 @@ import {
   AdminHeaderButton,
 } from "@/components/admin/list";
 import { DataTable } from "@/components/ui/data-table";
+import ProductReorderList from "@/components/admin/ProductReorderList";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -43,6 +44,9 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true);
   const [statusTab, setStatusTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [reordering, setReordering] = useState(false);
+  const [draftOrder, setDraftOrder] = useState([]);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [rowSelection, setRowSelection] = useState({});
   const [bulkLoading, setBulkLoading] = useState(false);
 
@@ -111,6 +115,34 @@ export default function AdminProductsPage() {
       products: products.length,
     };
   }, [products]);
+
+  const startReorder = () => {
+    // Arrange the whole catalogue, not the filtered view: positions are saved
+    // for every product, so a filtered subset would renumber hidden ones.
+    setDraftOrder(products);
+    setReordering(true);
+  };
+
+  const cancelReorder = () => {
+    setReordering(false);
+    setDraftOrder([]);
+  };
+
+  const saveOrder = async () => {
+    setSavingOrder(true);
+    try {
+      await adminProductService.reorder(draftOrder.map((p) => p._id));
+      setProducts(draftOrder);
+      await bustStorefrontCatalogCache();
+      toast.success("Product order saved");
+      setReordering(false);
+      setDraftOrder([]);
+    } catch (error) {
+      toast.error(userErrorMessage(error, "Couldn’t save the order"));
+    } finally {
+      setSavingOrder(false);
+    }
+  };
 
   const filteredProducts = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -257,9 +289,32 @@ export default function AdminProductsPage() {
         title="Products"
         icon={Package}
         actions={
-          <AdminHeaderButton variant="primary" onClick={handleAddProduct}>
-            Add product
-          </AdminHeaderButton>
+          reordering ? (
+            <>
+              <AdminHeaderButton variant="outline" onClick={cancelReorder}>
+                Cancel
+              </AdminHeaderButton>
+              <AdminHeaderButton
+                variant="primary"
+                disabled={savingOrder}
+                onClick={saveOrder}
+              >
+                {savingOrder ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : null}
+                Save order
+              </AdminHeaderButton>
+            </>
+          ) : (
+            <>
+              <AdminHeaderButton variant="outline" onClick={startReorder}>
+                <GripVertical className="w-3.5 h-3.5" /> Reorder
+              </AdminHeaderButton>
+              <AdminHeaderButton variant="primary" onClick={handleAddProduct}>
+                Add product
+              </AdminHeaderButton>
+            </>
+          )
         }
         metrics={
           <AdminMetricRow
@@ -295,6 +350,15 @@ export default function AdminProductsPage() {
           />
         }
       >
+        {reordering ? (
+          <div className="flex flex-col gap-3 pb-6">
+            <p className="text-[13px] text-muted-foreground">
+              Drag to set the order shoppers see, top first. Search and status
+              filters are ignored here so every product keeps a position.
+            </p>
+            <ProductReorderList products={draftOrder} onChange={setDraftOrder} />
+          </div>
+        ) : (
         <DataTable
           columns={columns}
           data={filteredProducts}
@@ -399,6 +463,7 @@ export default function AdminProductsPage() {
             )
           }
         />
+        )}
       </AdminListLayout>
     </>
   );

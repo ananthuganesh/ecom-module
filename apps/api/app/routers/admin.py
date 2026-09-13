@@ -1,3 +1,4 @@
+import asyncio
 import csv
 from datetime import datetime
 from io import StringIO
@@ -830,6 +831,42 @@ async def admin_create_product(body: dict, _: AdminUser):
     except Exception:
         pass
     return doc_to_dict(product)
+
+
+@router.put("/products/reorder")
+async def reorder_products(body: dict, _: AdminUser):
+    """Set the storefront listing order from a full list of product ids.
+
+    Positions are assigned from the order given, so the client sends the whole
+    arrangement rather than a delta. Ids that no longer exist are ignored.
+    Must stay above /products/{product_id} or it is captured as an id.
+    """
+    raw = (body or {}).get("ids")
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="ids must be a non-empty list")
+
+    ids: list[ObjectId] = []
+    seen: set[str] = set()
+    for item in raw:
+        value = str(item or "").strip()
+        if not ObjectId.is_valid(value) or value in seen:
+            continue
+        seen.add(value)
+        ids.append(ObjectId(value))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No valid product ids")
+
+    collection = Product.get_pymongo_collection()
+    results = await asyncio.gather(
+        *[
+            collection.update_one({"_id": oid}, {"$set": {"sortOrder": position}})
+            for position, oid in enumerate(ids)
+        ]
+    )
+    return {
+        "ok": True,
+        "ordered": sum(1 for r in results if getattr(r, "matched_count", 0)),
+    }
 
 
 @router.get("/products/attribute-options")

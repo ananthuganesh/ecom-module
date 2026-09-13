@@ -166,6 +166,9 @@ class Product(Document):
     variants: list[Variant] = Field(default_factory=list)
     thumbnails: list[str] = Field(default_factory=list)
     totalStock: int = 0
+    # Manual storefront position, lowest first. Products without one sort ahead
+    # of ordered products, newest first, so a new arrival leads until placed.
+    sortOrder: Optional[int] = None
     status: str = "active"
     # Storefront card badge: new_arrival | trending | best_seller
     badge: Optional[str] = None
@@ -237,6 +240,8 @@ class Product(Document):
         name = "products"
         indexes = [
             IndexModel([("slug", 1)], sparse=True),
+            # Storefront listing order.
+            IndexModel([("sortOrder", 1), ("createdAt", -1)]),
             IndexModel([("productUrlId", 1)], unique=True, sparse=True),
             IndexModel([("createdAt", -1)]),
         ]

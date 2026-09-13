@@ -18,6 +18,12 @@ async function fetchProductPage(params = {}) {
 }
 
 export const adminProductService = {
+  /** Persist the storefront listing order. Send every product id, in order. */
+  reorder: async (ids) => {
+    const response = await client.put(`${e.base}/reorder`, { ids });
+    return response.data;
+  },
+
   /** Distinct values already used for free-text attributes (fit, pattern, …). */
   getAttributeOptions: async () => {
     const response = await client.get(`${e.base}/attribute-options`);

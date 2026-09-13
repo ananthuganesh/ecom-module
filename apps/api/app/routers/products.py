@@ -204,7 +204,9 @@ async def list_products(
         priceRange=priceRange,
     )
 
-    sort_spec = [("createdAt", -1)]
+    # Manual order first (admin drag-to-reorder), newest first within ties.
+    # Products with no position sort ahead, so a new arrival leads until placed.
+    sort_spec = [("sortOrder", 1), ("createdAt", -1)]
     if sort == "price_asc":
         sort_spec = [("pricing.sellingPrice", 1)]
     elif sort == "price_desc":
@@ -222,7 +224,12 @@ async def list_products(
 
 @router.get("/featured")
 async def featured(limit: int = Query(default=4, le=12)):
-    products = await Product.find({"status": {"$ne": "draft"}}).sort([("createdAt", -1)]).limit(limit).to_list()
+    products = (
+        await Product.find({"status": {"$ne": "draft"}})
+        .sort([("sortOrder", 1), ("createdAt", -1)])
+        .limit(limit)
+        .to_list()
+    )
     return [product_dict(p) for p in products]
 
 
