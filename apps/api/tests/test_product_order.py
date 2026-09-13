@@ -58,6 +58,20 @@ async def test_drafts_stay_out_of_the_listing():
     assert await _listed_names() == ["Live"]
 
 
+@pytest.mark.usefixtures("db")
+async def test_admin_list_uses_the_same_order_as_the_storefront():
+    """Otherwise a saved arrangement looks reverted the moment the list reloads."""
+    from app.documents import Product as P
+
+    await _product("A", sortOrder=2)
+    await _product("B", sortOrder=0)
+    await _product("C", sortOrder=1)
+
+    rows = await P.find({}).sort([("sortOrder", 1), ("createdAt", -1)]).to_list()
+    assert [p.productName for p in rows] == ["B", "C", "A"]
+    assert await _listed_names() == ["B", "C", "A"]
+
+
 # ---------------------------------------------------------------- reorder endpoint
 
 

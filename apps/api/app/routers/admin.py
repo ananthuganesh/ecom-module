@@ -669,7 +669,11 @@ async def admin_products(
                 matches.append(str(cat_doc.name))
         query["category"] = {"$in": list(dict.fromkeys(matches))}
 
-    cursor = Product.find(query).sort([("createdAt", -1)]).skip(sk).limit(lim)
+    # Same order as the storefront, so the list reflects the arrangement saved
+    # from it rather than appearing to revert after a reorder.
+    cursor = (
+        Product.find(query).sort([("sortOrder", 1), ("createdAt", -1)]).skip(sk).limit(lim)
+    )
     products = await cursor.to_list()
     out = []
     for product in products:
