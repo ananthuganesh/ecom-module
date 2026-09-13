@@ -863,7 +863,7 @@ export default function AdminOrderDetailPage() {
   return (
     <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto bg-background md:gap-6">
       {/* Action Header */}
-      <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 bg-transparent py-0 backdrop-blur-sm">
+      <header className="flex shrink-0 items-center justify-between gap-3 bg-transparent py-0">
         <div className="flex min-w-0 items-center gap-2">
           <ShoppingBag active className="size-[18px] shrink-0 text-[#303030]" />
           <div className="min-w-0">
