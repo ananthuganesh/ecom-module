@@ -835,6 +835,28 @@ async def admin_create_product(body: dict, _: AdminUser):
     return doc_to_dict(product)
 
 
+@router.get("/products/attribute-options")
+async def product_attribute_options(_: AdminUser):
+    """Distinct values already used for the free-text product attributes.
+
+    Lets a value typed on one product become a suggestion on the next, without
+    a separate options collection per attribute. Must stay above the
+    /products/{product_id} route or it is captured as an id.
+    """
+    fields = ("fit", "fabric", "neckType", "pattern", "sleeveType")
+    collection = Product.get_pymongo_collection()
+    out: dict[str, list[str]] = {}
+    for field in fields:
+        values = await collection.distinct(field)
+        cleaned = {
+            " ".join(str(v).split())
+            for v in values
+            if v is not None and str(v).strip()
+        }
+        out[field] = sorted(cleaned, key=str.lower)
+    return out
+
+
 @router.get("/products/{product_id}")
 async def admin_get_product(product_id: str, _: AdminUser):
     from app.services.product_resolve import resolve_product

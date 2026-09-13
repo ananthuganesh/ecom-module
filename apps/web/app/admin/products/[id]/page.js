@@ -57,6 +57,7 @@ import { Spinner } from "@/components/ui/spinner";
 import ProductRichTextEditor from "@/components/admin/ProductRichTextEditor";
 import ProductVariantsCard from "@/components/admin/ProductVariantsCard";
 import ProductColorChips from "@/components/admin/ProductColorChips";
+import ProductAttrCombobox from "@/components/admin/ProductAttrCombobox";
 import ProductInventoryCard from "@/components/admin/ProductInventoryCard";
 import ProductSeoCard from "@/components/admin/ProductSeoCard";
 import { cn } from "@/lib/utils";
@@ -215,6 +216,7 @@ export default function AdminProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
   const [productColors, setProductColors] = useState([]);
+  const [attrOptions, setAttrOptions] = useState({});
   const [variantMenuOpen, setVariantMenuOpen] = useState(false);
   const [qtyOpen, setQtyOpen] = useState(false);
   const [pendingVariant, setPendingVariant] = useState(null);
@@ -300,6 +302,13 @@ export default function AdminProductDetailPage() {
         setProductColors(list.filter(Boolean));
       })
       .catch(() => setProductColors([]));
+  }, []);
+
+  useEffect(() => {
+    adminProductService
+      .getAttributeOptions()
+      .then((data) => setAttrOptions(data && typeof data === "object" ? data : {}))
+      .catch(() => setAttrOptions({}));
   }, []);
 
   useEffect(() => {
@@ -1278,6 +1287,26 @@ export default function AdminProductDetailPage() {
                       </Field>
                     );
                   }
+                  if (creatable) {
+                    // Built-in options plus anything already used on a product,
+                    // so a value typed once becomes a suggestion afterwards.
+                    const merged = [
+                      ...(options || []),
+                      ...(attrOptions[key] || []),
+                    ];
+                    return (
+                      <Field key={key}>
+                        <FieldLabel>{label}</FieldLabel>
+                        <ProductAttrCombobox
+                          value={form[key] || ""}
+                          suggestions={merged}
+                          onChange={(value) => updateForm({ [key]: value })}
+                          placeholder={`Select or type a ${label.toLowerCase()}`}
+                        />
+                      </Field>
+                    );
+                  }
+
                   return (
                   <Field key={key}>
                     <FieldLabel>{label}</FieldLabel>

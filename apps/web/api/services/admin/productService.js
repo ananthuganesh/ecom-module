@@ -18,6 +18,12 @@ async function fetchProductPage(params = {}) {
 }
 
 export const adminProductService = {
+  /** Distinct values already used for free-text attributes (fit, pattern, …). */
+  getAttributeOptions: async () => {
+    const response = await client.get(`${e.base}/attribute-options`);
+    return response.data;
+  },
+
   getProducts: (params = {}) => fetchProductPage(params),
 
   /** Page through the admin products API (max 200/page). */

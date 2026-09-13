@@ -34,16 +34,19 @@ export const PRODUCT_ATTR_FIELDS = [
     key: "fit",
     label: "Fit",
     options: ["Regular", "Oversized", "Relaxed", "Slim"],
+    creatable: true,
   },
   {
     key: "fabric",
     label: "Fabric",
     options: ["Cotton", "Cotton Blend", "Terry", "Polyester"],
+    creatable: true,
   },
   {
     key: "neckType",
     label: "Neck Type",
     options: ["Round Neck", "Polo", "V Neck", "Henley"],
+    creatable: true,
   },
   {
     key: "colors",
@@ -55,11 +58,13 @@ export const PRODUCT_ATTR_FIELDS = [
     key: "pattern",
     label: "Pattern",
     options: ["Graphic Print", "Solid", "Striped", "All Over Print", "Embroidery"],
+    creatable: true,
   },
   {
     key: "sleeveType",
     label: "Sleeve Type",
     options: ["Half Sleeve", "Full Sleeve", "Sleeveless"],
+    creatable: true,
   },
 ];
 
