@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,9 +26,36 @@ export default function ProductAttrCombobox({
 }) {
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
   const inputRef = useRef(null);
+  const anchorRef = useRef(null);
 
   const current = normalizeValue(value);
+
+  // The dropdown is portalled to the body: these fields sit inside a Card with
+  // overflow-hidden, which clips an absolutely positioned menu on the last rows.
+  const measure = useCallback(() => {
+    const node = anchorRef.current;
+    if (!node) return;
+    const box = node.getBoundingClientRect();
+    setRect({ top: box.bottom + 4, left: box.left, width: box.width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    measure();
+  }, [open, measure]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMove = () => measure();
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, measure]);
 
   const options = useMemo(() => {
     const out = [];
@@ -69,7 +97,7 @@ export default function ProductAttrCombobox({
   };
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative", className)} ref={anchorRef}>
       <div
         className="flex min-h-8 w-full items-center gap-1.5 rounded-lg border border-[#e3e3e3] bg-white px-2.5 py-1 shadow-none focus-within:border-[#b5b5b5]"
         onClick={() => inputRef.current?.focus()}
@@ -117,8 +145,12 @@ export default function ProductAttrCombobox({
         />
       </div>
 
-      {open && (filtered.length > 0 || canCreate) ? (
-        <div className="absolute left-0 z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-[#e3e3e3] bg-white py-1 text-left shadow-md">
+      {open && rect && (filtered.length > 0 || canCreate)
+        ? createPortal(
+        <div
+          className="fixed z-50 max-h-48 overflow-auto rounded-lg border border-[#e3e3e3] bg-white py-1 text-left shadow-md"
+          style={{ top: rect.top, left: rect.left, width: rect.width }}
+        >
           {filtered.map((opt) => (
             <button
               key={opt}
@@ -143,8 +175,10 @@ export default function ProductAttrCombobox({
               Add “{typed}”
             </button>
           ) : null}
-        </div>
-      ) : null}
+        </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
