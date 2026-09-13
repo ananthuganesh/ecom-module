@@ -50,4 +50,3 @@ websockets==16.1.1
 boto3==1.42.59
 pypdf==6.9.2
 google-analytics-data==0.18.19
-google-genai>=2.3.0

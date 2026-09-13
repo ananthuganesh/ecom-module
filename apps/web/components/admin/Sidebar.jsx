@@ -211,7 +211,6 @@ const menuItems = [
     icon: Folder,
     subItems: [
       { name: "Files", href: "/admin/content" },
-      { name: "AI Studio", href: "/admin/content/ai-studio" },
     ],
   },
   {

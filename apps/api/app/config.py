@@ -65,12 +65,6 @@ class Settings(BaseSettings):
     delhivery_api_token: str = ""
     delhivery_pickup_location: str = ""
 
-    openrouter_api_key: str = ""
-    openrouter_model: str = "google/gemini-3-pro-image"
-
-    ai_studio_style_prompt: str = ""
-    ai_studio_prompt: str = ""
-
     resend_api_key: str = ""
     resend_from: str = "Urban Aana <noreply@urbanaana.com>"
 

@@ -167,12 +167,6 @@ export default function AdminBannersPage() {
       />
 
       <div className="flex flex-col gap-3 px-4 pb-6">
-        {slides.length >= MAX_SLIDES ? (
-          <p className="rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
-            {MAX_SLIDES} banners is the maximum — remove one to add another.
-          </p>
-        ) : null}
-
         {usingDefaults ? (
           <p className="rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
             Showing the banners that ship with the store. Save to replace them

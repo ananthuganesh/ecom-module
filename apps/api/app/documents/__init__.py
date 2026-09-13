@@ -755,33 +755,6 @@ class Role(Document):
         name = "roles"
 
 
-class AiMediaJob(Document):
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
-
-    prompt: str = ""
-    referenceUrl: Optional[str] = None
-    productImageUrls: list[str] = Field(default_factory=list)
-    outputUrl: Optional[str] = None
-    outputUrls: list[str] = Field(default_factory=list)
-    publishedUrl: Optional[str] = None
-    status: str = "pending"  # pending | processing | succeeded | failed
-    reviewStatus: str = "pending"  # pending | approved | rejected
-    error: Optional[str] = None
-    model: Optional[str] = None
-    aspectRatio: Optional[str] = None
-    quality: Optional[str] = None
-    productId: Optional[Any] = None
-    createdBy: Optional[Any] = None
-    approvedBy: Optional[Any] = None
-    approvedAt: Optional[datetime] = None
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
-
-    class Settings:
-        name = "aimedediajobs"
-        indexes = [IndexModel([("createdAt", -1)])]
-
-
 class MediaAsset(Document):
     """Metadata for files in the media library (alt text, etc.)."""
 
@@ -826,7 +799,6 @@ ALL_DOCUMENTS = [
     SalesReturn,
     PartyPayment,
     Role,
-    AiMediaJob,
     MediaAsset,
     PincodeRoute,
     ReturnRequest,

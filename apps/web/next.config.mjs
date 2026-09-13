@@ -102,7 +102,8 @@ const nextConfig = {
       { source: "/admin/coupons", destination: "/admin/discounts", permanent: false },
       { source: "/admin/inventory", destination: "/admin/products/inventory", permanent: false },
       { source: "/admin/warehouses", destination: "/admin/settings/general", permanent: false },
-      { source: "/admin/content/ai-media", destination: "/admin/content/ai-studio", permanent: false },
+      { source: "/admin/content/ai-media", destination: "/admin/content", permanent: false },
+      { source: "/admin/content/ai-studio", destination: "/admin/content", permanent: false },
       { source: "/admin/reels", destination: "/admin/theme/reels", permanent: false },
       { source: "/admin/reels/:path*", destination: "/admin/theme/reels", permanent: false },
       // Reels moved from Content to Store Theme.
