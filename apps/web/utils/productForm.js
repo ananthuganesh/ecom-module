@@ -54,7 +54,7 @@ export const PRODUCT_ATTR_FIELDS = [
   {
     key: "pattern",
     label: "Pattern",
-    options: ["Graphic Print", "Solid", "Striped", "All Over Print"],
+    options: ["Graphic Print", "Solid", "Striped", "All Over Print", "Embroidery"],
   },
   {
     key: "sleeveType",
