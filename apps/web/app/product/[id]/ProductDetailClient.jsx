@@ -992,7 +992,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                     Size
                     {lowStockLeft ? (
                       <span className="ml-2 font-semibold text-[#DF1721]">
-                        {lowStockLeft} Left
+                        Only {lowStockLeft} Left
                       </span>
                     ) : null}
                   </p>
