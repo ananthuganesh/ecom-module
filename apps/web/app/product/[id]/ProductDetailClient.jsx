@@ -34,6 +34,9 @@ import { resolveCardBadge } from "@/utils/urbanProductAdapter";
 
 const stockFor = (item, fallback = 0) => Number(item?.stock ?? item?.quantity ?? fallback ?? 0);
 
+/** Urgency copy only makes sense below this many units of the chosen size. */
+const LOW_STOCK_THRESHOLD = 10;
+
 function CtaSpinner({ tone = "dark" }) {
   const ring =
     tone === "light"
@@ -395,6 +398,17 @@ export default function ProductDetailPage({ initialProduct = null }) {
     ? stockFor(selectedSizeData, product?.totalStock)
     : Number(product?.totalStock || 0);
   const inStock = availableStock > 0;
+  // Counted for the selected size, not the whole product — "3 left" has to
+  // mean three of this size, or it reads as a lie at the size picker.
+  const selectedSizeStock = selectedSizeData ? stockFor(selectedSizeData, 0) : 0;
+  const lowStockThreshold =
+    Number(product?.lowStockThreshold) > 0
+      ? Number(product.lowStockThreshold)
+      : LOW_STOCK_THRESHOLD;
+  const lowStockLeft =
+    selectedSizeStock > 0 && selectedSizeStock < lowStockThreshold
+      ? selectedSizeStock
+      : 0;
   const price = Number(product?.pricing?.sellingPrice ?? product?.price ?? 0);
   const mrp = Number(product?.pricing?.mrp ?? 0);
   const hasCompareAt = mrp > 0 && mrp > price;
@@ -976,6 +990,11 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 <div className="mb-2.5 flex items-center justify-between gap-3">
                   <p className="text-[12px] font-medium text-gray-600">
                     Size
+                    {lowStockLeft ? (
+                      <span className="ml-2 font-semibold text-[#DF1721]">
+                        {lowStockLeft} Left
+                      </span>
+                    ) : null}
                   </p>
                   <button
                     type="button"
