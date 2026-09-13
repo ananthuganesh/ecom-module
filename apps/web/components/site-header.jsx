@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -77,8 +77,11 @@ export function SiteHeader() {
                   type="button"
                   disabled={saveBar.saving}
                   onClick={() => saveBar.onSave?.()}
-                  className="h-7 cursor-pointer rounded-lg bg-white px-2.5 text-[12px] font-medium text-[#303030] hover:bg-[#f1f1f1] disabled:opacity-50"
+                  className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 text-[12px] font-medium text-[#303030] hover:bg-[#f1f1f1] disabled:cursor-not-allowed disabled:opacity-70"
                 >
+                  {saveBar.saving ? (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  ) : null}
                   {saveBar.saving ? "Saving…" : "Save"}
                 </button>
               </div>
