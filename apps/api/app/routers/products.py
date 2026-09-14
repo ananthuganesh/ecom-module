@@ -5,6 +5,7 @@ from typing import Any
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.deps import OptionalUser
 from app.documents import Product
 from app.serializers import product_dict
 from app.services.rate_limit import rate_limit_dependency
@@ -355,6 +356,24 @@ async def suggestions(
             }
         )
     return out
+
+
+@router.post("/{product_id}/stock-alerts", status_code=201)
+async def create_stock_alert(
+    product_id: str,
+    body: dict,
+    user: OptionalUser,
+    _: None = Depends(rate_limit_dependency("stock-alerts", limit=20)),
+):
+    """Ask to be emailed when a sold-out size is back in stock."""
+    from app.services import stock_alerts
+
+    return await stock_alerts.subscribe(
+        product_id,
+        email=(body or {}).get("email"),
+        size=(body or {}).get("size") or "",
+        user=user,
+    )
 
 
 @router.get("/slug/{slug}")

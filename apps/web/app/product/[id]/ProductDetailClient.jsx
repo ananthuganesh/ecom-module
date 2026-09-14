@@ -18,6 +18,7 @@ import { estimateDeliveryWindow } from "@/lib/deliveryEstimate";
 import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
+import BackInStockNotify from "@/components/storefront/BackInStockNotify";
 import {
   SIZE_GUIDE_COLUMNS,
   SIZE_GUIDE_NOTE,
@@ -1042,7 +1043,10 @@ export default function ProductDetailPage({ initialProduct = null }) {
                     );
                   })}
                 </div>
+                <BackInStockNotify productId={product?._id} sizes={sizes} />
               </div>
+            ) : !inStock ? (
+              <BackInStockNotify productId={product?._id} soldOut />
             ) : null}
 
             <div ref={primaryCtaRef} className="mt-5 flex gap-2">

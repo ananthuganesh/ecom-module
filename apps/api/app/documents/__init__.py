@@ -717,6 +717,30 @@ class ReturnRequest(Document):
         ]
 
 
+class StockAlert(Document):
+    """A shopper asking to hear when a sold-out size comes back."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    productId: str
+    # "" when the whole product was sold out rather than one size.
+    size: str = ""
+    email: str
+    customerId: Optional[str] = None
+    # pending -> sent, or cancelled if the product disappears.
+    status: str = "pending"
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    notifiedAt: Optional[datetime] = None
+    lastError: Optional[str] = None
+
+    class Settings:
+        name = "stock_alerts"
+        indexes = [
+            IndexModel([("productId", 1), ("size", 1), ("email", 1), ("status", 1)]),
+            IndexModel([("status", 1), ("createdAt", 1)]),
+        ]
+
+
 class PincodeRoute(Document):
     """Destination pincode → carrier override.
 
@@ -807,4 +831,5 @@ ALL_DOCUMENTS = [
     MediaAsset,
     PincodeRoute,
     ReturnRequest,
+    StockAlert,
 ]

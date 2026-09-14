@@ -42,6 +42,11 @@ export const productService = {
     client.get(e.byId(id)).then((res) => res.data),
   getBySlug: (slug) =>
     client.get(`${e.base}/slug/${slug}`).then((res) => res.data),
+  /** { subscribed, inStock, alreadyWaiting } */
+  subscribeStockAlert: (id, { email, size = "" }) =>
+    client
+      .post(`${e.byId(id)}/stock-alerts`, { email, size })
+      .then((res) => res.data),
   getSuggestions: (keyword) =>
     client
       .get(`${e.base}/search/suggestions`, { params: { q: keyword } })
