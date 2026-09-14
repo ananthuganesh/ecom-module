@@ -203,3 +203,9 @@
   outline: 2px solid #222222;
   outline-offset: 2px;
 }
+/* The search bar is already a focused full-width panel; no extra outline. */
+.storefront-root input[type="search"]:focus,
+.storefront-root input[type="search"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
