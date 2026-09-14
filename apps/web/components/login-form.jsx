@@ -16,6 +16,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import BrandLogo from "@/components/BrandLogo";
 import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
 
 /**
@@ -76,6 +77,7 @@ export function LoginForm({ className, mode = "customer", ...props }) {
   return (
     <div className={cn("flex flex-col gap-1", className)} {...props}>
       <div className="flex flex-col items-center gap-1 text-center">
+        {isAdmin ? <BrandLogo href={null} height={36} priority className="mb-4" /> : null}
         <h1 className="text-2xl font-bold">
           {isAdmin ? "Welcome back" : "Login to your account"}
         </h1>
