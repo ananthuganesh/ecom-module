@@ -40,17 +40,17 @@ export function SiteHeader() {
           </Link>
           <div className="hidden min-w-0 sm:block">
             <p className="m-0 truncate text-[11px] leading-tight text-white/55">
-              Custom Shopify Solution
+              Designed &amp; developed
             </p>
             <p className="m-0 truncate text-[11px] leading-tight text-white/55">
               by{" "}
               <a
-                href="https://bridnetwork.in"
+                href="https://www.bridnetwork.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-white/80 underline-offset-2 hover:text-white hover:underline"
               >
-                Brid Network
+                Brid Network LLP
               </a>
             </p>
           </div>
