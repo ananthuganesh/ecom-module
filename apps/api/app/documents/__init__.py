@@ -329,7 +329,14 @@ class Order(Document):
             IndexModel([("customerId", 1), ("createdAt", -1)]),
             IndexModel([("status", 1), ("createdAt", -1)]),
             IndexModel([("razorpayOrderId", 1)], sparse=True),
-            IndexModel([("orderNumber", 1)], unique=True, sparse=True),
+            # Partial, not sparse: unpaid checkouts carry orderNumber=None, and a
+            # sparse index still indexes nulls, so two of them would collide.
+            IndexModel(
+                [("orderNumber", 1)],
+                name="orderNumber_1",
+                unique=True,
+                partialFilterExpression={"orderNumber": {"$type": "string"}},
+            ),
             IndexModel([("orderUrlId", 1)], unique=True, sparse=True),
             IndexModel([("createdAt", -1)]),
         ]

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.deps import CurrentUser
 from app.documents import Order, PaymentTransaction, User
+from app.routers.orders import assign_order_number
 from app.serializers import remap_order
 from app.services import payment_instrument as pay_instrument
 from app.services import razorpay_cfg
@@ -101,6 +102,7 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
                 status_code=409,
                 detail="Order already paid; duplicate payment is being refunded",
             )
+        await assign_order_number(order)
         await apply_order_commitments(order)
         return
 
@@ -150,12 +152,16 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
                     rz_payment_id,
                     reason="duplicate_payment_race",
                 )
+            await assign_order_number(refreshed)
             await apply_order_commitments(refreshed)
+            order.orderNumber = refreshed.orderNumber
             order.paymentStatus = refreshed.paymentStatus
             order.transactionDetails = dict(refreshed.transactionDetails or {})
             return
         raise HTTPException(status_code=409, detail="Could not finalize payment status")
 
+    # Paid: now it earns a display number (UA1000…).
+    await assign_order_number(order)
     order = await Order.get(order.id) or order
     pay_instrument.apply_instrument_to_order(order, payment)
     from app.services.order_abandon import (
@@ -219,6 +225,7 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
         from app.services import email_resend as email_svc
 
         notify_user = user or (await User.get(order.customerId) if order.customerId else None)
+        await aisensy_svc.notify_order_event_once("orderPlaced", order, notify_user)
         await aisensy_svc.notify_order_event_once("orderPaid", order, notify_user)
         await email_svc.notify_order_email_once("CONFIRMED", order, notify_user)
         await email_svc.notify_staff_new_order(order, notify_user)

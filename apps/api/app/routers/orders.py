@@ -72,6 +72,36 @@ async def _next_order_number() -> str:
     return f"{prefix}{n}{suffix}"
 
 
+async def assign_order_number(order: Order) -> str:
+    """Give a paid order its display number (UA1000…), exactly once.
+
+    Numbers are assigned on payment rather than at checkout so abandoned
+    checkouts don't leave gaps in the sequence. Safe to call repeatedly and
+    from concurrent verify/webhook paths: only the first write wins.
+    """
+    if order.orderNumber:
+        return order.orderNumber
+    col = Order.get_pymongo_collection()
+    for _attempt in range(5):
+        candidate = await _next_order_number()
+        try:
+            result = await col.update_one(
+                {"_id": order.id, "orderNumber": {"$not": {"$type": "string"}}},
+                {"$set": {"orderNumber": candidate}},
+            )
+        except DuplicateKeyError:
+            continue  # counter lagged behind an existing number; take the next one
+        if result.modified_count:
+            order.orderNumber = candidate
+            return candidate
+        # Someone else numbered it first; use theirs.
+        current = await col.find_one({"_id": order.id}, {"orderNumber": 1})
+        if current and current.get("orderNumber"):
+            order.orderNumber = current["orderNumber"]
+            return order.orderNumber
+    raise HTTPException(status_code=409, detail="Could not allocate order number")
+
+
 async def _next_order_url_id() -> str:
     """12-digit public URL id, separate from display orderNumber (UA1000)."""
     col = Setting.get_pymongo_collection()
@@ -284,7 +314,8 @@ async def create_order(
 
     order = Order(
         customerId=user.id,
-        orderNumber=await _next_order_number(),
+        # Assigned on payment (assign_order_number) so abandoned checkouts leave no gaps.
+        orderNumber=None,
         orderUrlId=await _next_order_url_id(),
         items=items,
         shippingAddress=shipping_address,
@@ -317,7 +348,7 @@ async def create_order(
     from app.services.dtdc_est_cost import apply_dtdc_est_cost
 
     apply_dtdc_est_cost(order)
-    # Retry if a stale counter races another insert on unique orderNumber.
+    # Retry if a stale counter races another insert on unique orderUrlId.
     for attempt in range(5):
         try:
             await order.insert()
@@ -326,9 +357,8 @@ async def create_order(
             if attempt >= 4:
                 raise HTTPException(
                     status_code=409,
-                    detail="Could not allocate order number. Please try again.",
+                    detail="Could not create order. Please try again.",
                 )
-            order.orderNumber = await _next_order_number()
             order.orderUrlId = await _next_order_url_id()
 
     try:
@@ -348,21 +378,8 @@ async def create_order(
         await order.delete()
         raise HTTPException(status_code=400, detail="Could not reserve stock") from exc
 
-    try:
-        await erp_ops.ensure_order_invoice(order, actor=user)
-    except Exception as exc:
-        print(f"[Checkout] Invoice create failed: {exc}")
-
-    try:
-        from app.services import aisensy as aisensy_svc
-        from app.services import email_resend as email_svc
-
-        await aisensy_svc.notify_order_event_once("orderPlaced", order, user)
-        await email_svc.notify_order_email_once("PLACED", order, user)
-        await email_svc.notify_staff_new_order(order, user)
-    except Exception as exc:
-        print(f"[Checkout] orderPlaced notify failed: {exc}")
-
+    # No invoice, number or "order placed" message yet: all of those happen on
+    # payment (_finalize_paid_order), so an abandoned checkout uses up nothing.
     return remap_order(order)
 
 
@@ -957,6 +974,7 @@ async def mark_paid(order_id: str, admin: PaymentsWriter, body: dict | None = No
 
     await ensure_stock_for_payment(order)
     reason = str((body or {}).get("reason") or "admin_manual_mark_paid").strip()[:200]
+    await assign_order_number(order)
     order.paymentStatus = "paid"
     # Whitelist only — never merge raw body (stock flags / inventory bypass).
     order.transactionDetails = {

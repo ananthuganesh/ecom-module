@@ -39,6 +39,7 @@ def _wanted_index_flags(index_model) -> dict:
     return {
         "unique": bool(doc.get("unique")),
         "sparse": bool(doc.get("sparse")),
+        "partialFilterExpression": doc.get("partialFilterExpression") or None,
     }
 
 
@@ -87,6 +88,7 @@ async def _drop_conflicting_indexes(db) -> list[str]:
             have_flags = {
                 "unique": bool(have.get("unique")),
                 "sparse": bool(have.get("sparse")),
+                "partialFilterExpression": dict(have.get("partialFilterExpression") or {}) or None,
             }
             if have_flags != wanted:
                 await coll.drop_index(name)

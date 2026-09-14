@@ -1,4 +1,8 @@
-/** Display order number as #UA1000 (human-facing). */
+/**
+ * Display order number as #UA1000 (human-facing).
+ * Orders get their number on payment, so an unpaid checkout has none yet:
+ * label it plainly instead of a # code that looks like a real order number.
+ */
 export function formatOrderNumber(order, fallbackLen = 6) {
   const raw = order?.orderNumber != null ? String(order.orderNumber).trim() : "";
   if (raw) {
@@ -7,7 +11,7 @@ export function formatOrderNumber(order, fallbackLen = 6) {
   }
   const id = order?._id != null ? String(order._id) : "";
   if (!id) return null;
-  return `#${id.slice(-fallbackLen).toUpperCase()}`;
+  return `Unpaid · ${id.slice(-fallbackLen).toUpperCase()}`;
 }
 
 /**
