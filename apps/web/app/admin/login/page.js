@@ -46,6 +46,9 @@ function AdminLoginInner() {
             <LoginForm mode="admin" />
           </div>
         </div>
+        <p className="text-center text-xs text-muted-foreground">
+          Designed &amp; developed by Brid Network LLP
+        </p>
       </div>
       <div className="relative hidden bg-muted lg:block">
         <Image
