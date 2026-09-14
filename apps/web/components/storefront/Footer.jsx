@@ -157,7 +157,7 @@ const Footer = () => {
               href="https://www.bridnetwork.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-brand-red transition-colors"
+              className="underline-offset-4 hover:underline hover:text-brand-red transition-colors"
             >
               Brid Network LLP
             </a>
