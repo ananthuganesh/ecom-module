@@ -152,9 +152,9 @@ const Footer = () => {
             © {new Date().getFullYear()} Urban Aana. All rights reserved.
           </p>
           <p className="text-[12px] tracking-wide opacity-80 text-left sm:text-right">
-            Design &amp; Development by{" "}
+            Designed &amp; developed by{" "}
             <a
-              href="https://www.bridnetwork.com/"
+              href="https://www.bridnetwork.com"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-brand-red transition-colors"
