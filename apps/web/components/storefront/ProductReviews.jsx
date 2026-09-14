@@ -192,6 +192,8 @@ export default function ProductReviews({ productId }) {
 
   const summary = data?.summary || { average: 0, count: 0, distribution: {} };
   const hasMore = page < (data?.pages || 1);
+  // No reviews and no form open: centre the message instead of a two-column layout.
+  const isEmpty = !loading && summary.count === 0 && !writing;
   const canWrite = signedIn && mine?.canReview;
 
   const handleSaved = (result) => {
@@ -235,8 +237,14 @@ export default function ProductReviews({ productId }) {
           </h2>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] md:gap-10">
-          <div className="flex flex-col gap-4">
+        <div
+          className={
+            isEmpty
+              ? "flex flex-col items-center text-center"
+              : "grid gap-6 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] md:gap-10"
+          }
+        >
+          <div className={`flex flex-col gap-4 ${isEmpty ? "items-center" : ""}`}>
             {summary.count > 0 ? (
               <>
                 <div className="flex items-center gap-3">
