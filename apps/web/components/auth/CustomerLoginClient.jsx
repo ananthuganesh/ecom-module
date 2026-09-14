@@ -83,7 +83,7 @@ export default function CustomerLoginClient() {
           <BrandLogo href="/" height={32} priority />
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <div className="flex w-full max-w-xs flex-col gap-6">
+          <div className="flex w-full max-w-xs flex-col gap-1">
             <div className="flex flex-col items-center gap-1 text-center">
               <h1 className="text-2xl font-bold">Login to your account</h1>
             </div>
