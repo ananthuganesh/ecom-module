@@ -96,7 +96,7 @@ function ratingColumn({ widthClass, size } = {}) {
     meta: meta({ widthClass }),
     accessorFn: (row) => Number(row.rating || 0),
     header: "Rating",
-    cell: ({ row }) => <StarRating rating={row.original.rating} size={13} className="text-amber-500" />,
+    cell: ({ row }) => <StarRating rating={row.original.rating} size={13} className="text-[#F5B301]" />,
   };
 }
 

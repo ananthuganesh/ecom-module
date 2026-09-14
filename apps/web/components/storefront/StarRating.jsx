@@ -13,7 +13,7 @@ export function StarIcon({ filled, size = 20 }) {
 }
 
 /** Read-only stars. Colour comes from `className` (text-*). */
-export default function StarRating({ rating = 0, size = 14, className = "text-black", label }) {
+export default function StarRating({ rating = 0, size = 14, className = "text-[#F5B301]", label }) {
   const slots = starSlots(rating);
   return (
     <span

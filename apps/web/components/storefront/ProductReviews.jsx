@@ -10,7 +10,6 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { userErrorMessage } from "@/lib/userMessage";
 import {
   REVIEW_BODY_MAX,
-  REVIEW_TITLE_MAX,
   formatReviewDate,
   ratingBreakdown,
   reviewCountLabel,
@@ -44,7 +43,7 @@ function StarPicker({ value, onChange }) {
             aria-label={`${star} star${star === 1 ? "" : "s"}`}
             onMouseEnter={() => setHover(star)}
             onClick={() => onChange(star)}
-            className="rounded p-0.5 text-black focus-visible:outline-2 focus-visible:outline-black"
+            className="rounded p-0.5 text-[#F5B301] focus-visible:outline-2 focus-visible:outline-black"
           >
             <StarIcon filled={shown >= star} size={26} />
           </button>
@@ -56,7 +55,8 @@ function StarPicker({ value, onChange }) {
 
 function ReviewForm({ productId, initial, onSaved, onCancel }) {
   const [rating, setRating] = useState(initial?.rating || 0);
-  const [title, setTitle] = useState(initial?.title || "");
+  // No title field any more; an existing review keeps the title it had.
+  const [title] = useState(initial?.title || "");
   const [body, setBody] = useState(initial?.body || "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -94,19 +94,8 @@ function ReviewForm({ productId, initial, onSaved, onCancel }) {
           }}
         />
       </div>
-      <label htmlFor="review-title" className="mt-4 block text-[12px] font-medium text-gray-600">
-        Title <span className="font-normal text-gray-400">(optional)</span>
-      </label>
-      <input
-        id="review-title"
-        value={title}
-        maxLength={REVIEW_TITLE_MAX}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Sum it up, e.g. Great fit, heavy cotton"
-        className="mt-1 h-10 w-full rounded-md border border-gray-200 px-3 text-[13px] outline-none focus:border-black"
-      />
-      <label htmlFor="review-body" className="mt-3 block text-[12px] font-medium text-gray-600">
-        Review <span className="font-normal text-gray-400">(optional)</span>
+      <label htmlFor="review-body" className="sr-only">
+        Your feedback
       </label>
       <textarea
         id="review-body"
@@ -114,8 +103,8 @@ function ReviewForm({ productId, initial, onSaved, onCancel }) {
         maxLength={REVIEW_BODY_MAX}
         onChange={(e) => setBody(e.target.value)}
         rows={4}
-        placeholder="How was the fit, fabric and print after a few washes?"
-        className="mt-1 w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
+        placeholder="Write your valuable feedback"
+        className="mt-4 w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-black"
       />
       {error ? <p role="alert" className="mt-2 text-[12px] text-[#DF1721]">{error}</p> : null}
       <div className="mt-3 flex gap-2">

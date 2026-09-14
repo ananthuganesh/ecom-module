@@ -20,7 +20,7 @@ const AboutSection = () => {
   return (
     <div className="w-full bg-white text-[#222222] font-[family-name:var(--font-lato)]">
       {/* Hero */}
-      <section className="relative isolate min-h-[72vh] overflow-hidden md:min-h-[78vh]">
+      <section className="relative isolate overflow-hidden">
         <Image
           src={HERO_IMAGE}
           alt="Urban Aana"
@@ -30,7 +30,9 @@ const AboutSection = () => {
           className="object-cover object-center"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/45 to-black/25" />
-        <div className="relative z-10 mx-auto flex min-h-[72vh] max-w-[1280px] flex-col justify-end px-6 pb-14 pt-28 md:min-h-[78vh] md:px-10 md:pb-20">
+        {/* Height follows the cover's 1920×733 shape from tablet up; phones keep
+            enough room for the heading over the image. */}
+        <div className="relative z-10 mx-auto flex min-h-[360px] max-w-[1280px] flex-col justify-end px-6 pb-10 pt-24 sm:aspect-[1920/733] sm:min-h-[320px] sm:pt-10 md:max-h-[82vh] md:px-10 md:pb-16">
           <motion.h1
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
