@@ -70,9 +70,7 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     }
   };
 
-  const inputClassName = isAdmin
-    ? "h-9 border-0 !bg-zinc-100 text-foreground shadow-none focus-visible:border-0 focus-visible:ring-0"
-    : "h-8";
+  const inputClassName = isAdmin ? "h-9" : "h-8";
 
   return (
     <div className={cn("flex flex-col gap-1", className)} {...props}>
