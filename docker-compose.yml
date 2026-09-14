@@ -49,7 +49,6 @@ services:
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL}
       R2_KEY_PREFIX: ${R2_KEY_PREFIX:-}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       GTM_ID: ${GTM_ID:-}
       GTM_ENABLED: ${GTM_ENABLED:-true}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
