@@ -86,7 +86,7 @@ export default function CustomerLoginClient() {
             <CustomerOtpForm
               idPrefix="login-otp"
               className="text-center [&_form]:text-left"
-              inputClassName="h-9"
+              inputClassName="h-9 !bg-white"
               buttonClassName="h-9"
               onSuccess={finish}
             />
