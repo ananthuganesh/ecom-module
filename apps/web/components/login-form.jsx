@@ -11,23 +11,15 @@ import { userErrorMessage } from "@/lib/userMessage";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Field,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import BrandLogo from "@/components/BrandLogo";
 import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
 
 /**
- * shadcn login-01 UI — customer OTP (desktop card) or admin password.
+ * shadcn login-02 form body — admin password (customer OTP kept for reuse).
  */
 export function LoginForm({ className, mode = "customer", ...props }) {
   const isAdmin = mode === "admin";
@@ -83,30 +75,16 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     : "h-8";
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card
-        className={cn(
-          "min-h-[28rem] justify-center py-8",
-          isAdmin &&
-            "bg-white ring-1 ring-zinc-200 shadow-md shadow-zinc-200/60"
-        )}
-      >
-        <CardHeader className="justify-items-center text-center">
-          <BrandLogo href={null} height={36} priority className="mb-2" />
-          <CardTitle
-            className={isAdmin ? "text-2xl font-semibold tracking-tight" : undefined}
-          >
-            {isAdmin ? "Welcome to UA Admin" : "Login to your account"}
-          </CardTitle>
-          {isAdmin ? (
-            <CardDescription>Sign in to admin.</CardDescription>
-          ) : (
-            <CardDescription className="sr-only">
-              Sign in with an email code
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="pt-2">
+    <div className={cn("flex flex-col gap-1", className)} {...props}>
+      <div className="flex flex-col items-center gap-1 text-center">
+        <h1 className="text-2xl font-bold">
+          {isAdmin ? "Welcome to UA Admin" : "Login to your account"}
+        </h1>
+      </div>
+      {isAdmin ? (
+        <p className="mb-5 text-center text-sm text-muted-foreground">Sign in to admin.</p>
+      ) : null}
+      <div>
           {isAdmin ? (
             <form onSubmit={handleAdminSubmit}>
               <FieldGroup className="gap-5">
@@ -166,8 +144,7 @@ export function LoginForm({ className, mode = "customer", ...props }) {
               onSuccess={safeRedirect}
             />
           )}
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }
