@@ -228,6 +228,10 @@ export default function ProductReviews({ productId }) {
     );
   }
 
+  // No reviews yet: hide the section, except for a buyer who can write the first one.
+  // Also stay hidden until the first load so it doesn't flash in and out.
+  if (!data || (summary.count === 0 && !canWrite && !writing && !notice)) return null;
+
   return (
     <section id="reviews" className="scroll-mt-24 border-t border-gray-100 bg-white py-6 md:py-10">
       <div className="mx-auto w-full max-w-5xl px-4 lg:px-8">
