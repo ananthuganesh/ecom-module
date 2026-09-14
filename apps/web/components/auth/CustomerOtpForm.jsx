@@ -229,7 +229,7 @@ export default function CustomerOtpForm({
 
   const description =
     step === "otp"
-      ? `Enter the 6-digit code sent to ${email.trim().toLowerCase()}`
+      ? "Enter the 6-digit OTP sent to your email."
       : fixedEmail
         ? `We'll email a 6-digit code to ${fixedEmail} to confirm it's you.`
         : "Enter your email below to login to your account";
