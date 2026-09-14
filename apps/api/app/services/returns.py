@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from app.documents import Order, ReturnItem, ReturnRequest, User
 
 # Customers may raise a return within this window after delivery.
-RETURN_WINDOW_DAYS = 2
+RETURN_WINDOW_DAYS = 3
 
 OPEN_STATUSES = ("requested", "approved", "picked_up")
 CLOSED_STATUSES = ("received", "rejected", "cancelled")

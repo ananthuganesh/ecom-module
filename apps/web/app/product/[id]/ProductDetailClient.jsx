@@ -613,7 +613,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   </p>
                   <p>
                     Easy returns and exchanges are available on eligible
-                    products within the return window, provided items are
+                    products within 3 days of delivery, provided items are
                     unused and in original condition with tags.
                   </p>
                   <Link

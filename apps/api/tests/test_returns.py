@@ -59,7 +59,7 @@ async def _delivered_order(*, days_ago: float = 0.0, **overrides) -> Order:
     return order
 
 
-# ---------------------------------------------------------------- the 2-day window
+# ---------------------------------------------------------------- the 3-day window
 
 
 @pytest.mark.usefixtures("db")
@@ -67,19 +67,19 @@ async def test_delivered_today_is_returnable():
     order = await _delivered_order(days_ago=0)
     check = await returns_svc.eligibility(order)
     assert check["eligible"] is True
-    assert check["windowDays"] == 2
+    assert check["windowDays"] == 3
     assert len(check["items"]) == 2
 
 
 @pytest.mark.usefixtures("db")
 async def test_inside_the_window_is_returnable():
-    order = await _delivered_order(days_ago=1.9)
+    order = await _delivered_order(days_ago=2.9)
     assert (await returns_svc.eligibility(order))["eligible"] is True
 
 
 @pytest.mark.usefixtures("db")
-async def test_past_two_days_is_refused():
-    order = await _delivered_order(days_ago=2.1)
+async def test_past_three_days_is_refused():
+    order = await _delivered_order(days_ago=3.1)
     check = await returns_svc.eligibility(order)
     assert check["eligible"] is False
     assert "window closed" in check["reason"]
@@ -105,10 +105,10 @@ async def test_missing_delivery_date_does_not_silently_open_the_window():
 
 
 @pytest.mark.usefixtures("db")
-async def test_window_closes_two_days_after_delivery():
+async def test_window_closes_three_days_after_delivery():
     order = await _delivered_order(days_ago=0)
     closes = returns_svc.window_closes_at(order)
-    assert (closes - order.deliveredAt) == timedelta(days=2)
+    assert (closes - order.deliveredAt) == timedelta(days=3)
 
 
 # ---------------------------------------------------------------- creating a request
@@ -168,7 +168,7 @@ async def test_empty_selection_is_refused():
 
 @pytest.mark.usefixtures("db")
 async def test_expired_window_blocks_creation():
-    order = await _delivered_order(days_ago=3)
+    order = await _delivered_order(days_ago=4)
     with pytest.raises(HTTPException):
         await returns_svc.create_request(order, user=None, selections=[{"index": 0, "quantity": 1}])
 

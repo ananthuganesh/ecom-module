@@ -16,8 +16,8 @@ const FAQ_ITEMS = [
     question: "What is your return and exchange policy?",
     answer: (
       <>
-        Easy returns and exchanges are available on eligible products within the
-        return window, as long as items are unused and in original condition with
+        Easy returns and exchanges are available on eligible products within 3
+        days of delivery, as long as items are unused and in original condition with
         tags.{" "}
         <Link
           href="/return-refund"

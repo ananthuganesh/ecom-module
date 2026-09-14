@@ -106,7 +106,7 @@ export default function ReturnsAndShippingPage() {
           <li>Item is unused, unworn, unwashed, and in original condition</li>
           <li>Original tags and packaging are intact</li>
           <li>
-            Return request is raised within <strong>7 days</strong> of delivery
+            Return request is raised within <strong>3 days</strong> of delivery
           </li>
           <li>Proof of purchase / order number is provided</li>
         </ul>
