@@ -278,7 +278,7 @@ export default function CustomerOtpForm({
                     Sending…
                   </>
                 ) : (
-                  fixedEmail ? "Email me a code" : "Send code"
+                  fixedEmail ? "Email me a code" : "Send OTP"
                 )}
               </Button>
             </Field>
