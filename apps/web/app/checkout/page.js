@@ -21,6 +21,7 @@ import {
   couponService,
   productService,
   authService,
+  shippingService,
 } from "@/api";
 import { isCartLineUnavailable } from "@/utils/cartStock";
 import { emailQualityError } from "@/utils/emailQuality";
@@ -312,6 +313,9 @@ function CheckoutPageContent() {
   const [cartHydrated, setCartHydrated] = useState(false);
 
   const [isPincodeLoading, setIsPincodeLoading] = useState(false);
+  // Whether any carrier serves this pincode. null = not checked or unverified,
+  // which must never block payment.
+  const [deliverable, setDeliverable] = useState(null);
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState("");
@@ -437,6 +441,8 @@ function CheckoutPageContent() {
     }
     if (key === "postalCode") {
       setFormErrors((prev) => ({ ...prev, postalCode: "", city: "", state: "" }));
+      // A new PIN hasn't been checked yet; don't keep blocking on the old one.
+      setDeliverable(null);
       return;
     }
     if (formErrors[key] || formErrors.name) {
@@ -504,7 +510,26 @@ function CheckoutPageContent() {
             country: office.Country || prev.country || "India",
           }));
           setFormErrors((prev) => ({ ...prev, postalCode: "", city: "", state: "" }));
+
+          // The PIN exists — now check a carrier actually delivers there, so a
+          // shopper finds out before paying rather than days later.
+          try {
+            const check = await shippingService.checkDeliverable(pincode);
+            if (check?.deliverable === false) {
+              setDeliverable(false);
+              setFormErrors((prev) => ({
+                ...prev,
+                postalCode: check.reason || "We don't deliver to this PIN code yet.",
+              }));
+            } else {
+              setDeliverable(check?.deliverable ?? null);
+            }
+          } catch {
+            // Unverifiable is not undeliverable; the server re-checks anyway.
+            setDeliverable(null);
+          }
         } else {
+          setDeliverable(null);
           setFormData((prev) => ({ ...prev, city: "", state: "" }));
           setFormErrors((prev) => ({
             ...prev,
@@ -593,6 +618,8 @@ function CheckoutPageContent() {
     }
     if (!/^\d{6}$/.test(formData.postalCode || "")) {
       errors.postalCode = "Enter a valid 6-digit PIN code.";
+    } else if (deliverable === false) {
+      errors.postalCode = "We don't deliver to this PIN code yet.";
     }
     if (!formData.city?.trim()) {
       errors.city = "City will appear after a valid PIN code.";

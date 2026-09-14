@@ -137,6 +137,23 @@ def _order_is_shipped(order: Order) -> bool:
     return status in SHIPPED_STATUSES or shipping in SHIPPED_STATUSES
 
 
+async def _assert_deliverable(address: dict) -> None:
+    """Refuse an order to a pincode no carrier can serve, before payment.
+
+    Only a definite "no" blocks. An unknown answer (carrier API unreachable)
+    lets the order through, since checkout must not fail because of an outage.
+    """
+    from app.services import couriers
+
+    pin = address.get("pincode") or address.get("postalCode") or address.get("zipcode")
+    result = await couriers.deliverability(pin)
+    if result.get("deliverable") is False and result.get("pincode"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("reason") or "We don't deliver to this PIN code yet.",
+        )
+
+
 async def _storefront_shipping_price(address: dict) -> float:
     """Price storefront delivery from the server-side shipping profile."""
     settings = await get_shipping_settings()
@@ -226,6 +243,7 @@ async def create_order(
     await ensure_payment_method_enabled(payment)
 
     shipping_address = body.get("shippingAddress") or {}
+    await _assert_deliverable(shipping_address)
     delivery = await _storefront_shipping_price(shipping_address)
     is_gift = bool(body.get("isGift"))
     gift_fee = 39 if is_gift else 0

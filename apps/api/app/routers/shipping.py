@@ -1,11 +1,12 @@
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from app.deps import AdminUser, CurrentUser
 from app.documents import Order, User
 from app.serializers import remap_order
 from app.services import couriers
+from app.services.rate_limit import rate_limit_dependency
 from app.services.fulfillment import mark_ready_to_ship_after_label, process_full_order_flow
 
 router = APIRouter(prefix="/api/shipping", tags=["shipping"])
@@ -46,6 +47,25 @@ async def track(order_id: str, user: CurrentUser):
         raise HTTPException(status_code=403, detail="Not authorized")
     tracking = await couriers.track_shipment(order)
     return {"order": remap_order(order), "tracking": tracking}
+
+
+@router.get("/deliverable/{pincode}")
+async def deliverable(
+    pincode: str,
+    _: None = Depends(rate_limit_dependency("deliverable", limit=60)),
+):
+    """Public: can we deliver to this pincode? Used at checkout before paying.
+
+    Rate limited because a pincode on DTDC's exclusion list costs a call to
+    Delhivery's API; results are also cached.
+    """
+    result = await couriers.deliverability(pincode)
+    # Shoppers see whether they can order, not which courier we would pick.
+    return {
+        "pincode": result.get("pincode"),
+        "deliverable": result.get("deliverable"),
+        "reason": result.get("reason") if result.get("deliverable") is False else None,
+    }
 
 
 @router.get("/carriers")

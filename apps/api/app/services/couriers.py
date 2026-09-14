@@ -8,6 +8,7 @@ orders booked before Delhivery existed have no `carrier` and are DTDC.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import HTTPException
@@ -296,3 +297,63 @@ async def serviceability(pincode: str) -> list[dict[str, Any]]:
             }
         )
     return results
+
+
+# --------------------------------------------------------------------------
+# Deliverability — can we ship to this pincode at all?
+# --------------------------------------------------------------------------
+
+# Definite answers are cached; an unknown one (carrier API down) is not, so a
+# transient outage never sticks as a refusal.
+_DELIVERABLE_TTL_SEC = 6 * 60 * 60
+_deliverable_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def clear_deliverability_cache() -> None:
+    _deliverable_cache.clear()
+
+
+async def deliverability(pincode: str | None) -> dict[str, Any]:
+    """Whether a shopper at this pincode can be served, and by which carrier.
+
+    `deliverable` is True, False, or None when it cannot be determined. Callers
+    must treat None as "allow": blocking checkout because a carrier API is
+    unreachable would turn an outage into lost sales.
+
+    DTDC has no serviceability API, so a pincode not on its exclusion list is
+    taken as DTDC-deliverable — the same assumption booking already makes. A
+    pincode on the list must be served by Delhivery instead, which is asked.
+    """
+    pin = pincode_routes.normalize_pincode(pincode)
+    if not pin:
+        return {"deliverable": False, "pincode": None, "reason": "Enter a valid 6-digit PIN code."}
+
+    cached = _deliverable_cache.get(pin)
+    if cached and cached[0] > time.monotonic():
+        return cached[1]
+
+    override = await pincode_routes.carrier_for_pincode(pin)
+    if override != DELHIVERY:
+        result = {"deliverable": True, "pincode": pin, "carrier": DTDC}
+        _deliverable_cache[pin] = (time.monotonic() + _DELIVERABLE_TTL_SEC, result)
+        return result
+
+    cfg = await delhivery_svc.get_delhivery_settings()
+    if not delhivery_svc.is_configured_sync(cfg):
+        return {"deliverable": None, "pincode": pin, "carrier": DELHIVERY, "reason": "unverified"}
+
+    try:
+        check = await delhivery_svc.check_serviceability(pin, cfg)
+    except HTTPException:
+        return {"deliverable": None, "pincode": pin, "carrier": DELHIVERY, "reason": "unverified"}
+
+    # Checkout is prepaid-only, so prepaid serviceability is what matters.
+    ok = bool(check.get("prepaid"))
+    result = {
+        "deliverable": ok,
+        "pincode": pin,
+        "carrier": DELHIVERY,
+        **({} if ok else {"reason": "We don't deliver to this PIN code yet."}),
+    }
+    _deliverable_cache[pin] = (time.monotonic() + _DELIVERABLE_TTL_SEC, result)
+    return result
