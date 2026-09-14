@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { resolveBannerLink } from "@/lib/bannerLink";
+import { getSiteUrl } from "@/lib/siteUrl";
 import { HERO_SLIDES } from "./heroSlides";
 
 const AUTO_MS = 10000;
@@ -13,6 +16,7 @@ const HeroBanner = ({ slides }) => {
   const idx =
     ((page % heroSlides.length) + heroSlides.length) % heroSlides.length;
   const slide = heroSlides[idx];
+  const link = resolveBannerLink(slide.href, { siteUrl: getSiteUrl() });
 
   const paginate = useCallback((newDir) => {
     setPage(([p]) => [p + newDir, newDir]);
@@ -41,6 +45,26 @@ const HeroBanner = ({ slides }) => {
       />
 
       <div className="absolute inset-0 z-[1] bg-black/20 md:bg-black/25" aria-hidden />
+
+      {/* Above the tint so the whole slide is tappable, below the dots (z-20)
+          so switching slides still works. */}
+      {link ? (
+        link.external ? (
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={slide.alt || "Open banner link"}
+            className="absolute inset-0 z-[2]"
+          />
+        ) : (
+          <Link
+            href={link.href}
+            aria-label={slide.alt || "Open banner link"}
+            className="absolute inset-0 z-[2]"
+          />
+        )
+      ) : null}
 
       <h1 className="sr-only">Urban Aana</h1>
 

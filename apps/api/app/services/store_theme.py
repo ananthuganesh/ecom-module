@@ -7,6 +7,7 @@ other store settings.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.documents import Setting
@@ -25,6 +26,27 @@ DEFAULT_HERO_SLIDES = [
 ]
 
 
+_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
+
+
+def clean_href(raw: Any) -> str | None:
+    """Keep a banner link only if it is a site path or an http(s) URL.
+
+    Links are admin-typed but rendered on the public storefront, so an
+    executable scheme (javascript:, data:) or a protocol-relative //host must
+    never be stored. The storefront applies the same rule when rendering.
+    """
+    value = str(raw or "").strip()[:500]
+    if not value or value.startswith("//"):
+        return None
+    lowered = value.lower()
+    if lowered.startswith(("http://", "https://")):
+        return value
+    if _SCHEME.match(value):
+        return None
+    return value
+
+
 def _clean_slide(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -37,7 +59,7 @@ def _clean_slide(raw: Any) -> dict[str, Any] | None:
         # A hidden slide stays in the list so it can be brought back without
         # re-uploading the image.
         "visible": bool(raw.get("visible", True)),
-        "href": str(raw.get("href") or "").strip()[:500] or None,
+        "href": clean_href(raw.get("href")),
     }
 
 

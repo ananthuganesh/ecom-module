@@ -92,3 +92,29 @@ async def test_clearing_every_slide_falls_back_to_defaults():
     theme = await store_theme.get_theme()
     assert theme["usingDefaults"] is True
     assert theme["heroSlides"]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("/shop", "/shop"),
+        ("shop", "shop"),
+        ("https://instagram.com/urbanaana", "https://instagram.com/urbanaana"),
+        ("HTTP://example.com", "HTTP://example.com"),
+        ("  /shop  ", "/shop"),
+        ("javascript:alert(1)", None),
+        ("JavaScript:alert(1)", None),
+        ("data:text/html,<script>alert(1)</script>", None),
+        ("//evil.test/phish", None),
+        ("mailto:a@b.com", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_clean_href_only_keeps_safe_links(raw, expected):
+    assert store_theme.clean_href(raw) == expected
+
+
+def test_dangerous_href_is_never_stored():
+    slide = store_theme.normalize_slides([{"url": "/b.webp", "href": "javascript:alert(1)"}])[0]
+    assert slide["href"] is None
