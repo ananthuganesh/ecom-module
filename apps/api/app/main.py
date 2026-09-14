@@ -4,6 +4,7 @@ from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI
+from bson.errors import InvalidId
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -87,6 +88,11 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
         redoc_url=redoc_url,
         openapi_url=openapi_url,
     )
+
+    @app.exception_handler(InvalidId)
+    async def invalid_object_id(_request, _exc: InvalidId):
+        # A malformed id in a URL is a bad request, not a server error.
+        return JSONResponse(status_code=400, content={"detail": "Invalid id"})
 
     @app.exception_handler(ConnectionFailure)
     async def mongodb_unavailable(_request, exc: ConnectionFailure):

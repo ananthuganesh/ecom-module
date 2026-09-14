@@ -6,6 +6,7 @@ in-process buckets only when DB is unavailable.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import time
 from collections import defaultdict, deque
@@ -22,17 +23,34 @@ LOGIN_FAIL_LIMIT = 5
 LOGIN_FAIL_WINDOW_SECONDS = 15 * 60
 
 
+def _public_ip(value: str) -> str | None:
+    try:
+        ip = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return None
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+        return None
+    return str(ip)
+
+
 def client_ip(request: Request) -> str:
     """Resolve client IP.
 
-    Only honor X-Forwarded-For when TRUST_PROXY=1 — otherwise attackers can
-    rotate spoofed XFF values and bypass every limit.
+    Only honor proxy headers when TRUST_PROXY=1. Even then, the leftmost
+    X-Forwarded-For entry is whatever the client typed, so it is never used:
+    Cloudflare's CF-Connecting-IP wins, otherwise the rightmost public hop,
+    which our own proxy appended.
     """
     trust = str(os.environ.get("TRUST_PROXY") or "").strip().lower() in {"1", "true", "yes"}
     if trust:
-        forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-        if forwarded:
-            return forwarded
+        cf_ip = _public_ip(request.headers.get("cf-connecting-ip") or "")
+        if cf_ip:
+            return cf_ip
+        hops = [h.strip() for h in (request.headers.get("x-forwarded-for") or "").split(",") if h.strip()]
+        for hop in reversed(hops):
+            public = _public_ip(hop)
+            if public:
+                return public
     if request.client and request.client.host:
         return request.client.host
     return "unknown"

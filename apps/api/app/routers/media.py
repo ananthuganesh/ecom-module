@@ -31,6 +31,27 @@ UPLOAD_FOLDERS = {
 LIBRARY_FOLDERS = ("products", "ai")
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 VIDEO_MIME_PREFIXES = ("video/",)
+# The stored Content-Type comes from the verified extension, never from the
+# browser, so a renamed HTML/SVG file can't be served as a page.
+VIDEO_CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+}
+_ISO_BMFF_BOXES = {b"ftyp", b"moov", b"mdat", b"free", b"wide", b"skip", b"pnot"}
+
+
+def video_signature_matches(ext: str, head: bytes) -> bool:
+    """Check the file's first bytes are the container its extension claims."""
+    if ext in {".mp4", ".mov"}:
+        return len(head) >= 8 and head[4:8] in _ISO_BMFF_BOXES
+    if ext in {".webm", ".mkv"}:
+        return head[:4] == b"\x1a\x45\xdf\xa3"
+    if ext == ".avi":
+        return head[:4] == b"RIFF" and head[8:12] == b"AVI "
+    return False
 
 
 def _folders(folder: str) -> list[tuple[str, Path]]:
@@ -258,13 +279,21 @@ async def upload_media(
     if is_video:
         if folder != "reels":
             raise HTTPException(status_code=400, detail="Videos can only be uploaded to reels")
-        content_type = (
-            upload.content_type
-            or mimetypes.guess_type(upload.filename or "")[0]
-            or "video/mp4"
-        )
+        ext = Path(upload.filename or "").suffix.lower()
+        if ext not in VIDEO_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=400, detail="Upload an MP4, MOV, WebM, MKV or AVI video."
+            )
+        content_type = VIDEO_CONTENT_TYPES[ext]
         temp_path, size = await _spool_to_temp(upload, max_bytes=_MAX_VIDEO_BYTES)
         try:
+            with open(temp_path, "rb") as fh:
+                head = fh.read(16)
+            if not video_signature_matches(ext, head):
+                raise HTTPException(
+                    status_code=400,
+                    detail="That file isn't a valid video. Export it again as MP4 and retry.",
+                )
             if r2_svc.is_configured():
                 result = await asyncio.to_thread(
                     r2_svc.upload_file_path,
@@ -280,7 +309,6 @@ async def upload_media(
                     size=result.get("size") or size,
                     content_type=content_type,
                 )
-            ext = Path(upload.filename or "reel.mp4").suffix.lower() or ".mp4"
             name = r2_svc.safe_storage_name(upload.filename, default_ext=ext)
             dest_dir = UPLOAD_FOLDERS[folder]
             dest_dir.mkdir(parents=True, exist_ok=True)

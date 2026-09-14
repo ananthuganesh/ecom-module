@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from bson import ObjectId
@@ -83,7 +84,7 @@ async def list_returns(
     if status and status.lower() != "all":
         query["status"] = status.strip().lower()
     if q and q.strip():
-        needle = q.strip()
+        needle = re.escape(q.strip()[:100])
         query["$or"] = [
             {"number": {"$regex": needle, "$options": "i"}},
             {"orderNumber": {"$regex": needle, "$options": "i"}},

@@ -38,7 +38,9 @@ async def upsert(
     user: OptionalUser,
     _: None = Depends(rate_limit_dependency("abandoned", limit=30)),
 ):
-    guest_id = body.get("guestId")
+    # Only a plain string may reach the query; {"$ne": null} would match another shopper.
+    raw_guest = body.get("guestId")
+    guest_id = raw_guest.strip()[:100] if isinstance(raw_guest, str) and raw_guest.strip() else None
     # Authenticated users may only write their own abandoned cart; guests cannot spoof userId.
     if user is not None:
         user_id = user.id

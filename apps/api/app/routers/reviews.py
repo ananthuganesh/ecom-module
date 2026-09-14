@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from bson import ObjectId
@@ -71,7 +72,7 @@ async def list_reviews(
     if rating:
         query["rating"] = rating
     if q and q.strip():
-        needle = q.strip()
+        needle = re.escape(q.strip()[:100])
         query["$or"] = [
             {"title": {"$regex": needle, "$options": "i"}},
             {"body": {"$regex": needle, "$options": "i"}},

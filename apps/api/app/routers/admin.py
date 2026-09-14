@@ -1071,12 +1071,18 @@ async def bulk_products(body: dict, _: AdminUser):
     return {"updated": count}
 
 
+_MAX_IMPORT_BYTES = 5 * 1024 * 1024
+
+
 @router.post("/products/import")
 async def import_products(_: AdminUser, file: UploadFile = File(...)):
     if not (file.filename or "").lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV file required")
+    raw = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=400, detail="CSV must be 5 MB or smaller")
     try:
-        content = (await file.read()).decode("utf-8-sig")
+        content = raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
 

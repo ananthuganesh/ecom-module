@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import re
 from functools import lru_cache
@@ -13,6 +14,8 @@ from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_FOLDERS = {"products", "ai", "reels", "banner"}
 # Content library "All" excludes reels (managed under Content → Reels).
@@ -137,7 +140,8 @@ def upload_bytes(
         code = (exc.response or {}).get("Error", {}).get("Code") or "ClientError"
         raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({code})") from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({exc})") from exc
+        logger.exception("R2 upload failed")
+        raise HTTPException(status_code=502, detail="Upload to storage failed. Please try again.") from exc
 
     return _upload_result(
         folder=folder, name=name, key=key, size=len(data), content_type=ctype
@@ -187,7 +191,8 @@ def upload_file_path(
         code = (exc.response or {}).get("Error", {}).get("Code") or "ClientError"
         raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({code})") from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Failed to upload to R2 ({exc})") from exc
+        logger.exception("R2 upload failed")
+        raise HTTPException(status_code=502, detail="Upload to storage failed. Please try again.") from exc
 
     return _upload_result(
         folder=folder, name=name, key=key, size=size, content_type=ctype
