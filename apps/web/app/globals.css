@@ -129,3 +129,14 @@
     @apply font-sans;
   }
 }
+/* Keep browser autofill from painting inputs blue/yellow: the tint is delayed
+   indefinitely so each input keeps its own background and text colour. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: currentColor;
+  caret-color: currentColor;
+  transition: background-color 99999s ease-in-out 0s;
+}
