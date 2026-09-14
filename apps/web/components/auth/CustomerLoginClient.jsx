@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LoginForm } from "@/components/login-form";
+import Image from "next/image";
+import BrandLogo from "@/components/BrandLogo";
+import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
 import LoginBottomSheet from "@/components/auth/LoginBottomSheet";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -19,7 +21,8 @@ function safeRedirectPath(redirectTo) {
 }
 
 /**
- * Desktop: centered card. Mobile: OTP bottom sheet instead of a full login page.
+ * Desktop: shadcn login-02 layout (form left, cover image right).
+ * Mobile: OTP bottom sheet instead of a full login page.
  */
 export default function CustomerLoginClient() {
   const router = useRouter();
@@ -74,9 +77,35 @@ export default function CustomerLoginClient() {
   }
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <LoginForm mode="customer" />
+    <div className="grid min-h-svh lg:grid-cols-2">
+      <div className="flex flex-col gap-4 p-6 md:p-10">
+        <div className="flex justify-center gap-2 md:justify-start">
+          <BrandLogo href="/" height={32} priority />
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex w-full max-w-xs flex-col gap-6">
+            <div className="flex flex-col items-center gap-1 text-center">
+              <h1 className="text-2xl font-bold">Login to your account</h1>
+            </div>
+            <CustomerOtpForm
+              idPrefix="login-otp"
+              className="text-center [&_form]:text-left"
+              inputClassName="h-9"
+              buttonClassName="h-9"
+              onSuccess={finish}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="relative hidden bg-muted lg:block">
+        <Image
+          src="/banner/hero-image-01.webp"
+          alt="Urban Aana streetwear"
+          fill
+          priority
+          sizes="50vw"
+          className="object-cover"
+        />
       </div>
     </div>
   );
