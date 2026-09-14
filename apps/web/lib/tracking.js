@@ -11,6 +11,30 @@ function ensureDataLayer() {
   return window.dataLayer;
 }
 
+/**
+ * Signed-in customer id for GA4 `user_id`.
+ *
+ * The database id, never an email or phone — GA4 forbids personal data here.
+ * It matches the id the server sends with its purchase and refund events, so
+ * GA4 can join a shopper's visits across devices and to their orders.
+ */
+let trackingUserId = null;
+
+export function getTrackingUserId() {
+  return trackingUserId;
+}
+
+export function setTrackingUser(userId) {
+  const next = userId ? String(userId) : null;
+  if (next === trackingUserId) return;
+  trackingUserId = next;
+  const dl = ensureDataLayer();
+  if (!dl) return;
+  // An explicit null on sign-out, so a shared device stops attributing the
+  // next shopper's visits to the previous account.
+  dl.push({ event: "user_data", user_id: next });
+}
+
 export function toTrackingItem(raw, qty = 1) {
   if (!raw) return null;
   const price = Number(raw.price ?? raw.pricing?.sellingPrice ?? 0);
@@ -69,10 +93,17 @@ export function pushEcommerceEvent(event, ecommerce = {}) {
     payload.item_list_id = String(ecommerce.item_list_id);
   }
 
+  // Meta deduplicates a browser event against the server's on event_id.
+  if (ecommerce.event_id) {
+    payload.event_id = String(ecommerce.event_id);
+  }
+
   // Clear previous ecommerce object (GA4 / GTM best practice)
   dl.push({ ecommerce: null });
   dl.push({
     event,
+    ...(trackingUserId ? { user_id: trackingUserId } : {}),
+    ...(ecommerce.event_id ? { event_id: String(ecommerce.event_id) } : {}),
     ecommerce: payload,
   });
 }
@@ -242,16 +273,19 @@ export function trackPurchase({ transactionId, value, items = [], coupon = "" })
   if (!transactionId) return;
   pushEcommerceEvent("purchase", {
     transaction_id: transactionId,
+    // Same id the server sends to Meta, so the two purchases deduplicate.
+    event_id: transactionId,
     value: value != null ? value : itemsValue(mapped),
     items: mapped,
     coupon: coupon || undefined,
   });
 }
 
+// Relative rather than "@/lib/…" so the module also loads under node --test.
 import {
   PURCHASE_EVENT_KEY,
   PURCHASE_FIRED_KEY,
-} from "@/lib/storageKeys";
+} from "./storageKeys.js";
 
 export function stashPurchaseEvent(payload) {
   if (typeof window === "undefined" || !payload?.transactionId) return;
