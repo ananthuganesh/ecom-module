@@ -524,7 +524,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
     { label: "Gender", value: formatSpec(product.gender) },
     {
       label: "SKU",
-      value: formatSpec(selectedVariant?.sku || product.productId),
+      // A code, not prose: never re-case it (GSRGDM-S must not become Gsrgdm-s).
+      value: String(selectedVariant?.sku || product.productId || "").trim(),
     },
   ].filter((spec) => spec.value);
 
