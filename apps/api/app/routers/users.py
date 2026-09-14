@@ -154,8 +154,9 @@ class OtpVerifyBody(BaseModel):
 
 
 def _auth_payload(user: User, token: str) -> dict:
-    """Include token for API clients/tests; browsers should prefer the HttpOnly cookie."""
-    return user_public(user, token)
+    """Profile only. The session lives in the HttpOnly cookie set alongside it;
+    echoing the JWT in the body would let any injected script read and steal it."""
+    return user_public(user)
 
 
 async def _email_is_staff(email: str) -> bool:

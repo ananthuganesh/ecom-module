@@ -2,6 +2,7 @@ import "./globals.css";
 import { Inter, Geist, Lato, Archivo_Black, Noto_Sans_Malayalam } from "next/font/google";
 import GtmClient from "@/components/GtmClient";
 import TrackingUser from "@/components/TrackingUser";
+import CustomerSessionSync from "@/components/CustomerSessionSync";
 import AttributionCapture from "@/components/AttributionCapture";
 import StorefrontShell from "@/components/storefront/StorefrontShell";
 import { HERO_OG_IMAGE } from "@/components/storefront/heroSlides";
@@ -96,6 +97,7 @@ export default function RootLayout({ children }) {
       <body className="font-sans" suppressHydrationWarning>
         <GtmClient gtmId={gtmId} />
         <TrackingUser />
+        <CustomerSessionSync />
         <AttributionCapture />
         <StorefrontShell>{children}</StorefrontShell>
       </body>

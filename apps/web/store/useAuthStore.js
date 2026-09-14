@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { AUTH_STORAGE_KEY, ensureStorageKey } from "@/lib/storageKeys";
-import { stripAuthToken } from "@/lib/persistAuth";
+import { persistableCustomer, stripAuthToken } from "@/lib/persistAuth";
 import client from "@/api/axios/client";
 
 ensureStorageKey(AUTH_STORAGE_KEY);
@@ -19,6 +19,7 @@ export const useAuthStore = create(
     }),
     {
       name: AUTH_STORAGE_KEY,
+      partialize: (state) => ({ userInfo: persistableCustomer(state.userInfo) }),
     }
   )
 );

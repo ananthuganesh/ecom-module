@@ -231,6 +231,13 @@ class Product(Document):
             return out
         return data
 
+    @field_validator("description", mode="before")
+    @classmethod
+    def sanitize_description(cls, value: Any) -> str | None:
+        from app.services.html_sanitize import sanitize_rich_text
+
+        return sanitize_rich_text(value)
+
     @field_validator("totalStock", mode="before")
     @classmethod
     def coerce_stock(cls, value: Any) -> int:

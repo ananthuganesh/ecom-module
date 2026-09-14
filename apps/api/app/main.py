@@ -115,6 +115,15 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
             allow_headers=["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         )
 
+    # Added last so it runs first: refuse forged cross-origin writes before CORS.
+    from app.services.web_security import BrowserSecurityMiddleware
+
+    app.add_middleware(
+        BrowserSecurityMiddleware,
+        allowed_origins=origins or ["http://localhost:3000", "http://127.0.0.1:3000"],
+        production=settings.is_production(),
+    )
+
     @app.get("/")
     async def root():
         return {"message": "Urban Aana FastAPI backend"}
