@@ -83,7 +83,7 @@ export default function ReturnsAndShippingPage() {
           </li>
           <li>
             Report damaged, defective, or wrong items within{" "}
-            <strong>48 hours</strong> of delivery
+            <strong>3 days</strong> of delivery
           </li>
           <li>
             If tracking shows &quot;delivered&quot; but you did not receive the
@@ -181,7 +181,7 @@ export default function ReturnsAndShippingPage() {
       <PolicySection id="damaged" number="10" title="Damaged, Defective or Wrong Items">
         <p>
           If you receive a damaged, defective, or incorrect product, contact us
-          within <strong>48 hours</strong> of delivery with photos/video and
+          within <strong>3 days</strong> of delivery with photos/video and
           your order number. After verification, we will arrange a replacement
           (subject to stock) or a full refund, including applicable shipping
           where we are at fault.
