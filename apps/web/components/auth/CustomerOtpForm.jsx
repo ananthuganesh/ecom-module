@@ -147,8 +147,11 @@ export default function CustomerOtpForm({
   inputClassName = "h-11",
   buttonClassName = "h-11",
   idPrefix = "otp",
+  // Verify a known address (checkout) instead of asking for one.
+  fixedEmail = "",
+  successToast = "Signed in",
 }) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(fixedEmail);
   const [code, setCode] = useState("");
   const [step, setStep] = useState("email");
   const [loading, setLoading] = useState(false);
@@ -197,7 +200,7 @@ export default function CustomerOtpForm({
       );
       setCustomerInfo(data);
       persistAuth(data);
-      toast.success("Signed in");
+      if (successToast) toast.success(successToast);
       onSuccess?.(data);
     } catch (err) {
       setError(userErrorMessage(err, "That code is invalid or has expired."));
@@ -227,7 +230,9 @@ export default function CustomerOtpForm({
   const description =
     step === "otp"
       ? `Enter the 6-digit code sent to ${email.trim().toLowerCase()}`
-      : "We'll email you a 6-digit code to verify your account.";
+      : fixedEmail
+        ? `We'll email a 6-digit code to ${fixedEmail} to confirm it's you.`
+        : "We'll email you a 6-digit code to verify your account.";
 
   const codeComplete = code.replace(/\D/g, "").length === OTP_LENGTH;
 
@@ -246,19 +251,21 @@ export default function CustomerOtpForm({
                 {error}
               </p>
             ) : null}
-            <Field>
-              <FieldLabel htmlFor={`${idPrefix}-email`}>Email</FieldLabel>
-              <Input
-                id={`${idPrefix}-email`}
-                type="email"
-                autoComplete="email"
-                required
-                className={inputClassName}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={loading}
-              />
-            </Field>
+            {fixedEmail ? null : (
+              <Field>
+                <FieldLabel htmlFor={`${idPrefix}-email`}>Email</FieldLabel>
+                <Input
+                  id={`${idPrefix}-email`}
+                  type="email"
+                  autoComplete="email"
+                  required
+                  className={inputClassName}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                />
+              </Field>
+            )}
             <Field>
               <Button
                 type="submit"
@@ -271,7 +278,7 @@ export default function CustomerOtpForm({
                     Sending…
                   </>
                 ) : (
-                  "Send code"
+                  fixedEmail ? "Email me a code" : "Send code"
                 )}
               </Button>
             </Field>
@@ -310,23 +317,27 @@ export default function CustomerOtpForm({
                     Verifying…
                   </>
                 ) : (
-                  "Verify & sign in"
+                  fixedEmail ? "Verify & continue" : "Verify & sign in"
                 )}
               </Button>
             </Field>
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <button
-                type="button"
-                className="text-muted-foreground underline-offset-4 hover:underline"
-                onClick={() => {
-                  setStep("email");
-                  setCode("");
-                  setError("");
-                }}
-                disabled={loading}
-              >
-                Change email
-              </button>
+              {fixedEmail ? (
+                <span />
+              ) : (
+                <button
+                  type="button"
+                  className="text-muted-foreground underline-offset-4 hover:underline"
+                  onClick={() => {
+                    setStep("email");
+                    setCode("");
+                    setError("");
+                  }}
+                  disabled={loading}
+                >
+                  Change email
+                </button>
+              )}
               <button
                 type="button"
                 className="text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"

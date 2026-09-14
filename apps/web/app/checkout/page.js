@@ -306,6 +306,7 @@ function CheckoutPageContent() {
   const [razorpayConfigured, setRazorpayConfigured] = useState(true);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [loginPromptSkipped, setLoginPromptSkipped] = useState(false);
+  const [verifyWithCode, setVerifyWithCode] = useState(false);
   const [resolvedEmail, setResolvedEmail] = useState("");
   const [isResolvingEmail, setIsResolvingEmail] = useState(false);
   const afterAccountRef = useRef(null);
@@ -721,6 +722,7 @@ function CheckoutPageContent() {
         whatsappSubscribed: marketingOptIn,
       });
       data.authMethod = "checkout";
+      setVerifyWithCode(Boolean(data?.verifyWithCode));
       const hasSession = Boolean(data?.token || (data?._id && !data?.requiresLogin));
       if (hasSession) {
         setUserInfo(data);
@@ -780,7 +782,12 @@ function CheckoutPageContent() {
 
     if (data.requiresLogin && !hasSession) {
       setShowLoginPrompt(true);
-      setPaymentError("Please use a different email to continue.");
+      // Keep afterAccountRef: checkout resumes once the code is verified.
+      setPaymentError(
+        data.verifyWithCode
+          ? "Verify your email with the code we send to continue."
+          : "Please use a different email to continue."
+      );
       return;
     }
 
@@ -1089,6 +1096,18 @@ function CheckoutPageContent() {
                   {showLoginPrompt && !loginPromptSkipped && (
                     <CheckoutAccountPrompt
                       email={formData.email.trim().toLowerCase()}
+                      verifyWithCode={verifyWithCode}
+                      onVerified={() => {
+                        setShowLoginPrompt(false);
+                        setVerifyWithCode(false);
+                        setPaymentError("");
+                        setResolvedEmail("");
+                        const next = afterAccountRef.current;
+                        // Re-resolve now that this browser holds their session:
+                        // loads saved addresses and resumes a pending payment.
+                        if (next) ensureCheckoutAccount(next);
+                        else resolveCheckoutEmail();
+                      }}
                       onSkip={() => {
                         setLoginPromptSkipped(false);
                         setShowLoginPrompt(false);

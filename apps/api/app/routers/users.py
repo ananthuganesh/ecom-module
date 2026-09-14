@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from app.documents import Address, AdminAccount, User
-from app.deps import AdminUser, CustomersReader, CurrentUser, user_has_admin_access
+from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser, user_has_admin_access
 from app.security import create_access_token, verify_password
 from app.serializers import user_public
 from app.services.auth_cookie import clear_auth_cookie, set_auth_cookie
@@ -522,11 +522,15 @@ def _checkout_continue_payload(*, email: str, requires_login: bool) -> dict:
 async def checkout_email(
     body: CheckoutEmailBody,
     response: Response,
+    current: OptionalUser,
     _: None = Depends(rate_limit_dependency("checkout-email", limit=20)),
 ):
     """Find or create a customer by email for checkout.
 
-    First checkout / existing customers: mint a short-lived session (no OTP).
+    New email: create the customer and start a short-lived session.
+    Existing customer: only continue if this browser is already signed in as
+    them; otherwise they must verify with an emailed code. Typing someone
+    else's email must never open their account, addresses or orders.
     Staff emails: never mint a JWT — require a different email.
     """
     email = body.email.lower().strip()
@@ -534,6 +538,10 @@ async def checkout_email(
         return _checkout_continue_payload(email=email, requires_login=True)
 
     user = await User.find_one(User.email == email)
+    if user and not (current and str(current.id) == str(user.id)):
+        payload = _checkout_continue_payload(email=email, requires_login=True)
+        payload["verifyWithCode"] = True
+        return payload
     created = False
     # Checkout checkbox sends both flags as the same value.
     opt_in = None

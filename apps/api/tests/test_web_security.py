@@ -142,3 +142,67 @@ async def test_session_endpoints_do_not_return_the_token_in_the_body():
     assert res.json()["_id"]
     cookie = res.headers.get("set-cookie", "").lower()
     assert "ua_session=" in cookie and "httponly" in cookie
+
+
+# ---------------------------------------------------------------- checkout email takeover
+
+
+@pytest.mark.usefixtures("db")
+async def test_existing_customer_email_does_not_open_their_account():
+    from app.documents import User
+
+    victim = User(name="Victim", email="victim@example.com", phone="9876543210", emailSubscribed=True)
+    await victim.insert()
+    async with AsyncClient(transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test") as client:
+        res = await client.post(
+            "/api/users/checkout-email",
+            json={"email": "victim@example.com", "emailSubscribed": False},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["requiresLogin"] is True
+        assert body["verifyWithCode"] is True
+        assert "_id" not in body and "phone" not in res.text
+        assert "ua_session" not in res.headers.get("set-cookie", "")
+        # No session was granted, so the account stays closed.
+        assert (await client.get("/api/users/profile")).status_code == 401
+        assert (await client.get("/api/orders/myorders")).status_code == 401
+    # And their marketing preferences were not changed by a stranger.
+    assert (await User.get(victim.id)).emailSubscribed is True
+
+
+@pytest.mark.usefixtures("db")
+async def test_signed_in_customer_continues_without_a_code():
+    from app.documents import User
+    from app.security import create_access_token
+
+    user = User(name="Buyer", email="buyer@example.com")
+    await user.insert()
+    async with AsyncClient(transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test") as client:
+        res = await client.post(
+            "/api/users/checkout-email",
+            json={"email": "buyer@example.com"},
+            headers={"Authorization": f"Bearer {create_access_token(user.id)}"},
+        )
+    assert res.status_code == 200
+    assert res.json()["_id"] == str(user.id)
+    assert res.json()["requiresLogin"] is False
+
+
+@pytest.mark.usefixtures("db")
+async def test_signed_in_as_someone_else_still_needs_a_code():
+    from app.documents import User
+    from app.security import create_access_token
+
+    me = User(name="Me", email="me@example.com")
+    other = User(name="Other", email="other@example.com")
+    await me.insert()
+    await other.insert()
+    async with AsyncClient(transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test") as client:
+        res = await client.post(
+            "/api/users/checkout-email",
+            json={"email": "other@example.com"},
+            headers={"Authorization": f"Bearer {create_access_token(me.id)}"},
+        )
+    assert res.json()["verifyWithCode"] is True
+    assert "_id" not in res.json()
