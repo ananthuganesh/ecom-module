@@ -232,7 +232,7 @@ export default function CustomerOtpForm({
       ? `Enter the 6-digit code sent to ${email.trim().toLowerCase()}`
       : fixedEmail
         ? `We'll email a 6-digit code to ${fixedEmail} to confirm it's you.`
-        : "We'll email you a 6-digit code to verify your account.";
+        : "Enter your email below to login to your account";
 
   const codeComplete = code.replace(/\D/g, "").length === OTP_LENGTH;
 
