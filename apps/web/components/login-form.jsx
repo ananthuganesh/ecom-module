@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,7 +17,10 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import BrandLogo from "@/components/BrandLogo";
-import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
+import CustomerOtpForm, { OtpDigitInputs } from "@/components/auth/CustomerOtpForm";
+
+const ADMIN_OTP_LENGTH = 6;
+const ADMIN_RESEND_COOLDOWN_SEC = 60;
 
 /**
  * shadcn login-02 form body — admin password (customer OTP kept for reuse).
@@ -28,6 +31,10 @@ export function LoginForm({ className, mode = "customer", ...props }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Password accepted → { challenge, email } while the emailed OTP is pending.
+  const [otpStep, setOtpStep] = useState(null);
+  const [code, setCode] = useState("");
+  const [cooldown, setCooldown] = useState(0);
   const setAdminInfo = useAdminAuthStore((s) => s.setUserInfo);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,6 +51,26 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     router.push(path);
   };
 
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const completeAdminSignIn = (data) => {
+    const profile = {
+        _id: data._id,
+        name: data.name,
+        email: data.email,
+        isAdmin: data.isAdmin,
+        roleId: data.roleId || null,
+      };
+    setAdminInfo(profile);
+    persistAdminAuth(profile);
+    toast.success("Signed in");
+    router.push("/admin/dashboard");
+  };
+
   const handleAdminSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -53,19 +80,68 @@ export function LoginForm({ className, mode = "customer", ...props }) {
         email.trim().toLowerCase(),
         password
       );
-      const profile = {
-        _id: data._id,
-        name: data.name,
-        email: data.email,
-        isAdmin: data.isAdmin,
-        roleId: data.roleId || null,
-      };
-      setAdminInfo(profile);
-      persistAdminAuth(profile);
-      toast.success("Signed in");
-      router.push("/admin/dashboard");
+      if (data?.otpRequired) {
+        setOtpStep({ challenge: data.challenge, email: data.email });
+        setPassword("");
+        setCode("");
+        setCooldown(ADMIN_RESEND_COOLDOWN_SEC);
+        return;
+      }
+      completeAdminSignIn(data);
     } catch (err) {
       setError(userErrorMessage(err, "Invalid email or password"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const restartAdminLogin = (message = "") => {
+    setOtpStep(null);
+    setCode("");
+    setError(message);
+  };
+
+  const handleAdminVerify = async (e) => {
+    e.preventDefault();
+    const digits = code.replace(/\D/g, "").slice(0, ADMIN_OTP_LENGTH);
+    if (digits.length !== ADMIN_OTP_LENGTH) {
+      setError("Enter the 6-digit OTP");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      completeAdminSignIn(await authService.adminVerifyOtp(otpStep.challenge, digits));
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 401) {
+        restartAdminLogin(userErrorMessage(err, "Your sign-in expired. Enter your password again."));
+      } else if (status === 429) {
+        restartAdminLogin("Too many incorrect codes. Enter your password again.");
+      } else {
+        setError(userErrorMessage(err, "That OTP is invalid or has expired."));
+        setCode("");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminResend = async () => {
+    if (cooldown > 0 || loading || !otpStep) return;
+    setLoading(true);
+    setError("");
+    try {
+      await authService.adminResendOtp(otpStep.challenge);
+      setCode("");
+      setCooldown(ADMIN_RESEND_COOLDOWN_SEC);
+      toast.success("New OTP sent");
+    } catch (err) {
+      if (err?.response?.status === 401) {
+        restartAdminLogin("Your sign-in expired. Enter your password again.");
+      } else {
+        setError(userErrorMessage(err, "We couldn’t send a new OTP. Please try again."));
+      }
     } finally {
       setLoading(false);
     }
@@ -79,14 +155,69 @@ export function LoginForm({ className, mode = "customer", ...props }) {
       <div className="flex flex-col items-center gap-1 text-center">
         {isAdmin ? <BrandLogo href={null} height={36} priority className="mb-4" /> : null}
         <h1 className="text-2xl font-bold">
-          {isAdmin ? "Welcome back" : "Login to your account"}
+          {isAdmin && otpStep ? "Check your email" : isAdmin ? "Welcome back" : "Login to your account"}
         </h1>
       </div>
       {isAdmin ? (
-        <p className="mb-5 text-center text-sm text-muted-foreground">Sign in to your admin account to continue.</p>
+        <p className="mb-5 text-center text-sm text-muted-foreground">
+          {otpStep
+            ? `Enter the 6-digit OTP sent to ${otpStep.email || "your email"}.`
+            : "Sign in to your admin account to continue."}
+        </p>
       ) : null}
       <div>
-          {isAdmin ? (
+          {isAdmin && otpStep ? (
+            <form onSubmit={handleAdminVerify}>
+              <FieldGroup className="gap-5">
+                {error ? (
+                  <p
+                    role="alert"
+                    className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  >
+                    {error}
+                  </p>
+                ) : null}
+                <Field>
+                  <FieldLabel htmlFor="admin-otp-code">OTP</FieldLabel>
+                  <OtpDigitInputs
+                    idPrefix="admin-otp"
+                    value={code}
+                    onChange={setCode}
+                    disabled={loading}
+                    autoFocus
+                  />
+                </Field>
+                <Field>
+                  <Button
+                    type="submit"
+                    className="h-9"
+                    disabled={loading || code.replace(/\D/g, "").length !== ADMIN_OTP_LENGTH}
+                  >
+                    {loading ? <Loader2 className="animate-spin" /> : null}
+                    Verify & sign in
+                  </Button>
+                </Field>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <button
+                    type="button"
+                    className="text-muted-foreground underline-offset-4 hover:underline"
+                    onClick={() => restartAdminLogin()}
+                    disabled={loading}
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    className="text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
+                    onClick={handleAdminResend}
+                    disabled={loading || cooldown > 0}
+                  >
+                    {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend OTP"}
+                  </button>
+                </div>
+              </FieldGroup>
+            </form>
+          ) : isAdmin ? (
             <form onSubmit={handleAdminSubmit}>
               <FieldGroup className="gap-5">
                 {error ? (

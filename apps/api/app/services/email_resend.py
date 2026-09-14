@@ -1109,16 +1109,25 @@ async def notify_abandoned_cart_email(checkout, *, cart_link: str, user=None) ->
     return result
 
 
-def build_login_otp_email_html(code: str, *, ttl_minutes: int = 10) -> tuple[str, str]:
-    """Customer sign-in OTP — same Shopify-style layout as order / cart emails."""
+def build_login_otp_email_html(
+    code: str, *, ttl_minutes: int = 10, audience: str = "customer"
+) -> tuple[str, str]:
+    """Sign-in OTP — same Shopify-style layout as order / cart emails."""
     digits = tpl.esc(str(code or "").strip())
     minutes = max(1, int(ttl_minutes or 10))
-    subject = "Your Urban Aana sign-in code"
+    if audience == "admin":
+        subject = "Your Urban Aana admin sign-in code"
+        lead = (
+            "Your admin password was just entered. Use this code to finish signing in. "
+            "If this wasn't you, change your password now."
+        )
+    else:
+        subject = "Your Urban Aana sign-in code"
+        lead = (
+            "Use this code to sign in to your Urban Aana account. "
+            "It works once and expires soon."
+        )
     preheader = f"Your sign-in code is {str(code or '').strip()} · expires in {minutes} minutes"
-    lead = (
-        "Use this code to sign in to your Urban Aana account. "
-        "It works once and expires soon."
-    )
     code_block = f"""
 <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0 8px;">
   <tr>

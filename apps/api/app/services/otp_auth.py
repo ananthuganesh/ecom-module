@@ -40,14 +40,20 @@ def generate_otp_code() -> str:
     return f"{secrets.randbelow(10**OTP_LENGTH):0{OTP_LENGTH}d}"
 
 
-async def issue_login_otp(email: str) -> dict[str, Any]:
+def admin_otp_key(email: str) -> str:
+    """Admin codes live under their own key so a customer code can never unlock admin."""
+    return f"admin:{str(email or '').strip().lower()}"
+
+
+async def issue_login_otp(email: str, *, key: str | None = None, audience: str = "customer") -> dict[str, Any]:
     """Create/replace OTP for email and send via Resend. Always succeeds for caller shape."""
     email = str(email or "").strip().lower()
+    store_key = key or email
     code = generate_otp_code()
     code_hash = hash_otp(code)
     expires_at = datetime.utcnow() + timedelta(minutes=OTP_TTL_MINUTES)
 
-    existing = await LoginOtp.find_one(LoginOtp.email == email)
+    existing = await LoginOtp.find_one(LoginOtp.email == store_key)
     if existing:
         existing.codeHash = code_hash
         existing.expiresAt = expires_at
@@ -56,14 +62,14 @@ async def issue_login_otp(email: str) -> dict[str, Any]:
         await existing.save()
     else:
         await LoginOtp(
-            email=email,
+            email=store_key,
             codeHash=code_hash,
             expiresAt=expires_at,
             attempts=0,
         ).insert()
 
     subject, html_body = email_svc.build_login_otp_email_html(
-        code, ttl_minutes=OTP_TTL_MINUTES
+        code, ttl_minutes=OTP_TTL_MINUTES, audience=audience
     )
     result = await email_svc.send_email(
         to=email,
@@ -83,7 +89,10 @@ async def issue_login_otp(email: str) -> dict[str, Any]:
 
 
 async def consume_login_otp(email: str, code: str) -> None:
-    """Verify OTP or raise 400/429. Deletes the OTP doc on success."""
+    """Verify OTP or raise 400/429. Deletes the OTP doc on success.
+
+    `email` is the storage key: the customer's email, or admin_otp_key(email).
+    """
     email = str(email or "").strip().lower()
     code = str(code or "").strip()
     if not code.isdigit() or len(code) != OTP_LENGTH:

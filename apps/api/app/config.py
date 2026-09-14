@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # Set while testing to see events under Events Manager → Test events.
     meta_capi_test_event_code: str = ""
     meta_graph_version: str = "v23.0"
+    # Emailed OTP after the admin password. Only turn off in an emergency
+    # (e.g. email delivery is down and nobody can get into the admin).
+    admin_login_otp: bool = True
     ga4_credentials_json: str = ""
     ga4_credentials_file: str = ""
     ga4_enabled: bool = True

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 const RESEND_COOLDOWN_SEC = 60;
 const OTP_LENGTH = 6;
 
-function OtpDigitInputs({
+export function OtpDigitInputs({
   value,
   onChange,
   disabled,

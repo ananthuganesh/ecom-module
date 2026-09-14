@@ -4,6 +4,8 @@
 const users = {
   login: "users/login",
   adminLogin: "users/admin/login",
+  adminLoginVerify: "users/admin/login/verify",
+  adminLoginResend: "users/admin/login/resend",
   otpRequest: "users/otp/request",
   otpVerify: "users/otp/verify",
   register: "users",

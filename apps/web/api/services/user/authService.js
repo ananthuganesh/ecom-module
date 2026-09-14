@@ -13,6 +13,13 @@ export const authService = {
   verifyOtp: (email, code) =>
     client.post(e.otpVerify, { email, code }).then((res) => res.data),
 
+  /** Admin step 2: the emailed OTP turns the password challenge into a session. */
+  adminVerifyOtp: (challenge, code) =>
+    client.post(e.adminLoginVerify, { challenge, code }).then((res) => res.data),
+
+  adminResendOtp: (challenge) =>
+    client.post(e.adminLoginResend, { challenge }).then((res) => res.data),
+
   adminLogin: (email, password) =>
     client.post(e.adminLogin, { email, password }).then((res) => res.data),
 

@@ -6,12 +6,18 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.documents import Address, AdminAccount, User
 from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser, user_has_admin_access
-from app.security import create_access_token, verify_password
+from app.config import get_settings
+from app.security import (
+    create_access_token,
+    create_admin_login_challenge,
+    decode_admin_login_challenge,
+    verify_password,
+)
 from app.serializers import user_public
 from app.services.auth_cookie import clear_auth_cookie, set_auth_cookie
 from app.services.customer_url_id import ensure_customer_url_id, next_customer_url_id
 from app.services.email_quality import QualityEmail
-from app.services.otp_auth import consume_login_otp, issue_login_otp
+from app.services.otp_auth import admin_otp_key, consume_login_otp, issue_login_otp
 from app.services.rate_limit import (
     assert_login_not_locked,
     clear_failed_login,
@@ -251,9 +257,81 @@ async def admin_login(
     await clear_failed_login(email)
     if not await user_has_admin_access(user):
         raise HTTPException(status_code=403, detail="Admin access required")
+
+    if get_settings().admin_login_otp:
+        # Password alone is not enough: no session until the emailed code is verified.
+        await issue_login_otp(user.email, key=admin_otp_key(user.email), audience="admin")
+        return {
+            "otpRequired": True,
+            "challenge": create_admin_login_challenge(user.id),
+            "email": _mask_email(user.email),
+        }
+
     token = create_access_token(user.id)
     set_auth_cookie(response, token, scope="admin")
     return _auth_payload(user, token)
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = str(email or "").partition("@")
+    if not domain:
+        return ""
+    shown = local[:2] if len(local) > 2 else local[:1]
+    return f"{shown}{'•' * max(1, len(local) - len(shown))}@{domain}"
+
+
+class AdminOtpVerifyBody(BaseModel):
+    challenge: str = Field(min_length=20, max_length=1000)
+    code: str = Field(min_length=6, max_length=6)
+
+
+class AdminOtpResendBody(BaseModel):
+    challenge: str = Field(min_length=20, max_length=1000)
+
+
+async def _admin_from_challenge(challenge: str) -> AdminAccount:
+    from bson import ObjectId
+
+    admin_id = decode_admin_login_challenge(challenge)
+    admin = await AdminAccount.get(ObjectId(admin_id)) if admin_id and ObjectId.is_valid(admin_id) else None
+    if not admin:
+        raise HTTPException(status_code=401, detail="Your sign-in expired. Enter your password again.")
+    return admin
+
+
+@router.post("/admin/login/verify")
+async def admin_login_verify(
+    body: AdminOtpVerifyBody,
+    request: Request,
+    response: Response,
+    _: None = Depends(rate_limit_dependency("admin-otp-verify", limit=20, window_seconds=15 * 60)),
+):
+    """Second step of staff login: the emailed code starts the admin session."""
+    admin = await _admin_from_challenge(body.challenge)
+    await enforce_rate_limit(
+        f"admin-otp-verify:{admin.id}:{client_ip(request)}", limit=10, window_seconds=15 * 60
+    )
+    await consume_login_otp(admin_otp_key(admin.email), body.code.strip())
+    # Access could have been revoked while the code was in flight.
+    if not await user_has_admin_access(admin):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    token = create_access_token(admin.id)
+    set_auth_cookie(response, token, scope="admin")
+    return _auth_payload(admin, token)
+
+
+@router.post("/admin/login/resend")
+async def admin_login_resend(
+    body: AdminOtpResendBody,
+    request: Request,
+    _: None = Depends(rate_limit_dependency("admin-otp-resend", limit=6, window_seconds=15 * 60)),
+):
+    admin = await _admin_from_challenge(body.challenge)
+    await enforce_rate_limit(
+        f"admin-otp-resend:{admin.id}", limit=3, window_seconds=15 * 60
+    )
+    await issue_login_otp(admin.email, key=admin_otp_key(admin.email), audience="admin")
+    return {"ok": True}
 
 
 @router.post("", status_code=201)
