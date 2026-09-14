@@ -78,11 +78,11 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     <div className={cn("flex flex-col gap-1", className)} {...props}>
       <div className="flex flex-col items-center gap-1 text-center">
         <h1 className="text-2xl font-bold">
-          {isAdmin ? "Welcome to UA Admin" : "Login to your account"}
+          {isAdmin ? "Welcome back" : "Login to your account"}
         </h1>
       </div>
       {isAdmin ? (
-        <p className="mb-5 text-center text-sm text-muted-foreground">Sign in to admin.</p>
+        <p className="mb-5 text-center text-sm text-muted-foreground">Sign in to your admin account to continue.</p>
       ) : null}
       <div>
           {isAdmin ? (
