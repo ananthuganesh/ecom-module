@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import BrandLogo from "@/components/BrandLogo";
 import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
 import LoginBottomSheet from "@/components/auth/LoginBottomSheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -79,9 +78,6 @@ export default function CustomerLoginClient() {
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       <div className="flex flex-col gap-4 p-6 md:p-10">
-        <div className="flex justify-center gap-2 md:justify-start">
-          <BrandLogo href="/" height={32} priority />
-        </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="flex w-full max-w-xs flex-col gap-1">
             <div className="flex flex-col items-center gap-1 text-center">
