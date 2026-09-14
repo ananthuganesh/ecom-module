@@ -36,6 +36,29 @@ describe("buildProductJsonLd", () => {
   });
 });
 
+describe("aggregateRating", () => {
+  it("is added from published review totals", () => {
+    const data = buildProductJsonLd({
+      productName: "Rated Tee",
+      price: 999,
+      ratingAverage: 4.333,
+      ratingCount: 3,
+    });
+    assert.deepEqual(data.aggregateRating, {
+      "@type": "AggregateRating",
+      ratingValue: "4.3",
+      reviewCount: 3,
+      bestRating: "5",
+      worstRating: "1",
+    });
+  });
+
+  it("is omitted when there are no reviews", () => {
+    const data = buildProductJsonLd({ productName: "New Tee", price: 999, ratingCount: 0 });
+    assert.equal("aggregateRating" in data, false);
+  });
+});
+
 describe("productJsonLdScript", () => {
   it("escapes script-breaking characters", () => {
     const html = productJsonLdScript({

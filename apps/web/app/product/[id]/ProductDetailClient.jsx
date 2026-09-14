@@ -19,6 +19,9 @@ import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
 import BackInStockNotify from "@/components/storefront/BackInStockNotify";
+import ProductReviews from "@/components/storefront/ProductReviews";
+import StarRating from "@/components/storefront/StarRating";
+import { productRating, reviewCountLabel } from "@/lib/reviews";
 import {
   SIZE_GUIDE_COLUMNS,
   SIZE_GUIDE_NOTE,
@@ -410,6 +413,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
     selectedSizeStock > 0 && selectedSizeStock < lowStockThreshold
       ? selectedSizeStock
       : 0;
+  const rating = productRating(product);
   const price = Number(product?.pricing?.sellingPrice ?? product?.price ?? 0);
   const mrp = Number(product?.pricing?.mrp ?? 0);
   const hasCompareAt = mrp > 0 && mrp > price;
@@ -945,6 +949,20 @@ export default function ProductDetailPage({ initialProduct = null }) {
                       {productType}
                     </p>
                   ) : null}
+                  {rating ? (
+                    <a
+                      href="#reviews"
+                      className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-black"
+                    >
+                      <StarRating rating={rating.average} size={13} />
+                      <span className="font-semibold text-black tabular-nums">
+                        {rating.average.toFixed(1)}
+                      </span>
+                      <span className="underline underline-offset-2">
+                        {reviewCountLabel(rating.count)}
+                      </span>
+                    </a>
+                  ) : null}
                 </div>
                 <WishlistButton
                   product={product}
@@ -1122,6 +1140,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
           </div>
         </div>
       </section>
+
+      <ProductReviews productId={product._id} />
 
       {similarProducts.length > 0 ? (
         <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">

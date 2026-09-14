@@ -3,6 +3,7 @@
  * Strips `<` so description cannot break out of the script tag.
  */
 import { absoluteUrl, productCanonicalPath, productOgImage } from "./siteUrl.js";
+import { productRating } from "./reviews.js";
 
 function plainText(value) {
   return String(value || "")
@@ -66,6 +67,19 @@ export function buildProductJsonLd(product) {
         "@type": "Organization",
         name: "Urban Aana",
       },
+    };
+  }
+
+  // Only from real, published verified-buyer reviews; omitted when there are none,
+  // since an empty aggregateRating is invalid structured data.
+  const rating = productRating(product);
+  if (rating) {
+    data.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: rating.average.toFixed(1),
+      reviewCount: rating.count,
+      bestRating: "5",
+      worstRating: "1",
     };
   }
 

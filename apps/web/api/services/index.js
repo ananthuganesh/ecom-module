@@ -9,6 +9,7 @@ export {
   reelsService,
   contactService,
   returnService,
+  reviewService,
 } from "./user/index.js";
 
 // Admin services
@@ -29,5 +30,6 @@ export {
   adminSettingsService,
   adminMediaService,
   adminReturnsService,
+  adminReviewsService,
   adminStoreThemeService,
 } from "./admin/index.js";

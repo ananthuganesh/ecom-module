@@ -18,6 +18,7 @@ export {
   reelsService,
   contactService,
   returnService,
+  reviewService,
   adminCouponService,
   adminTaxClassService,
   adminCompanyProfileService,
@@ -26,5 +27,6 @@ export {
   adminSettingsService,
   adminMediaService,
   adminReturnsService,
+  adminReviewsService,
   adminStoreThemeService,
 } from "./services/index.js";

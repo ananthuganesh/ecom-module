@@ -178,6 +178,9 @@ class Product(Document):
     lowStockThreshold: Optional[int] = None
     metaTitle: Optional[str] = None
     metaDescription: Optional[str] = None
+    # Denormalised from published reviews so listings and JSON-LD need no join.
+    ratingAverage: float = 0
+    ratingCount: int = 0
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -741,6 +744,34 @@ class StockAlert(Document):
         ]
 
 
+class Review(Document):
+    """A verified buyer's rating of a product. One per customer per product."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    productId: str
+    customerId: str
+    orderId: Optional[str] = None
+    rating: int
+    title: str = ""
+    body: str = ""
+    # Shown publicly: first name and last initial, never the full name or email.
+    authorName: str = ""
+    size: str = ""
+    # published -> hidden by an admin, and back.
+    status: str = "published"
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "reviews"
+        indexes = [
+            IndexModel([("productId", 1), ("customerId", 1)], unique=True),
+            IndexModel([("productId", 1), ("status", 1), ("createdAt", -1)]),
+            IndexModel([("status", 1), ("createdAt", -1)]),
+        ]
+
+
 class PincodeRoute(Document):
     """Destination pincode → carrier override.
 
@@ -832,4 +863,5 @@ ALL_DOCUMENTS = [
     PincodeRoute,
     ReturnRequest,
     StockAlert,
+    Review,
 ]
