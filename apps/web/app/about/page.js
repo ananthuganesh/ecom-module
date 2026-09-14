@@ -11,7 +11,7 @@ export const metadata = {
 };
 
 export default function AboutPage() {
-  preload("/urban/about-1.webp", { as: "image", fetchPriority: "high" });
+  preload("/banner/hero-image-01.webp", { as: "image", fetchPriority: "high" });
 
   return (
     <main className="min-h-screen bg-white">

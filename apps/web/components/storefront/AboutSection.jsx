@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 
 const WhyUrbanAana = dynamic(() => import("@/components/storefront/WhyUrbanAana"));
 
-const HERO_IMAGE = "/urban/about-1.webp";
+const HERO_IMAGE = "/banner/hero-image-01.webp";
 const WHO_IMAGE = "/images/founders.webp";
 
 const fadeUp = {
