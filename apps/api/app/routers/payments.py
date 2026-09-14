@@ -204,6 +204,16 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
         order.shippingStatus = "Shipping Sync Failed"
         await order.save()
         print(f"[Payment] Fulfillment update failed: {exc}")
+    # Server-side purchase for GA4 and Meta. Reached once per order: the atomic
+    # paymentStatus claim above lets only one of verify/webhook get this far.
+    try:
+        from app.services import conversions
+
+        conv_user = user or (await User.get(order.customerId) if order.customerId else None)
+        await conversions.send_purchase(order, conv_user)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Conversions] purchase: {exc}")
+
     try:
         from app.services import aisensy as aisensy_svc
         from app.services import email_resend as email_svc

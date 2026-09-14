@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -154,6 +154,7 @@ async def _storefront_shipping_price(address: dict) -> float:
 async def create_order(
     body: dict,
     user: CurrentUser,
+    request: Request,
     _: None = Depends(rate_limit_dependency("orders-create", limit=20)),
 ):
     order_items = body.get("orderItems") or []
@@ -257,6 +258,11 @@ async def create_order(
     payment = "razorpay"
 
     attribution = sanitize_attribution(body.get("attribution"))
+    # Captured now: the payment webhook comes from Razorpay, not the shopper's
+    # browser, so this is the last point the analytics cookies are available.
+    from app.services.conversions import browser_context_from_request
+
+    browser_context = browser_context_from_request(request)
 
     order = Order(
         customerId=user.id,
@@ -285,6 +291,7 @@ async def create_order(
                 if body.get("guestId")
                 else {}
             ),
+            **({"browserContext": browser_context} if browser_context else {}),
         },
         shippingStatus="Payment Pending",
         attribution=attribution,

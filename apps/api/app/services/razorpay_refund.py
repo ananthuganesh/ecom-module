@@ -150,4 +150,23 @@ async def refund_order_payment(order: Order, *, reason: str = "admin_cancel_refu
             status_code=502,
             detail=result.get("error") or "Razorpay refund failed",
         )
+
+    # Tell GA4 so this stops counting as revenue. Skipped when Razorpay reports
+    # nothing left to refund, since no money actually moved.
+    if not result.get("already_refunded"):
+        try:
+            from app.documents import User
+            from app.services import conversions
+
+            refund = result.get("refund") if isinstance(result.get("refund"), dict) else {}
+            paise = int(result.get("amount_refunded_paise") or 0)
+            refund_user = await User.get(order.customerId) if order.customerId else None
+            await conversions.send_refund(
+                order,
+                refund_user,
+                amount=round(paise / 100.0, 2) if paise else None,
+                key=f"refund_{refund.get('id')}" if refund.get("id") else "refund",
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Conversions] refund: {exc}")
     return result

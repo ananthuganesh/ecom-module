@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     resend_from: str = "Urban Aana <noreply@urbanaana.com>"
 
     ga4_property_id: str = ""
+    # Server-side conversions. Reporting above reads GA4; these send to it.
+    ga4_measurement_id: str = ""
+    ga4_api_secret: str = ""
+    meta_pixel_id: str = ""
+    meta_capi_access_token: str = ""
+    # Set while testing to see events under Events Manager → Test events.
+    meta_capi_test_event_code: str = ""
+    meta_graph_version: str = "v23.0"
     ga4_credentials_json: str = ""
     ga4_credentials_file: str = ""
     ga4_enabled: bool = True
