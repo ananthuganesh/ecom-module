@@ -70,9 +70,8 @@ export function LoginForm({ className, mode = "customer", ...props }) {
     }
   };
 
-  const inputClassName = isAdmin
-    ? "h-9 border-gray-200 !bg-white focus-visible:border-gray-300"
-    : "h-8 !bg-white";
+  // Same input style as the customer login page.
+  const inputClassName = "h-9";
 
   return (
     <div className={cn("flex flex-col gap-1", className)} {...props}>
