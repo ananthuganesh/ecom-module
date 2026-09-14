@@ -47,7 +47,15 @@ function AdminLoginInner() {
           </div>
         </div>
         <p className="text-center text-xs text-muted-foreground">
-          Designed &amp; developed by Brid Network LLP
+          Designed &amp; developed by{" "}
+          <a
+            href="https://www.bridnetwork.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Brid Network LLP
+          </a>
         </p>
       </div>
       <div className="relative hidden bg-muted lg:block">
