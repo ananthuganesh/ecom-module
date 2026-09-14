@@ -71,7 +71,7 @@ export function LoginForm({ className, mode = "customer", ...props }) {
   };
 
   // Same input style as the customer login page.
-  const inputClassName = "h-9";
+  const inputClassName = "h-9 border-gray-300 focus-visible:border-gray-400";
 
   return (
     <div className={cn("flex flex-col gap-1", className)} {...props}>
