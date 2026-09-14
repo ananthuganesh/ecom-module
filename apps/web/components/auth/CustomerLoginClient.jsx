@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
 import LoginBottomSheet from "@/components/auth/LoginBottomSheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -76,7 +75,7 @@ export default function CustomerLoginClient() {
   }
 
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
+    <div className="grid min-h-svh">
       <div className="flex flex-col gap-4 p-6 md:p-10">
         <div className="flex flex-1 items-center justify-center">
           <div className="flex w-full max-w-xs flex-col gap-1">
@@ -92,16 +91,6 @@ export default function CustomerLoginClient() {
             />
           </div>
         </div>
-      </div>
-      <div className="relative hidden bg-muted lg:block">
-        <Image
-          src="/banner/hero-image-01.webp"
-          alt="Urban Aana streetwear"
-          fill
-          priority
-          sizes="50vw"
-          className="object-cover"
-        />
       </div>
     </div>
   );
