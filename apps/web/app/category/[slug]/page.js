@@ -2,10 +2,15 @@ import CategoryPageClient from "./CategoryPageClient";
 import { getCatalogConfig } from "@/lib/catalogConfig";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
 import { canonicalUrl } from "@/lib/siteUrl";
+import { buildBreadcrumbJsonLd, categorySlug, jsonLdScript } from "@/lib/structuredData";
+import { PRODUCT_CATEGORIES } from "@/utils/productForm";
 
 export const revalidate = 60;
 
 function titleFromSlug(slug) {
+  // Prefer the real category name ("T-Shirt") over a rebuilt one ("T Shirt").
+  const known = PRODUCT_CATEGORIES.find((name) => categorySlug(name) === slug);
+  if (known) return known;
   return String(slug || "")
     .split("-")
     .filter(Boolean)
@@ -38,12 +43,27 @@ export default async function CategoryPage({ params }) {
     pageSize: categoryPageSize,
   });
 
+  const breadcrumbLd = jsonLdScript(
+    buildBreadcrumbJsonLd([
+      { name: "Home", path: "/" },
+      { name: titleFromSlug(slug) || "Category", path: `/category/${slug}` },
+    ])
+  );
+
   return (
-    <CategoryPageClient
-      slug={slug}
-      initialProducts={initialProducts}
-      categoryPageSize={categoryPageSize}
-      cardPriorityCount={cardPriorityCount}
-    />
+    <>
+      {breadcrumbLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: breadcrumbLd }}
+        />
+      ) : null}
+      <CategoryPageClient
+        slug={slug}
+        initialProducts={initialProducts}
+        categoryPageSize={categoryPageSize}
+        cardPriorityCount={cardPriorityCount}
+      />
+    </>
   );
 }

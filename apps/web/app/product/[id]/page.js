@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import ProductDetailClient from "./ProductDetailClient";
-import { productJsonLdScript } from "@/lib/productJsonLd";
+import { productBreadcrumbJsonLd, productJsonLdScript } from "@/lib/productJsonLd";
+import { jsonLdScript } from "@/lib/structuredData";
 import {
   absoluteUrl,
   fetchProductForSeo,
@@ -64,6 +65,7 @@ export default async function ProductPage({ params }) {
     !lcpImage.includes("/urban/about-1") &&
     (lcpImage.startsWith("http://") || lcpImage.startsWith("https://"));
   const jsonLd = productJsonLdScript(product);
+  const breadcrumbLd = jsonLdScript(productBreadcrumbJsonLd(product));
 
   return (
     <>
@@ -71,6 +73,12 @@ export default async function ProductPage({ params }) {
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: jsonLd }}
+        />
+      ) : null}
+      {breadcrumbLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: breadcrumbLd }}
         />
       ) : null}
       {preloadLcp ? (

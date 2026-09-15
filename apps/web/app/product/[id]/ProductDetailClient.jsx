@@ -215,7 +215,15 @@ export default function ProductDetailPage({ initialProduct = null }) {
       sizes.some((size) => size.size === selectedSize && stockFor(size, 0) > 0);
     if (currentStillAvailable) return;
 
-    const firstAvailable = sizes.find((size) => stockFor(size, 0) > 0);
+    // A size-specific link (?size=M, used in Google's product results) picks that size.
+    const requested =
+      typeof window !== "undefined"
+        ? String(new URLSearchParams(window.location.search).get("size") || "").trim().toLowerCase()
+        : "";
+    const requestedSize = requested
+      ? sizes.find((size) => size.size.toLowerCase() === requested && stockFor(size, 0) > 0)
+      : null;
+    const firstAvailable = requestedSize || sizes.find((size) => stockFor(size, 0) > 0);
     setSelectedSize(firstAvailable?.size || "");
   }, [product?._id, sizes, selectedSize]);
 

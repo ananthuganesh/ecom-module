@@ -8,6 +8,7 @@ import { getCatalogConfig } from "@/lib/catalogConfig";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
 import { filterInStock } from "@/lib/productStock";
 import { canonicalUrl } from "@/lib/siteUrl";
+import { buildOrganizationJsonLd, jsonLdScript } from "@/lib/structuredData";
 
 const InstagramReels = dynamic(() => import("@/components/storefront/InstagramReels"));
 const TwoColumnImages = dynamic(() => import("@/components/storefront/TwoColumnImages"));
@@ -43,6 +44,10 @@ export default async function Home() {
 
   return (
     <div className="w-full bg-white font-sans">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(buildOrganizationJsonLd()) }}
+      />
       <HeroBanner slides={heroSlides} />
 
       <section
