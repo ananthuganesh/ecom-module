@@ -184,12 +184,22 @@ function refundColumn({ widthClass, size } = {}) {
     size,
     meta: meta({ widthClass }),
     accessorFn: (row) => Number(row.refundAmount || 0),
-    header: "Refund due",
-    cell: ({ row }) => (
-      <span className="block truncate text-[13px] tabular-nums text-foreground">
-        {formatINR(row.original.refundAmount || 0)}
-      </span>
-    ),
+    header: "Refund",
+    cell: ({ row }) => {
+      const { refundAmount, refundStatus } = row.original;
+      return (
+        <span className="flex items-center gap-2 truncate text-[13px] tabular-nums text-foreground">
+          {formatINR(refundAmount || 0)}
+          {refundStatus === "refunded" ? (
+            <AdminStatusText tone="success">Refunded</AdminStatusText>
+          ) : refundStatus === "failed" ? (
+            <AdminStatusText tone="danger">Failed</AdminStatusText>
+          ) : refundStatus === "processing" ? (
+            <AdminStatusText tone="info">Refunding</AdminStatusText>
+          ) : null}
+        </span>
+      );
+    },
   };
 }
 

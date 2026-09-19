@@ -6,7 +6,8 @@ import { adminReturnsService } from "@/api";
 import { adminOrderHref } from "@/utils/formatOrderNumber";
 import { userErrorMessage } from "@/lib/userMessage";
 import { toast } from "sonner";
-import { Check, Loader2, PackageCheck, Search, X } from "lucide-react";
+import { Check, IndianRupee, Loader2, PackageCheck, Search, X } from "lucide-react";
+import { formatINR } from "@/utils/formatINR";
 import { ReturnArrow } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
@@ -76,6 +77,12 @@ export default function AdminReturnsPage() {
   const canReceive = selectedRows.some((row) =>
     ["approved", "picked_up"].includes(row.status)
   );
+  // Refund only once the goods are back, and never twice.
+  const refundableRows = selectedRows.filter(
+    (row) => row.status === "received" && !["refunded", "processing"].includes(row.refundStatus)
+  );
+  const refundTotal = refundableRows.reduce((sum, row) => sum + Number(row.refundAmount || 0), 0);
+  const [refundOpen, setRefundOpen] = useState(false);
 
   useEffect(() => {
     setViewFilter(statusFromUrl);
@@ -184,6 +191,18 @@ export default function AdminReturnsPage() {
         result?.restockErrors?.length ? `${row.number}: ${result.restockErrors[0]}` : null
     );
 
+  const handleRefund = async () => {
+    setRefundOpen(false);
+    await runBulk(
+      refundableRows,
+      (row) => adminReturnsService.refund(row._id),
+      (result, row) =>
+        result?.alreadyRefunded
+          ? `${row.number}: Razorpay shows this payment already refunded`
+          : null
+    );
+  };
+
   const handleReject = async () => {
     setRejectOpen(false);
     await runBulk(
@@ -267,6 +286,13 @@ export default function AdminReturnsPage() {
                 </AdminHeaderButton>
                 <AdminHeaderButton
                   variant="outline"
+                  disabled={isBulkLoading || refundableRows.length === 0}
+                  onClick={() => setRefundOpen(true)}
+                >
+                  <IndianRupee className="w-3.5 h-3.5" /> Refund
+                </AdminHeaderButton>
+                <AdminHeaderButton
+                  variant="outline"
                   disabled={isBulkLoading}
                   onClick={() => setRejectOpen(true)}
                 >
@@ -298,6 +324,31 @@ export default function AdminReturnsPage() {
           )
         }
       />
+
+      <AlertDialog open={refundOpen} onOpenChange={setRefundOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Refund {formatINR(refundTotal)} to{" "}
+              {refundableRows.length === 1
+                ? refundableRows[0].customerName || "the customer"
+                : `${refundableRows.length} customers`}
+              ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Razorpay refunds the item value on{" "}
+              {refundableRows.map((row) => row.number).join(", ")} to the original payment
+              method. The delivery charge isn&apos;t refunded. This can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Not now</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRefund}>
+              Refund {formatINR(refundTotal)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <AlertDialogContent>

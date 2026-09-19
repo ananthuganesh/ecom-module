@@ -430,6 +430,11 @@ def return_summary(request: ReturnRequest) -> dict[str, Any]:
         "rejectedAt": request.rejectedAt,
         "pickedUpAt": request.pickedUpAt,
         "receivedAt": request.receivedAt,
+        "refundStatus": request.refundStatus,
+        "refundedAmount": request.refundedAmount,
+        "refundedAt": request.refundedAt,
+        "refundId": request.refundId,
+        "refundError": request.refundError,
     }
 
 
@@ -467,3 +472,129 @@ async def _restore_order_status(request: ReturnRequest) -> None:
         order.status = "delivered"
         order.updatedAt = datetime.utcnow()
         await order.save()
+
+
+# ---------------------------------------------------------------- refund
+
+
+_REFUNDABLE_PAYMENT = {"paid", "partially_refunded", "refund_pending"}
+
+
+def _order_payment_id(order: Order) -> str:
+    details = order.transactionDetails or {}
+    return str(
+        order.razorpayPaymentId or details.get("razorpayPaymentId") or details.get("paymentId") or ""
+    ).strip()
+
+
+async def refund_return(request: ReturnRequest, *, actor_id: str = "") -> dict[str, Any]:
+    """Refund exactly the return's refund-due amount through Razorpay.
+
+    Only after the goods are received, and only once: a claim on the request
+    stops a double click or two admins from refunding it twice.
+    """
+    from app.services.razorpay_refund import refund_razorpay_payment
+
+    if request.status != "received":
+        raise HTTPException(
+            status_code=400, detail="Refund only after the return is marked received."
+        )
+    if request.refundStatus == "refunded":
+        raise HTTPException(status_code=400, detail="This return is already refunded.")
+    amount = round(float(request.refundAmount or 0), 2)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Nothing to refund on this return.")
+
+    order = await Order.get(ObjectId(request.orderId)) if ObjectId.is_valid(request.orderId) else None
+    if not order:
+        raise HTTPException(status_code=404, detail="Order for this return no longer exists")
+    pay = str(order.paymentStatus or (order.transactionDetails or {}).get("paymentStatus") or "").lower()
+    if pay not in _REFUNDABLE_PAYMENT:
+        raise HTTPException(status_code=400, detail=f"Order payment is '{pay or 'unknown'}' — cannot refund.")
+    payment_id = _order_payment_id(order)
+    if not payment_id:
+        raise HTTPException(status_code=400, detail="No Razorpay payment on this order — refund it manually.")
+
+    col = ReturnRequest.get_pymongo_collection()
+    claim = await col.find_one_and_update(
+        {
+            "_id": request.id,
+            "status": "received",
+            "refundStatus": {"$nin": ["refunded", "processing"]},
+        },
+        {"$set": {"refundStatus": "processing", "refundError": None, "updatedAt": datetime.utcnow()}},
+    )
+    if claim is None:
+        raise HTTPException(status_code=409, detail="A refund for this return is already in progress or done.")
+
+    result = await refund_razorpay_payment(
+        payment_id,
+        reason=f"Return {request.number}",
+        amount_paise=int(round(amount * 100)),
+    )
+    now = datetime.utcnow()
+
+    if not result.get("ok"):
+        request.refundStatus = "failed"
+        request.refundError = str(result.get("error") or "Razorpay refund failed")[:300]
+        request.updatedAt = now
+        await request.save()
+        raise HTTPException(status_code=502, detail=f"Razorpay refund failed: {request.refundError}")
+
+    refund = result.get("refund") if isinstance(result.get("refund"), dict) else {}
+    already = bool(result.get("already_refunded"))
+    paise = 0 if already else int(result.get("amount_refunded_paise") or 0)
+    refunded = round(paise / 100.0, 2)
+
+    request.refundStatus = "refunded"
+    request.refundedAmount = refunded
+    request.refundedAt = now
+    request.refundId = str(refund.get("id") or "") or None
+    request.refundError = (
+        "Razorpay shows this payment already fully refunded; no new refund was made." if already else None
+    )
+    request.updatedAt = now
+    await request.save()
+
+    if not already:
+        _record_order_refund(order, request, refunded, request.refundId, actor_id, now)
+        await order.save()
+
+    return {
+        "request": request,
+        "refundedAmount": refunded,
+        "refundId": request.refundId,
+        "alreadyRefunded": already,
+        "orderPaymentStatus": order.paymentStatus,
+    }
+
+
+def _record_order_refund(
+    order: Order, request: ReturnRequest, rupees: float, refund_id: str | None, actor_id: str, now: datetime
+) -> None:
+    """Add the refund to the order: Partially refunded, or Refunded once it covers the total."""
+    details = dict(order.transactionDetails or {})
+    total_refunded = round(float(details.get("refundedAmount") or 0) + rupees, 2)
+    details["refundedAmount"] = total_refunded
+    details["refundedAt"] = now.isoformat()
+    entries = list(details.get("refunds") or [])
+    entries.append(
+        {
+            "id": refund_id,
+            "amount": rupees,
+            "amountPaise": int(round(rupees * 100)),
+            "reason": f"Return {request.number}",
+            "returnNumber": request.number,
+            "by": actor_id or None,
+            "at": now.isoformat(),
+        }
+    )
+    details["refunds"] = entries
+    if refund_id:
+        details["lastRefundId"] = refund_id
+    paid_total = float(order.finalPrice or order.total or 0)
+    status = "refunded" if paid_total and total_refunded >= paid_total - 0.01 else "partially_refunded"
+    details["paymentStatus"] = status
+    order.paymentStatus = status
+    order.transactionDetails = details
+    order.updatedAt = now

@@ -538,7 +538,16 @@ export function buildOrderTimeline(order) {
   }
 
   // Refund
-  if (payStatus === "refunded" || payStatus === "partially_refunded" || payStatus === "refund_pending") {
+  const refundEntries = Array.isArray(order.transactionDetails?.refunds)
+    ? order.transactionDetails.refunds
+    : [];
+  // Return refunds get their own step (with the return number) below.
+  const onlyReturnRefunds =
+    refundEntries.length > 0 && refundEntries.every((entry) => entry?.returnNumber);
+  if (
+    !onlyReturnRefunds &&
+    (payStatus === "refunded" || payStatus === "partially_refunded" || payStatus === "refund_pending")
+  ) {
     const refundedAmount = formatMoneyINR(
       order.refundedAmount ?? order.transactionDetails?.refundedAmount
     );

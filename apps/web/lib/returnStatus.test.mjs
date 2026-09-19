@@ -106,3 +106,75 @@ describe("returnTimelineSteps", () => {
     assert.equal(steps[1].subtitle, "Worn");
   });
 });
+
+describe("return refunds in the timeline", () => {
+  it("shows the refund with amount and Razorpay id", () => {
+    const steps = returnTimelineSteps({
+      returns: [
+        {
+          number: "RR-202609-00001",
+          status: "received",
+          requestedAt: "2026-09-18T05:34:03Z",
+          receivedAt: "2026-09-22T08:00:00Z",
+          refundStatus: "refunded",
+          refundedAmount: 1199,
+          refundedAt: "2026-09-22T09:00:00Z",
+          refundId: "rfnd_ABC",
+        },
+      ],
+    });
+    const refund = steps.find((s) => s.type === "refund");
+    assert.equal(refund.title, "Refund ₹1,199 issued for return RR-202609-00001");
+    assert.equal(refund.subtitle, "Razorpay · rfnd_ABC");
+  });
+
+  it("flags a failed refund", () => {
+    const steps = returnTimelineSteps({
+      returns: [
+        {
+          number: "RR-2",
+          status: "received",
+          requestedAt: "2026-09-18T05:00:00Z",
+          receivedAt: "2026-09-19T05:00:00Z",
+          refundStatus: "failed",
+          refundError: "BAD_REQUEST_ERROR",
+        },
+      ],
+    });
+    assert.equal(steps.at(-1).title, "Refund for return RR-2 failed");
+  });
+});
+
+describe("order timeline with a return refund", () => {
+  it("shows the return refund once, not also as a generic refund", async () => {
+    const { buildOrderTimeline } = await import("./orderTimeline.js");
+    const steps = buildOrderTimeline({
+      _id: "o1",
+      orderNumber: "UA1586",
+      createdAt: "2026-09-12T13:13:15Z",
+      paymentStatus: "partially_refunded",
+      finalPrice: 2398,
+      transactionDetails: {
+        paymentStatus: "partially_refunded",
+        refundedAmount: 1199,
+        refundedAt: "2026-09-22T09:00:00Z",
+        refunds: [{ id: "rfnd_ABC", amount: 1199, returnNumber: "RR-202609-00001" }],
+      },
+      returns: [
+        {
+          number: "RR-202609-00001",
+          status: "received",
+          requestedAt: "2026-09-18T05:34:03Z",
+          receivedAt: "2026-09-22T08:00:00Z",
+          refundStatus: "refunded",
+          refundedAmount: 1199,
+          refundedAt: "2026-09-22T09:00:00Z",
+          refundId: "rfnd_ABC",
+        },
+      ],
+    });
+    const refundSteps = steps.filter((s) => s.type === "refund");
+    assert.equal(refundSteps.length, 1);
+    assert.match(refundSteps[0].title, /RR-202609-00001/);
+  });
+});

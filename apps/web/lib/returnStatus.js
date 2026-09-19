@@ -103,6 +103,30 @@ export function returnTimelineSteps(order, seqBase = 110) {
         tone: "success",
       });
     }
+    if (r.refundStatus === "refunded" && r.refundedAt) {
+      steps.push({
+        id: `return_refunded_${id}`,
+        type: "refund",
+        seq: seqBase + 5,
+        title: `Refund ${money(r.refundedAmount) || ""} issued for return ${r.number}`.replace("  ", " "),
+        subtitle: r.refundId ? `Razorpay · ${r.refundId}` : r.refundError || "Razorpay",
+        at: r.refundedAt,
+        sortAt: r.refundedAt,
+        tone: "critical",
+      });
+    } else if (r.refundStatus === "failed") {
+      const at = r.receivedAt || r.requestedAt;
+      steps.push({
+        id: `return_refund_failed_${id}`,
+        type: "refund",
+        seq: seqBase + 5,
+        title: `Refund for return ${r.number} failed`,
+        subtitle: r.refundError || null,
+        at,
+        sortAt: at,
+        tone: "critical",
+      });
+    }
     if (r.rejectedAt || String(r.status).toLowerCase() === "rejected") {
       const at = r.rejectedAt || r.requestedAt;
       steps.push({

@@ -720,6 +720,13 @@ class ReturnRequest(Document):
     rejectedAt: Optional[datetime] = None
     pickedUpAt: Optional[datetime] = None
     receivedAt: Optional[datetime] = None
+    # Refund of refundAmount through Razorpay, only after receipt:
+    # None -> processing -> refunded, or failed (retryable).
+    refundStatus: Optional[str] = None
+    refundedAmount: float = 0
+    refundedAt: Optional[datetime] = None
+    refundId: Optional[str] = None
+    refundError: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 

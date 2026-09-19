@@ -8,7 +8,7 @@ from typing import Any
 from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query
 
-from app.deps import AdminUser, CurrentUser, OrdersWriter
+from app.deps import AdminUser, CurrentUser, OrdersWriter, PaymentsWriter
 from app.documents import Order, ReturnRequest, User
 from app.serializers import doc_to_dict
 from app.services import returns as returns_svc
@@ -143,6 +143,21 @@ async def reject_return(return_id: str, body: dict, _: OrdersWriter):
     request = await _get_request(return_id)
     updated = await returns_svc.reject(request, reason=(body or {}).get("reason") or "")
     return {"ok": True, "return": _serialize(updated)}
+
+
+@admin_router.post("/{return_id}/refund")
+async def refund_return(return_id: str, admin: PaymentsWriter):
+    """Refund the return's refund-due amount through Razorpay (after receipt, once)."""
+    request = await _get_request(return_id)
+    result = await returns_svc.refund_return(request, actor_id=str(admin.id))
+    return {
+        "ok": True,
+        "refundedAmount": result["refundedAmount"],
+        "refundId": result["refundId"],
+        "alreadyRefunded": result["alreadyRefunded"],
+        "orderPaymentStatus": result["orderPaymentStatus"],
+        "return": _serialize(result["request"]),
+    }
 
 
 @admin_router.post("/{return_id}/received")

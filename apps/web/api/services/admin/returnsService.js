@@ -25,6 +25,12 @@ export const adminReturnsService = {
     return response.data;
   },
 
+  /** Refund the return's refund-due amount through Razorpay (after receipt, once). */
+  refund: async (returnId) => {
+    const response = await api.post(`/admin/returns/${returnId}/refund`);
+    return response.data;
+  },
+
   /** Goods are back: posts a sales return and restocks. Does not refund. */
   markReceived: async (returnId) => {
     const response = await api.post(`/admin/returns/${returnId}/received`);
