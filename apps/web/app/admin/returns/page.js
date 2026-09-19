@@ -8,7 +8,7 @@ import { userErrorMessage } from "@/lib/userMessage";
 import { toast } from "sonner";
 import { Check, IndianRupee, Loader2, PackageCheck, Search, X } from "lucide-react";
 import { formatINR } from "@/utils/formatINR";
-import { ReturnArrow } from "@/components/admin/LocalIcons";
+import { ReturnRequest } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminHeaderButton,
@@ -218,7 +218,7 @@ export default function AdminReturnsPage() {
   );
 
   return (
-    <AdminListLayout fill={false} title={pageTitle} icon={ReturnArrow}>
+    <AdminListLayout fill={false} title={pageTitle} icon={ReturnRequest}>
       <DataTable
         columns={columns}
         data={returns}

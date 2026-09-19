@@ -24,7 +24,7 @@ import {
   Folder,
   Film,
   Truck,
-  ReturnArrow,
+  ReturnRequest,
   Sparkles,
 } from "./LocalIcons";
 
@@ -176,7 +176,7 @@ const menuItems = [
   {
     name: "Returns",
     href: "/admin/returns",
-    icon: ReturnArrow,
+    icon: ReturnRequest,
     subItems: [
       { name: "Pending", href: "/admin/returns?status=requested" },
       { name: "Approved", href: "/admin/returns?status=approved" },

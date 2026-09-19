@@ -1,5 +1,7 @@
 // Shopify-style sidebar icons — outline default, filled when active
 import React from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ReturnRequestIcon } from "@hugeicons/core-free-icons";
 
 const base16 = {
   viewBox: "0 0 20 20",
@@ -160,6 +162,11 @@ export const Truck = ({ active, ...props }) => (
       </>
     )}
   </svg>
+);
+
+/** Returns — Hugeicons "return request" (stroke is a touch heavier when active). */
+export const ReturnRequest = ({ active, ...props }) => (
+  <HugeiconsIcon icon={ReturnRequestIcon} strokeWidth={active ? 2 : 1.5} {...props} />
 );
 
 /** Returns — arrow curving back to the left */
