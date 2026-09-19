@@ -178,7 +178,7 @@ const menuItems = [
     href: "/admin/returns",
     icon: ReturnRequest,
     subItems: [
-      { name: "Pending", href: "/admin/returns?status=requested" },
+      { name: "Requests", href: "/admin/returns?status=requested" },
       { name: "Approved", href: "/admin/returns?status=approved" },
       { name: "Received", href: "/admin/returns?status=received" },
     ],

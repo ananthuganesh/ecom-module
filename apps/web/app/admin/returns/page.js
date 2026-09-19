@@ -32,7 +32,7 @@ const PAGE_SIZE = 25;
 
 const RETURN_VIEWS = [
   { value: "all", label: "All" },
-  { value: "requested", label: "Pending" },
+  { value: "requested", label: "Requests" },
   { value: "approved", label: "Approved" },
   { value: "picked_up", label: "Picked up" },
   { value: "received", label: "Received" },
@@ -213,7 +213,7 @@ export default function AdminReturnsPage() {
   };
 
   const pageTitle = useMemo(
-    () => (pendingCount > 0 ? `Returns · ${pendingCount} pending` : "Returns"),
+    () => (pendingCount > 0 ? `Returns · ${pendingCount} request${pendingCount === 1 ? "" : "s"}` : "Returns"),
     [pendingCount]
   );
 

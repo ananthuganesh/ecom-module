@@ -8,7 +8,7 @@ import { formatOrderNumber, adminOrderHref } from "@/utils/formatOrderNumber";
 import { ADMIN_TIME_ZONE } from "@/utils/formatAdminDateTime";
 
 export const RETURN_STATUS_LABELS = {
-  requested: "Pending",
+  requested: "Requested",
   approved: "Approved",
   picked_up: "Picked up",
   received: "Received",
