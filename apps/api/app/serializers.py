@@ -301,6 +301,15 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
     result = []
     from app.services.dtdc_est_cost import ensure_dtdc_est_cost
 
+    # Return requests per order: the admin status badge and activity show them.
+    returns_map: dict[str, list[dict]] = {}
+    try:
+        from app.services.returns import returns_by_order
+
+        returns_map = await returns_by_order([str(o.id) for o in orders if o.id])
+    except Exception:
+        returns_map = {}
+
     for order in orders:
         try:
             await ensure_dtdc_est_cost(order, save=True)
@@ -322,5 +331,6 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                     "amountSpent": float(stats.get("amountSpent") or 0),
                     "abandonedCount": int(stats.get("abandonedCount") or 0),
                 }
+        remapped["returns"] = returns_map.get(str(order.id), [])
         result.append(remapped)
     return result

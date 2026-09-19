@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
 import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
+import { activeReturn } from "@/lib/returnStatus";
 import {
   Card,
   CardContent,
@@ -646,22 +647,6 @@ export default function AdminOrderDetailPage() {
     }
   };
 
-  const handleReturn = async (action) => {
-    if (!order) return;
-    setUpdating(true);
-    try {
-      await adminOrderService.handleReturn(order._id, action);
-      const newStatus = action === "approve" ? "returned" : "delivered";
-      setOrder((prev) => (prev ? { ...prev, status: newStatus } : null));
-      toast.success(`Return ${action}ed`);
-    } catch (e) {
-      console.error(e);
-      toast.error("Return processing failed");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
   const handleCancelOrder = async () => {
     if (!order) return;
     if (String(order.status || "").toLowerCase() === "cancelled") {
@@ -847,6 +832,7 @@ export default function AdminOrderDetailPage() {
     order.paymentStatus || order.transactionDetails?.paymentStatus || ""
   ).toLowerCase();
   const fulfillment = resolveFulfillmentDisplay(order);
+  const currentReturn = activeReturn(order);
   const isCancelled = String(order.status || "").toLowerCase() === "cancelled";
   const hasAwb = Boolean(order.awbCode || order.awb);
   // Invoice print is the post-fulfillment document on this page (labels live under Shipments).
@@ -890,19 +876,16 @@ export default function AdminOrderDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {order.status === "return requested" ? (
+          {currentReturn ? (
+            // Returns are approved on the Returns page, where approval books the
+            // Delhivery pickup and receipt restocks.
             <div className="flex gap-2">
               <AdminHeaderButton
-                onClick={() => handleReturn("approve")}
-                disabled={updating}
+                onClick={() =>
+                  router.push(`/admin/returns?q=${encodeURIComponent(currentReturn.number)}`)
+                }
               >
-                Approve Return
-              </AdminHeaderButton>
-              <AdminHeaderButton
-                onClick={() => handleReturn("reject")}
-                disabled={updating}
-              >
-                Reject Request
+                View return {currentReturn.number}
               </AdminHeaderButton>
             </div>
           ) : (

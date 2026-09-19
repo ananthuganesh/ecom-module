@@ -1679,6 +1679,7 @@ async def bulk_orders(body: dict, _: OrdersWriter):
 
     ids = body.get("ids") or body.get("orderIds") or []
     status_val = body.get("status")
+    _refuse_return_status(status_val)
     count = 0
     for oid in ids:
         order = await Order.get(ObjectId(oid))
@@ -1694,6 +1695,18 @@ async def bulk_orders(body: dict, _: OrdersWriter):
     return {"updated": count}
 
 
+_RETURN_OWNED_STATUSES = {"return requested", "returned"}
+
+
+def _refuse_return_status(value) -> None:
+    """Return states follow the return request (pickup, receipt, restock); never set by hand."""
+    if str(value or "").strip().lower() in _RETURN_OWNED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail="Return status is set from the Returns page as the return progresses.",
+        )
+
+
 @router.patch("/orders/{order_id}/status")
 async def order_status(order_id: str, body: dict, _: OrdersWriter):
     from app.services.fulfillment import apply_shipping_status_from_order_status
@@ -1702,6 +1715,7 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     prev_status = (order.status or "").lower()
+    _refuse_return_status(body.get("status"))
     # Dedicated cancel flow handles carrier cancel + restock + refund + archive + email.
     # Kept identical to POST /orders/{id}/cancel so both routes behave the same.
     if str(body.get("status") or "").lower() == "cancelled" and prev_status != "cancelled":
@@ -1805,23 +1819,13 @@ async def order_archive(order_id: str, body: dict, _: OrdersWriter):
 
 @router.patch("/orders/{order_id}/return")
 async def order_return(order_id: str, body: dict, _: OrdersWriter):
-    order = await Order.get(ObjectId(order_id))
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    action = str(body.get("action") or "").lower()
-    if action not in {"approve", "reject"}:
-        raise HTTPException(status_code=400, detail="action must be approve or reject")
-    order.status = "returned" if action == "approve" else "delivered"
-    order.updatedAt = datetime.utcnow()
-    await order.save()
-    if action == "approve":
-        try:
-            from app.services.stock import restock_order_stock
-
-            await restock_order_stock(order)
-        except Exception as exc:
-            print(f"[Admin] Stock restore on return failed for {order.id}: {exc}")
-    return (await enrich_orders([order]))[0]
+    """Retired. It marked the order returned and restocked at once, skipping the
+    Delhivery pickup and leaving the return request pending. Returns are
+    approved, collected and received from the Returns page only."""
+    raise HTTPException(
+        status_code=410,
+        detail="Handle returns from the Returns page — approving there books the pickup.",
+    )
 
 
 @router.patch("/orders/{order_id}/delivery-date")

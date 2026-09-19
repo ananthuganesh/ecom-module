@@ -1,3 +1,4 @@
+import { returnTimelineSteps } from "./returnStatus.js";
 import { ADMIN_TIME_ZONE, parseAdminDate } from "../utils/formatAdminDateTime.js";
 
 function touchKey(t) {
@@ -567,6 +568,9 @@ export function buildOrderTimeline(order) {
       tone: "critical",
     });
   }
+
+  // Returns: requested → approved (pickup) → picked up → received, or rejected.
+  steps.push(...returnTimelineSteps(order));
 
   return steps;
 }

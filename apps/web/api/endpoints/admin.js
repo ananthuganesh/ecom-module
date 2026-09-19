@@ -25,7 +25,6 @@ const orders = {
   archive: (id) => `/admin/orders/${id}/archive`,
   bulkStatus: "/admin/orders/bulk-update",
   deliveryDate: (id) => `/admin/orders/${id}/delivery-date`,
-  return: (id) => `/admin/orders/${id}/return`,
 };
 
 const categories = {

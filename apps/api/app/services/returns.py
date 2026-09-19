@@ -208,6 +208,7 @@ async def create_request(
                 image=row["image"],
                 color=row["color"],
                 size=row["size"],
+                variantSku=await _variant_sku_for(row["productId"], row["color"], row["size"]),
                 quantity=quantity,
                 unitPrice=row["unitPrice"],
                 lineRefund=line_refund,
@@ -312,10 +313,15 @@ async def mark_received(request: ReturnRequest, *, actor_id: str = "") -> dict[s
             productName=item.productName,
             quantity=int(item.quantity),
             unitPrice=float(item.unitPrice),
-            variantSku=item.variantSku or "",
+            # Older requests saved a blank SKU; restock the size row the sale used.
+            variantSku=item.variantSku
+            or await _variant_sku_for(item.productId, item.color, item.size),
         )
         for item in request.items or []
     ]
+    # Stock already went back for the whole order (a cancel, or the retired
+    # one-click return): restocking again would count the goods twice.
+    already_restocked = bool((order.transactionDetails or {}).get("stockRestocked"))
 
     sales_return = SalesReturn(
         number=await erp_ops.next_number("SR", "seq_sales_return"),
@@ -324,7 +330,7 @@ async def mark_received(request: ReturnRequest, *, actor_id: str = "") -> dict[s
         customerId=request.customerId,
         items=line_items,
         reason=request.reason or f"Return {request.number}",
-        restock=True,
+        restock=not already_restocked,
     )
     await sales_return.insert()
 
@@ -334,7 +340,7 @@ async def mark_received(request: ReturnRequest, *, actor_id: str = "") -> dict[s
     restocked = 0
     restock_errors: list[str] = []
     for item in line_items:
-        if not item.productId:
+        if not item.productId or already_restocked:
             continue
         try:
             await stock_service.apply_stock_change(
@@ -354,6 +360,8 @@ async def mark_received(request: ReturnRequest, *, actor_id: str = "") -> dict[s
             restock_errors.append(f"{item.productName}: {detail}")
             print(f"[Return] Restock failed for {request.number}: {detail}")
 
+    if already_restocked:
+        restock_errors.append("Stock was already returned for this order; not added again.")
     request.status = "received"
     request.receivedAt = datetime.utcnow()
     request.salesReturnId = str(sales_return.id)
@@ -374,6 +382,67 @@ async def mark_received(request: ReturnRequest, *, actor_id: str = "") -> dict[s
         # Refund is never automatic — surfaced so the admin can act on it.
         "refundDue": request.refundAmount,
     }
+
+
+async def _variant_sku_for(product_id: str | None, color: str, size: str) -> str:
+    """The stock-ledger SKU for a line, e.g. EHY0G1-S — what the sale was booked against."""
+    if not product_id or not ObjectId.is_valid(str(product_id)):
+        return ""
+    from app.documents import Product
+    from app.services.variants import variant_sku
+
+    product = await Product.get(ObjectId(str(product_id)))
+    if not product:
+        return ""
+    try:
+        return variant_sku(product, color=color or "", size=size or "") or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+RETURN_STAGE_LABELS = {
+    "requested": "Return requested",
+    "approved": "Return approved",
+    "picked_up": "Return in transit",
+    "received": "Returned",
+    "rejected": "Return rejected",
+    "cancelled": "Return cancelled",
+}
+
+
+def return_summary(request: ReturnRequest) -> dict[str, Any]:
+    """Compact return info carried on admin order payloads (status badge + activity)."""
+    return {
+        "_id": str(request.id),
+        "number": request.number,
+        "status": request.status,
+        "label": RETURN_STAGE_LABELS.get(request.status, request.status),
+        "reason": request.reason,
+        "itemCount": sum(int(i.quantity or 0) for i in request.items or []),
+        "refundAmount": request.refundAmount,
+        "carrier": request.carrier,
+        "awb": request.awb,
+        "pickupServiceable": request.pickupServiceable,
+        "pickupNote": request.pickupNote,
+        "rejectionReason": request.rejectionReason,
+        "requestedAt": request.requestedAt,
+        "approvedAt": request.approvedAt,
+        "rejectedAt": request.rejectedAt,
+        "pickedUpAt": request.pickedUpAt,
+        "receivedAt": request.receivedAt,
+    }
+
+
+async def returns_by_order(order_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Return summaries for many orders in one query, newest first per order."""
+    ids = [str(i) for i in order_ids if i]
+    if not ids:
+        return {}
+    rows = await ReturnRequest.find({"orderId": {"$in": ids}}).sort([("createdAt", -1)]).to_list()
+    out: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        out.setdefault(row.orderId, []).append(return_summary(row))
+    return out
 
 
 async def _every_item_returned(order: Order) -> bool:

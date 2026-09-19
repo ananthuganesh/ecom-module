@@ -31,8 +31,6 @@ export const adminOrderService = {
   archive: (id, archived = true) =>
     client.patch(e.archive(id), { archived }).then((res) => res.data),
 
-  handleReturn: (id, action) =>
-    client.patch(e.return(id), { action }).then((res) => res.data),
 
   updatePaymentStatus: (id, paymentStatus) =>
     client.patch(`/admin/orders/${id}/payment-status`, { paymentStatus }).then((res) => res.data),

@@ -7,6 +7,7 @@ import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
 import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 import { displayCustomerName } from "@/utils/displayCustomerName";
+import { returnStatusDisplay } from "@/lib/returnStatus";
 
 const STATUS_LABELS = {
   // Order status — package / fulfillment wording
@@ -52,6 +53,10 @@ export function resolveFulfillmentDisplay(order) {
       tone: "danger",
     };
   }
+
+  // A return under way replaces "Delivered" with where the return is.
+  const returnDisplay = returnStatusDisplay(order);
+  if (returnDisplay) return returnDisplay;
 
   if (delivered) {
     return {
@@ -157,7 +162,9 @@ export function isMutedFulfillmentRow(order) {
     if (s.includes("awaiting") || s.includes("ready")) return false;
     return true;
   }
-  const key = resolveFulfillmentDisplay(order).key.toLowerCase();
+  const display = resolveFulfillmentDisplay(order);
+  if (display.needsAction) return false; // a return waiting on the team
+  const key = display.key.toLowerCase();
   if (key === "unfulfilled" || key === "payment pending") return false;
   if (key.includes("awaiting") || key.includes("ready")) return false;
   return true;

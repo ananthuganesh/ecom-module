@@ -379,3 +379,123 @@ async def test_partial_receipt_leaves_the_order_delivered(mock_http):
     await returns_svc.mark_received(request)
 
     assert (await Order.get(order.id)).status == "delivered"
+
+
+# ---------------------------------------------------------------- size SKU, double restock, order payloads
+
+
+def _pickup_ok(mock_http):
+    mock_http(
+        lambda request: httpx.Response(
+            200, json={"delivery_codes": [{"postal_code": {"pin": 682001, "pickup": "N"}}]}
+        )
+    )
+
+
+async def _sized_product():
+    from app.documents import Variant
+
+    product = Product(
+        productName="Indian Elephant",
+        variants=[Variant(size="S", quantity=0, sku="EHY0G1-S"), Variant(size="M", quantity=5, sku="EHY0G1-M")],
+    )
+    await product.insert()
+    return product
+
+
+@pytest.mark.usefixtures("db")
+async def test_return_line_records_the_size_sku():
+    product = await _sized_product()
+    order = await _delivered_order(
+        items=[OrderItem(productId=str(product.id), productName="Indian Elephant", quantity=1, price=1199, size="S")]
+    )
+    request = await returns_svc.create_request(order, user=None, selections=[{"index": 0, "quantity": 1}])
+    assert request.items[0].variantSku == "EHY0G1-S"
+
+
+@pytest.mark.usefixtures("db")
+async def test_receipt_restocks_the_size_row_even_for_old_blank_sku_requests(mock_http):
+    _pickup_ok(mock_http)
+    warehouse = await ensure_default_warehouse()
+    product = await _sized_product()
+    order = await _delivered_order(
+        items=[OrderItem(productId=str(product.id), productName="Indian Elephant", quantity=1, price=1199, size="S")]
+    )
+    request = await returns_svc.create_request(order, user=None, selections=[{"index": 0, "quantity": 1}])
+    request.items[0].variantSku = ""  # as saved before the fix
+    await request.save()
+    await returns_svc.approve(request)
+    await returns_svc.mark_received(request)
+
+    size_row = await StockBalance.find_one(
+        StockBalance.productId == str(product.id),
+        StockBalance.warehouseId == str(warehouse.id),
+        StockBalance.variantSku == "EHY0G1-S",
+    )
+    assert size_row is not None and size_row.quantity == 1
+
+
+@pytest.mark.usefixtures("db")
+async def test_receipt_never_restocks_an_order_already_restocked(mock_http):
+    _pickup_ok(mock_http)
+    warehouse = await ensure_default_warehouse()
+    product = Product(productName="Oversized Tee", totalStock=5)
+    await product.insert()
+    order = await _delivered_order()
+    order.items[0].productId = str(product.id)
+    order.transactionDetails = {"stockApplied": True, "stockRestocked": True}
+    await order.save()
+    balance = await get_or_create_balance(str(product.id), str(warehouse.id), "")
+    balance.quantity = 5
+    await balance.save()
+
+    request = await returns_svc.create_request(order, user=None, selections=[{"index": 0, "quantity": 2}])
+    await returns_svc.approve(request)
+    result = await returns_svc.mark_received(request)
+
+    assert result["restockedUnits"] == 0
+    assert "already returned" in result["restockErrors"][0]
+    after = await StockBalance.find_one(StockBalance.id == balance.id)
+    assert after.quantity == 5
+
+
+@pytest.mark.usefixtures("db")
+async def test_admin_order_payload_carries_return_progress(mock_http):
+    from app.serializers import enrich_orders
+
+    _pickup_ok(mock_http)
+    order = await _delivered_order()
+    request = await returns_svc.create_request(order, user=None, selections=[{"index": 1, "quantity": 1}])
+
+    payload = (await enrich_orders([await Order.get(order.id)]))[0]
+    assert payload["status"] == "return requested"
+    assert payload["returns"][0]["number"] == request.number
+    assert payload["returns"][0]["label"] == "Return requested"
+
+    await returns_svc.approve(request)
+    payload = (await enrich_orders([await Order.get(order.id)]))[0]
+    assert payload["returns"][0]["status"] == "approved"
+    assert payload["returns"][0]["approvedAt"]
+
+
+@pytest.mark.usefixtures("db")
+async def test_retired_one_click_return_is_refused():
+    from app.routers.admin import order_return
+
+    order = await _delivered_order(status="return requested")
+    with pytest.raises(HTTPException) as exc:
+        await order_return(str(order.id), {"action": "approve"}, None)
+    assert exc.value.status_code == 410
+    assert (await Order.get(order.id)).status == "return requested"
+
+
+@pytest.mark.usefixtures("db")
+async def test_return_statuses_cannot_be_set_by_hand():
+    from app.routers.admin import order_status
+
+    order = await _delivered_order()
+    for status in ("returned", "Return Requested"):
+        with pytest.raises(HTTPException) as exc:
+            await order_status(str(order.id), {"status": status}, None)
+        assert exc.value.status_code == 400
+    assert (await Order.get(order.id)).status == "delivered"
