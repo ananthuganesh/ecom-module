@@ -125,7 +125,7 @@ async def test_customer_returns_only_chosen_items():
     assert len(request.items) == 1
     assert request.items[0].productName == "Oversized Tee"
     assert request.items[0].quantity == 1
-    assert request.number.startswith("RR-")
+    assert request.number == "UA3001-R1"
 
     refreshed = await Order.get(order.id)
     assert refreshed.status == "return requested"
@@ -499,3 +499,45 @@ async def test_return_statuses_cannot_be_set_by_hand():
             await order_status(str(order.id), {"status": status}, None)
         assert exc.value.status_code == 400
     assert (await Order.get(order.id)).status == "delivered"
+
+
+# ---------------------------------------------------------------- return numbers
+
+
+@pytest.mark.usefixtures("db")
+async def test_return_numbers_follow_the_order_number(mock_http):
+    order = await _delivered_order(orderNumber="UA1586")
+    first = await returns_svc.create_request(order, user=None, selections=[{"index": 1, "quantity": 1}])
+    assert first.number == "UA1586-R1"
+
+    await returns_svc.reject(first, reason="Worn")
+    order = await Order.get(order.id)
+    second = await returns_svc.create_request(order, user=None, selections=[{"index": 1, "quantity": 1}])
+    # A rejected return still uses up its number.
+    assert second.number == "UA1586-R2"
+
+
+@pytest.mark.usefixtures("db")
+async def test_older_rr_returns_on_the_order_still_count():
+    order = await _delivered_order(orderNumber="UA1586")
+    await ReturnRequest(
+        number="RR-202609-00001", orderId=str(order.id), orderNumber="UA1586", status="rejected"
+    ).insert()
+    request = await returns_svc.create_request(order, user=None, selections=[{"index": 1, "quantity": 1}])
+    assert request.number == "UA1586-R2"
+
+
+@pytest.mark.usefixtures("db")
+async def test_numbering_is_per_order():
+    a = await _delivered_order(orderNumber="UA2001")
+    b = await _delivered_order(orderNumber="UA2002")
+    ra = await returns_svc.create_request(a, user=None, selections=[{"index": 1, "quantity": 1}])
+    rb = await returns_svc.create_request(b, user=None, selections=[{"index": 1, "quantity": 1}])
+    assert (ra.number, rb.number) == ("UA2001-R1", "UA2002-R1")
+
+
+@pytest.mark.usefixtures("db")
+async def test_order_without_a_number_falls_back_to_rr():
+    order = await _delivered_order(orderNumber=None)
+    request = await returns_svc.create_request(order, user=None, selections=[{"index": 1, "quantity": 1}])
+    assert request.number.startswith("RR-")

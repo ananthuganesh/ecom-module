@@ -13,6 +13,7 @@ from typing import Any
 
 from bson import ObjectId
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.documents import Order, ReturnItem, ReturnRequest, User
 
@@ -218,10 +219,8 @@ async def create_request(
     if not items:
         raise HTTPException(status_code=400, detail="Select at least one item to return")
 
-    from app.services import erp_ops
-
     request = ReturnRequest(
-        number=await erp_ops.next_number("RR", "seq_return_request"),
+        number=await _next_return_number(order),
         orderId=str(order.id),
         orderNumber=order.orderNumber,
         customerId=str(order.customerId) if order.customerId else None,
@@ -232,7 +231,15 @@ async def create_request(
         status="requested",
         refundAmount=round(total, 2),
     )
-    await request.insert()
+    # Numbers are unique; if two requests raced for the same R-number, take the next.
+    for attempt in range(5):
+        try:
+            await request.insert()
+            break
+        except DuplicateKeyError:
+            if attempt >= 4:
+                raise HTTPException(status_code=409, detail="Could not create the return. Please try again.")
+            request.number = await _next_return_number(order)
 
     order.status = "return requested"
     order.updatedAt = datetime.utcnow()
@@ -382,6 +389,29 @@ async def mark_received(request: ReturnRequest, *, actor_id: str = "") -> dict[s
         # Refund is never automatic — surfaced so the admin can act on it.
         "refundDue": request.refundAmount,
     }
+
+
+async def _next_return_number(order: Order) -> str:
+    """UA1586-R1, UA1586-R2, … — the order number plus that order's return count.
+
+    Counts every earlier return on the order (rejected ones too) so a number is
+    never reused. Orders without a display number fall back to the RR series.
+    """
+    base = str(order.orderNumber or "").strip().lstrip("#")
+    if not base:
+        from app.services import erp_ops
+
+        return await erp_ops.next_number("RR", "seq_return_request")
+    existing = await ReturnRequest.find({"orderId": str(order.id)}).to_list()
+    used = set()
+    for row in existing:
+        tail = str(row.number or "").rsplit("-R", 1)
+        if len(tail) == 2 and tail[0] == base and tail[1].isdigit():
+            used.add(int(tail[1]))
+    n = max(used, default=0) + 1
+    # Older RR-numbered returns on the same order still count toward the sequence.
+    n = max(n, len(existing) + 1)
+    return f"{base}-R{n}"
 
 
 async def _variant_sku_for(product_id: str | None, color: str, size: str) -> str:
