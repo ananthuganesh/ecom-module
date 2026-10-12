@@ -856,12 +856,15 @@ function CheckoutPageContent() {
       handler: async (response) => {
         try {
           setLoading(true);
-          const verified = await paymentService.verifyPayment({
+          const verification = {
             razorpayOrderId: response.razorpay_order_id || rzOrderId,
             razorpayPaymentId: response.razorpay_payment_id,
             razorpaySignature: response.razorpay_signature,
             localOrderId,
-          });
+          };
+          const verified = magic
+            ? await paymentService.verifyMagicPayment(verification)
+            : await paymentService.verifyPayment(verification);
           if (isBuyNow) clearBuyNow();
           else removeItems(availableItems);
           // Magic Checkout adds delivery and the coupon in the popup, so the
@@ -883,17 +886,19 @@ function CheckoutPageContent() {
           setLoading(false);
         }
       },
-      prefill: {
-        name: formData.name || userInfo?.name || "",
-        contact,
-        email: formData.email || userInfo?.email || "",
-      },
+      prefill: magic
+        ? paymentData.prefill || {}
+        : {
+            name: formData.name || userInfo?.name || "",
+            contact,
+            email: formData.email || userInfo?.email || "",
+          },
       ...(magic
         ? {
             one_click_checkout: true,
             show_coupons: true,
-            // The email already made the account on this page; keep orders on it.
-            readonly: { email: Boolean(formData.email || userInfo?.email) },
+            // Signed-in shoppers keep orders on their account's email.
+            readonly: { email: Boolean(paymentData.prefill?.email) },
           }
         : {}),
       theme: { color: "#DF1721" },
@@ -1040,7 +1045,11 @@ function CheckoutPageContent() {
     }
   };
 
-  /** Magic Checkout: the email makes the account; Razorpay collects the rest. */
+  /**
+   * Magic Checkout (one-click): no form on this page. Razorpay's popup verifies
+   * the phone and collects email, address, coupon and payment; the server links
+   * the order to an account once it's paid.
+   */
   const executeMagicCheckout = async () => {
     if (availableItems.length === 0) {
       setPaymentError(
@@ -1049,6 +1058,10 @@ function CheckoutPageContent() {
           : "Your order has no available items. Please return to cart and check stock."
       );
       setLoading(false);
+      return;
+    }
+    if (!razorpayConfigured) {
+      setPaymentError("Online payments are currently unavailable. Please try again later.");
       return;
     }
     try {
@@ -1061,65 +1074,42 @@ function CheckoutPageContent() {
     setLoading(true);
     setPaymentError("");
     try {
-      try {
-        const updated = await authService.updateProfile({
-          emailSubscribed: marketingOptIn,
-          whatsappSubscribed: marketingOptIn,
-        });
-        if (updated) {
-          setUserInfo(updated);
-          persistAuth(updated);
-        }
-      } catch {
-        // Non-blocking — order can still proceed if prefs update fails.
-      }
-
-      let localOrderId = pendingOrderId;
-      if (!localOrderId) {
-        const data = await orderService.create({
-          checkoutMode: "magic",
-          orderItems: availableItems.map((item) => ({
-            name: item.name || item.productName,
-            qty: item.qty || 1,
-            image: item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0],
-            price: Number(item.price) || 0,
-            product: item._id,
-            size: item.size,
-            color: item.color || "",
-          })),
-          paymentMethod: "razorpay",
-          guestId: localStorage.getItem("abandoned_guest_id"),
-          attribution: getAttributionSnapshot(),
-        });
-        localOrderId = data._id;
-        setPendingOrderId(localOrderId);
-      }
-
-      const paymentData = await paymentService.createRazorpayOrder(localOrderId);
+      const paymentData = await paymentService.startMagicCheckout({
+        localOrderId: pendingOrderId,
+        orderItems: availableItems.map((item) => ({
+          name: item.name || item.productName,
+          qty: item.qty || 1,
+          image: item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0],
+          price: Number(item.price) || 0,
+          product: item._id,
+          size: item.size,
+          color: item.color || "",
+        })),
+        guestId: localStorage.getItem("abandoned_guest_id"),
+        attribution: getAttributionSnapshot(),
+      });
+      setPendingOrderId(paymentData.localOrderId);
       trackAddPaymentInfo(availableItems, "razorpay_magic");
-      openRazorpayCheckout({ paymentData, localOrderId, magic: true });
+      openRazorpayCheckout({ paymentData, localOrderId: paymentData.localOrderId, magic: true });
     } catch (error) {
       console.error("Error starting checkout:", error);
-      if (error.response?.status === 401) {
-        setUserInfo(null);
-        setPendingOrderId(null);
-        setPaymentError("Your session expired. Confirm your email and try again.");
-      } else {
-        setPaymentError(userErrorMessage(error, "We couldn’t start checkout. Please try again."));
-      }
+      setPaymentError(userErrorMessage(error, "We couldn’t start checkout. Please try again."));
       setLoading(false);
     }
   };
 
+  // Open the popup as soon as the page is ready; the button reopens it.
+  const magicAutoOpened = useRef(false);
+  useEffect(() => {
+    if (!magicCheckout || !cartHydrated || magicAutoOpened.current) return;
+    if (availableItems.length === 0) return;
+    magicAutoOpened.current = true;
+    executeMagicCheckout();
+  }, [magicCheckout, cartHydrated, availableItems.length]);
+
   const handlePlaceOrder = () => {
     if (magicCheckout) {
-      const emailErr = emailQualityError((formData.email || "").trim().toLowerCase());
-      if (emailErr) {
-        setFormErrors((prev) => ({ ...prev, email: emailErr }));
-        setPaymentError(emailErr);
-        return;
-      }
-      ensureCheckoutAccount(() => executeMagicCheckout());
+      executeMagicCheckout();
       return;
     }
     if (!validateForm()) {
@@ -1176,6 +1166,7 @@ function CheckoutPageContent() {
           <div className="order-2 bg-white py-8 lg:order-1 lg:border-r lg:border-gray-200 lg:py-10 lg:pr-10">
             <div className="w-full max-w-xl space-y-8">
               {/* Contact */}
+              {!magicCheckout && (
               <section>
                 <h2 className={`${SECTION} mb-3`}>Contact</h2>
                 <div>
@@ -1241,6 +1232,7 @@ function CheckoutPageContent() {
                   <span>Email & WhatsApp me about offers and updates</span>
                 </label>
               </section>
+              )}
 
               {/* Delivery */}
               {!magicCheckout && (
@@ -1469,8 +1461,8 @@ function CheckoutPageContent() {
 
                 {magicCheckout ? (
                   <p className="rounded-md border border-gray-300 bg-[#F9F9F5] px-4 py-3 text-[13px] text-gray-700">
-                    Your phone number, delivery address, discount code and payment are
-                    completed in Razorpay&rsquo;s secure checkout.
+                    Your phone number, email, delivery address, discount code and payment
+                    are completed in Razorpay&rsquo;s secure checkout.
                   </p>
                 ) : (
                 <div className="overflow-hidden rounded-md border border-gray-300">

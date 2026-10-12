@@ -9,6 +9,7 @@ const MAGIC_ENDPOINTS = [
   { label: "URL for shipping info", path: "/api/payments/magic/shipping-info" },
   { label: "URL for get promotions", path: "/api/payments/magic/promotions" },
   { label: "URL for apply promotions", path: "/api/payments/magic/apply-promotion" },
+  { label: "Abandoned webhook URL", path: "/api/payments/magic/abandoned" },
 ];
 
 function EndpointRow({ label, url }) {
@@ -81,9 +82,10 @@ export default function PaymentSettingsPage() {
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-foreground">Use Magic Checkout</p>
                 <p className="mt-0.5 text-[12px] text-muted-foreground">
-                  Shoppers enter only their email on the checkout page. Razorpay&rsquo;s popup
-                  collects the phone number, saved address, discount code and payment. Turn off
-                  to go back to the standard checkout form.
+                  Checkout opens Razorpay&rsquo;s popup straight away: shoppers verify their
+                  phone, then pick a saved address, apply a discount code and pay. Orders are
+                  linked to a customer account by phone or email after payment. Turn off to go
+                  back to the standard checkout form.
                 </p>
               </div>
               <Switch
@@ -104,8 +106,9 @@ export default function PaymentSettingsPage() {
             <h2 className="admin-card-heading">Razorpay Dashboard setup</h2>
             <p className="text-[12px] text-muted-foreground">
               In Razorpay: Magic Checkout → Platform Setup → Custom E-Commerce Platform. Paste
-              these under Coupon Settings and Shipping Setup (Shipping Service type: API). Set them
-              up in both Test and Live mode.
+              these under Shipping Setup (Shipping Service type: API), Coupon Settings, and
+              &ldquo;Enable the Abandoned webhook to track&rdquo;. Set them up in both Test and
+              Live mode. Keep &ldquo;Enable payment offers&rdquo; off.
             </p>
             <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
               {MAGIC_ENDPOINTS.map((e) => (

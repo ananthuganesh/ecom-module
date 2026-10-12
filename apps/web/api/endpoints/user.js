@@ -40,6 +40,8 @@ const razorpay = {
   verify: "payments/verify",
   webhook: "payments/webhook",
   config: "payments/config",
+  magicStart: "payments/magic/start",
+  magicVerify: "payments/magic/verify",
 };
 
 export const userEndpoints = { users, products, orders, razorpay };

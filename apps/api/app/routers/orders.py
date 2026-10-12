@@ -8,7 +8,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.deps import AdminUser, CurrentUser, PaymentsWriter
-from app.documents import Order, OrderItem, Product, Setting
+from app.documents import Order, OrderItem, Product, Setting, User
 from app.serializers import doc_to_dict, remap_order
 from app.services import erp_ops
 from app.services.attribution import sanitize_attribution
@@ -197,14 +197,8 @@ async def _storefront_shipping_price(address: dict) -> float:
     return fee
 
 
-@router.post("", status_code=201)
-async def create_order(
-    body: dict,
-    user: CurrentUser,
-    request: Request,
-    _: None = Depends(rate_limit_dependency("orders-create", limit=20)),
-):
-    order_items = body.get("orderItems") or []
+async def priced_order_items(order_items: list[dict]) -> list[OrderItem]:
+    """Order lines priced and stock-checked server-side; client prices are ignored."""
     if not order_items:
         raise HTTPException(status_code=400, detail="No order items")
 
@@ -265,6 +259,28 @@ async def create_order(
             price=price,
         )
         items.append(item)
+    return items
+
+
+@router.post("", status_code=201)
+async def create_order(
+    body: dict,
+    user: CurrentUser,
+    request: Request,
+    _: None = Depends(rate_limit_dependency("orders-create", limit=20)),
+):
+    return remap_order(await place_pending_order(body, user, request))
+
+
+async def place_pending_order(body: dict, user: User | None, request: Request) -> Order:
+    """Create an unpaid order and hold its stock.
+
+    `user` may be None only for Magic Checkout, where the shopper signs in with
+    their phone inside Razorpay's popup and the account is linked on payment.
+    """
+    if user is None and str(body.get("checkoutMode") or "").lower() != "magic":
+        raise HTTPException(status_code=401, detail="Not authorized, no token")
+    items = await priced_order_items(body.get("orderItems") or [])
 
     subtotal = sum(i.price * i.quantity for i in items)
     payment = str(body.get("paymentMethod") or "razorpay").lower()
@@ -280,7 +296,8 @@ async def create_order(
             raise HTTPException(status_code=400, detail="Express checkout is currently unavailable")
         # Address, delivery fee and coupon come from the Razorpay popup and are
         # copied on at payment (magic_checkout.prepare_paid_order).
-        shipping_address = {"email": str(user.email or "").strip().lower()} if user.email else {}
+        email = str(getattr(user, "email", None) or "").strip().lower()
+        shipping_address = {"email": email} if email else {}
         delivery = 0.0
     else:
         shipping_address = body.get("shippingAddress") or {}
@@ -324,7 +341,7 @@ async def create_order(
     browser_context = browser_context_from_request(request)
 
     order = Order(
-        customerId=user.id,
+        customerId=user.id if user else None,
         # Assigned on payment (assign_order_number) so abandoned checkouts leave no gaps.
         orderNumber=None,
         orderUrlId=await _next_order_url_id(),
@@ -392,7 +409,7 @@ async def create_order(
 
     # No invoice, number or "order placed" message yet: all of those happen on
     # payment (_finalize_paid_order), so an abandoned checkout uses up nothing.
-    return remap_order(order)
+    return order
 
 
 _CUSTOMER_VISIBLE_PAID = {

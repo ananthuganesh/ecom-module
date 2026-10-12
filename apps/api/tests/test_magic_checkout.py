@@ -541,3 +541,254 @@ async def test_webhook_refunds_a_mismatch_and_still_acknowledges(verify_env, mon
     second = await _webhook(219800)
     assert second.status_code == 200
     assert refunds == ["magic_amount_mismatch"]
+
+
+# ---------------------------------------------------------------- one-click: accounts
+
+
+@pytest.mark.usefixtures("db")
+async def test_link_customer_matches_the_verified_phone_first():
+    by_email = User(name="Email Match", email="buyer@example.com")
+    by_phone = User(name="Phone Match", email="other@example.com", phone="9876543210")
+    await by_email.insert()
+    await by_phone.insert()
+    order = await _magic_order(shippingAddress={"phone": "9876543210", "email": "buyer@example.com"})
+
+    user = await magic_checkout.link_customer(order)
+
+    assert user.id == by_phone.id
+    assert (await Order.get(order.id)).customerId == by_phone.id
+
+
+@pytest.mark.usefixtures("db")
+async def test_link_customer_prefers_the_phone_match_with_the_same_email():
+    await User(name="Old", phone="+919876543210", email="old@example.com").insert()
+    same = User(name="Same", phone="9876543210", email="buyer@example.com")
+    await same.insert()
+    order = await _magic_order(shippingAddress={"phone": "9876543210", "email": "buyer@example.com"})
+    assert (await magic_checkout.link_customer(order)).id == same.id
+
+
+@pytest.mark.usefixtures("db")
+async def test_link_customer_falls_back_to_email_then_creates():
+    existing = User(name="Email", email="buyer@example.com")
+    await existing.insert()
+    order = await _magic_order(shippingAddress={"phone": "9000000001", "email": "buyer@example.com"})
+    assert (await magic_checkout.link_customer(order)).id == existing.id
+
+    fresh = await _magic_order(
+        shippingAddress={"name": "Anu Thomas", "firstName": "Anu", "lastName": "Thomas", "phone": "9000000002", "email": "new@example.com"}
+    )
+    created = await magic_checkout.link_customer(fresh)
+    assert created.email == "new@example.com" and created.phone == "9000000002"
+    assert created.name == "Anu Thomas" and created.customerUrlId
+    assert created.password is None
+
+
+@pytest.mark.usefixtures("db")
+async def test_link_customer_leaves_signed_in_orders_alone():
+    owner = User(name="Owner", email="owner@example.com")
+    await owner.insert()
+    order = await _magic_order(customerId=owner.id, shippingAddress={"phone": "9876543210"})
+    assert await magic_checkout.link_customer(order) is None
+    assert (await Order.get(order.id)).customerId == owner.id
+
+
+# ---------------------------------------------------------------- one-click: start
+
+
+@pytest.fixture
+def start_env(monkeypatch):
+    from app.routers import orders
+    from app.routers import payments as payments_router
+    from app.services.store_settings import save_payment_methods
+
+    async def noop(*args, **kwargs):
+        return None
+
+    async def fake_open(order, *, user_id=None):
+        return {"keyId": "rzp_test_key", "razorpayOrderId": f"order_{order.id}", "amount": 1998 * 100}
+
+    monkeypatch.setattr(orders, "reserve_order_stock", noop)
+    monkeypatch.setattr(payments_router, "open_razorpay_order", fake_open)
+    return save_payment_methods
+
+
+async def _product():
+    from app.documents import Pricing, Product
+
+    product = Product(productName="Escape to Become", totalStock=5, pricing=Pricing(sellingPrice=999))
+    await product.insert()
+    return product
+
+
+async def _start(body):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+
+    async with AsyncClient(transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test") as c:
+        return await c.post("/api/payments/magic/start", json=body)
+
+
+@pytest.mark.usefixtures("db")
+async def test_start_works_without_login_and_reuses_the_pending_order(start_env):
+    await start_env({"razorpayMagic": True})
+    product = await _product()
+    body = {"orderItems": [{"product": str(product.id), "qty": 2}], "guestId": "guest_abc"}
+
+    first = await _start(body)
+    assert first.status_code == 200, first.text
+    data = first.json()
+    order = await Order.get(data["localOrderId"])
+    assert order.customerId is None
+    assert order.transactionDetails["checkout"] == "magic"
+    assert order.transactionDetails["guestId"] == "guest_abc"
+    assert data["prefill"] == {}
+
+    again = await _start({**body, "localOrderId": data["localOrderId"]})
+    assert again.json()["localOrderId"] == data["localOrderId"]
+    # Another browser can't take over this pending order by naming it.
+    other = await _start({**body, "guestId": "guest_other", "localOrderId": data["localOrderId"]})
+    assert other.json()["localOrderId"] != data["localOrderId"]
+
+
+@pytest.mark.usefixtures("db")
+async def test_start_refused_while_switched_off(start_env):
+    product = await _product()
+    res = await _start({"orderItems": [{"product": str(product.id), "qty": 1}], "guestId": "g"})
+    assert res.status_code == 400
+
+
+@pytest.mark.usefixtures("db")
+async def test_standard_orders_still_need_a_login():
+    from starlette.requests import Request
+
+    from app.routers.orders import place_pending_order
+
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": [], "client": None})
+    with pytest.raises(HTTPException) as exc:
+        await place_pending_order({"orderItems": [{"product": "x"}]}, None, request)
+    assert exc.value.status_code == 401
+
+
+# ---------------------------------------------------------------- one-click: verify
+
+
+async def _magic_verify(order: Order, *, signature_secret=KEY_SECRET, rz_order_id="order_RZ1"):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+
+    signature = hmac.new(signature_secret.encode(), f"{rz_order_id}|pay_1".encode(), hashlib.sha256).hexdigest()
+    async with AsyncClient(transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test") as c:
+        return await c.post(
+            "/api/payments/magic/verify",
+            json={
+                "razorpay_order_id": rz_order_id,
+                "razorpay_payment_id": "pay_1",
+                "razorpay_signature": signature,
+                "localOrderId": str(order.id),
+            },
+        )
+
+
+@pytest.mark.usefixtures("db")
+async def test_guest_verify_links_an_account_and_finalises(verify_env):
+    install, finalized, refunds = verify_env
+    await _shipping_rates(rest=49)
+    order = await _magic_order(razorpayOrderId="order_RZ1")
+    await PaymentTransaction(orderId=order.id, userId=None, razorpayOrderId="order_RZ1", amountInPaise=219800).insert()
+    install(_rz_order(), {"id": "pay_1", "status": "captured", "amount": 224700, "order_id": "order_RZ1"})
+
+    res = await _magic_verify(order)
+
+    assert res.status_code == 200, res.text
+    assert res.json()["order"]["finalPrice"] == 2247.0
+    # Only what the success page needs; no address in the reply.
+    assert "shippingAddress" not in res.json()["order"]
+    assert finalized == ["pay_1"] and refunds == []
+    saved = await Order.get(order.id)
+    user = await User.get(saved.customerId)
+    assert user.phone == "9876543210" and user.email == "buyer@example.com"
+    txn = await PaymentTransaction.find_one(PaymentTransaction.razorpayOrderId == "order_RZ1")
+    assert txn.status == "paid" and txn.userId == user.id
+
+
+@pytest.mark.usefixtures("db")
+async def test_guest_verify_rejects_a_bad_signature_or_wrong_order(verify_env):
+    install, finalized, _ = verify_env
+    order = await _magic_order(razorpayOrderId="order_RZ1")
+    await PaymentTransaction(orderId=order.id, userId=None, razorpayOrderId="order_RZ1", amountInPaise=219800).insert()
+    install(_rz_order(), {"id": "pay_1", "status": "captured", "amount": 219800, "order_id": "order_RZ1"})
+
+    bad_sig = await _magic_verify(order, signature_secret="not-the-secret")
+    assert bad_sig.status_code == 400
+    other_order = await _magic_verify(order, rz_order_id="order_SOMEONE_ELSE")
+    assert other_order.status_code == 400
+    assert finalized == []
+
+
+# ---------------------------------------------------------------- abandoned webhook
+
+
+async def _abandoned(body):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+
+    async with AsyncClient(transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test") as c:
+        return await c.post("/api/payments/magic/abandoned", json=body)
+
+
+@pytest.mark.usefixtures("db")
+async def test_abandoned_webhook_adds_contact_to_the_guest_cart():
+    from app.documents import AbandonedCheckout
+
+    order = await _magic_order(transactionDetails={"checkout": "magic", "guestId": "guest_abc"})
+    row = AbandonedCheckout(guestId="guest_abc", items=[{"productId": "p1"}], status="abandoned")
+    await row.insert()
+
+    res = await _abandoned({"receipt": str(order.id), "phone": "+919876543210", "email": "Buyer@Example.com"})
+
+    assert res.status_code == 200
+    saved = await AbandonedCheckout.get(row.id)
+    assert saved.customerDetails["phone"] == "9876543210"
+    assert saved.customerDetails["email"] == "buyer@example.com"
+    assert saved.orderId == order.id
+
+
+@pytest.mark.usefixtures("db")
+async def test_abandoned_webhook_creates_a_row_from_the_order_if_none():
+    from app.documents import AbandonedCheckout
+
+    order = await _magic_order(razorpayOrderId="order_RZ9", transactionDetails={"checkout": "magic"})
+    await _abandoned({"razorpay_order_id": "RZ9", "customer": {"contact": "9876543210"}})
+    row = await AbandonedCheckout.find_one(AbandonedCheckout.orderId == order.id)
+    assert row and row.customerDetails["phone"] == "9876543210"
+    assert row.items[0]["name"] == "Escape to Become"
+
+
+@pytest.mark.usefixtures("db")
+async def test_abandoned_webhook_never_touches_an_accounts_cart():
+    """Public endpoint + recovery links that sign in = only guest carts may be written."""
+    from app.documents import AbandonedCheckout
+
+    owner = User(name="Owner", email="owner@example.com")
+    await owner.insert()
+    order = await _magic_order(customerId=owner.id, transactionDetails={"checkout": "magic", "guestId": "g1"})
+    row = AbandonedCheckout(userId=owner.id, guestId="g1", status="abandoned")
+    await row.insert()
+
+    await _abandoned({"receipt": str(order.id), "phone": "9000000009"})
+
+    assert (await AbandonedCheckout.get(row.id)).customerDetails == {}
+    assert await AbandonedCheckout.find(AbandonedCheckout.orderId == order.id).count() == 0
+
+
+@pytest.mark.usefixtures("db")
+async def test_abandoned_webhook_keeps_samples_of_unknown_payloads():
+    res = await _abandoned({"something": "unexpected"})
+    assert res.status_code == 200
+    sample = await Setting.find_one(Setting.key == magic_checkout.ABANDONED_SAMPLE_KEY)
+    assert sample.value["samples"][0]["body"] == {"something": "unexpected"}

@@ -134,6 +134,10 @@ async def _prepare_magic_payment(order: Order, txn: PaymentTransaction, payment:
         print(f"[Payment] Magic Checkout refused {order.id}: {exc}")
         return False
 
+    # One-click orders start without an account; attach one now the phone is verified.
+    linked = await magic_checkout.link_customer(order)
+    if linked is not None and not txn.userId:
+        txn.userId = linked.id
     txn.amountInPaise = paid
     txn.updatedAt = datetime.utcnow()
     await txn.save()
@@ -293,23 +297,10 @@ async def payment_config():
     }
 
 
-@router.post("/create-order")
-async def create_razorpay_order(
-    body: dict,
-    user: CurrentUser,
-    _: None = Depends(rate_limit_dependency("pay-create", limit=30)),
-):
-    local_order_id = body.get("localOrderId") or body.get("orderId")
-    if not local_order_id or not ObjectId.is_valid(str(local_order_id)):
-        raise HTTPException(status_code=400, detail="localOrderId required")
-    order = await Order.get(ObjectId(local_order_id))
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if str(order.customerId) != str(user.id) and not user.isAdmin:
-        raise HTTPException(status_code=403, detail="Unauthorized: This order does not belong to you")
-    if order.paymentStatus == "paid":
-        raise HTTPException(status_code=400, detail="This order has already been paid")
-
+async def open_razorpay_order(order: Order, *, user_id=None) -> dict:
+    """Razorpay order for an unpaid local order, reusing an open one on retry."""
+    local_order_id = str(order.id)
+    user_ref = str(user_id) if user_id else ""
     # Reuse open Razorpay order to avoid duplicate captures on retry.
     if order.razorpayOrderId:
         existing_txn = await PaymentTransaction.find_one(
@@ -362,13 +353,13 @@ async def create_razorpay_order(
     if amount_paise < 100:
         raise HTTPException(status_code=400, detail="Order amount is too low for online payment")
     if magic_checkout.is_magic_order(order):
-        payload: dict = await magic_checkout.order_payload(order, user_id=str(user.id))
+        payload: dict = await magic_checkout.order_payload(order, user_id=user_ref)
     else:
         payload = {
             "currency": "INR",
             "amount": amount_paise,
             "receipt": str(local_order_id)[:40],
-            "notes": {"localOrderId": str(local_order_id), "userId": str(user.id)},
+            "notes": {"localOrderId": str(local_order_id), "userId": user_ref},
         }
 
     try:
@@ -381,7 +372,7 @@ async def create_razorpay_order(
 
     await PaymentTransaction(
         orderId=order.id,
-        userId=user.id,
+        userId=user_id,
         razorpayOrderId=rz_order["id"],
         amountInPaise=int(payload["amount"]),
         currency="INR",
@@ -398,6 +389,26 @@ async def create_razorpay_order(
         "currency": "INR",
         "magicCheckout": magic_checkout.is_magic_order(order),
     }
+
+
+@router.post("/create-order")
+async def create_razorpay_order(
+    body: dict,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("pay-create", limit=30)),
+):
+    local_order_id = body.get("localOrderId") or body.get("orderId")
+    if not local_order_id or not ObjectId.is_valid(str(local_order_id)):
+        raise HTTPException(status_code=400, detail="localOrderId required")
+    order = await Order.get(ObjectId(local_order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if str(order.customerId) != str(user.id) and not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Unauthorized: This order does not belong to you")
+    if order.paymentStatus == "paid":
+        raise HTTPException(status_code=400, detail="This order has already been paid")
+
+    return await open_razorpay_order(order, user_id=user.id)
 
 
 @router.post("/verify")

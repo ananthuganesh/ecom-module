@@ -346,3 +346,177 @@ async def prepare_paid_order(order: Order, rz_order: dict[str, Any], paid_paise:
 
     apply_dtdc_est_cost(order)
     await order.save()
+
+
+# --------------------------------------------------------------------------
+# Customer account (one-click: no login before the popup)
+# --------------------------------------------------------------------------
+
+
+async def link_customer(order: Order) -> Any:
+    """Attach a paid one-click order to a customer account, creating one if needed.
+
+    Matches on the phone first, because Razorpay verified it with an OTP, then
+    on the email. Never signs anyone in: the account only gains the order.
+    """
+    from pymongo.errors import DuplicateKeyError
+
+    from app.documents import User
+    from app.services.customer_url_id import next_customer_url_id
+
+    if order.customerId:
+        return None
+    addr = order.shippingAddress or {}
+    phone = _ten_digit_phone(addr.get("phone"))
+    email = str(addr.get("email") or "").strip().lower()
+
+    user = None
+    if len(phone) == 10:
+        matches = await User.find(
+            {"phone": {"$in": [phone, f"91{phone}", f"+91{phone}", f"0{phone}"]}}
+        ).sort("createdAt").to_list()
+        user = next((u for u in matches if email and (u.email or "").lower() == email), None) or (
+            matches[0] if matches else None
+        )
+    if not user and email:
+        user = await User.find_one(User.email == email)
+    if not user:
+        name = str(addr.get("name") or "").strip() or (email.split("@")[0] if email else "Customer")
+        user = User(
+            name=name,
+            firstName=addr.get("firstName") or None,
+            lastName=addr.get("lastName") or None,
+            email=email or None,
+            phone=phone or None,
+            password=None,
+        )
+        user.customerUrlId = await next_customer_url_id()
+        try:
+            await user.insert()
+        except DuplicateKeyError:
+            # Same email created by a concurrent request (verify vs webhook).
+            user = await User.find_one(User.email == email)
+    if not user:
+        return None
+    order.customerId = user.id
+    order.updatedAt = datetime.utcnow()
+    await order.save()
+    return user
+
+
+# --------------------------------------------------------------------------
+# Abandoned-checkout webhook
+# --------------------------------------------------------------------------
+
+ABANDONED_SAMPLE_KEY = "magic_abandoned_samples"
+
+
+def _first(*values: Any) -> str:
+    for v in values:
+        if v not in (None, "") and not isinstance(v, (dict, list)):
+            return str(v).strip()
+    return ""
+
+
+async def _order_for_abandoned(body: dict[str, Any]) -> Order | None:
+    notes = body.get("notes") if isinstance(body.get("notes"), dict) else {}
+    ref = _first(body.get("receipt"), notes.get("localOrderId"), body.get("order_id"))
+    if ObjectId.is_valid(ref):
+        order = await Order.get(ObjectId(ref))
+        if order:
+            return order
+    rz = _first(body.get("razorpay_order_id"), body.get("rzp_order_id"), body.get("order_id"))
+    if rz:
+        rz = rz if rz.startswith("order_") else f"order_{rz}"
+        return await Order.find_one(Order.razorpayOrderId == rz)
+    return None
+
+
+async def _keep_sample(body: dict[str, Any]) -> None:
+    """Keep the last few raw payloads: Razorpay doesn't publish the full format."""
+    from app.documents import Setting
+
+    try:
+        setting = await Setting.find_one(Setting.key == ABANDONED_SAMPLE_KEY)
+        samples = list((setting.value or {}).get("samples") or []) if setting else []
+        samples = ([{"at": datetime.utcnow().isoformat(), "body": body}] + samples)[:10]
+        if setting:
+            setting.value = {"samples": samples}
+            await setting.save()
+        else:
+            await Setting(key=ABANDONED_SAMPLE_KEY, value={"samples": samples}).insert()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not keep Magic abandoned sample: %s", exc)
+
+
+async def record_abandoned(body: dict[str, Any]) -> bool:
+    """Add the phone/email Razorpay collected to our abandoned-cart row.
+
+    Only for a guest's unpaid Magic order, and only onto a guest row: the
+    endpoint is public, so it must never put contact details on an account's
+    cart (the recovery link signs in the cart's account).
+    """
+    from app.documents import AbandonedCheckout
+    from app.services import cart_recovery
+
+    await _keep_sample(body)
+    order = await _order_for_abandoned(body)
+    if not order or not is_magic_order(order) or order.customerId:
+        return False
+    if str(order.paymentStatus or "").lower() != "pending":
+        return False
+
+    customer = body.get("customer") if isinstance(body.get("customer"), dict) else {}
+    ship = next(
+        (
+            v
+            for k, v in {**body, **customer}.items()
+            if k.lower() in {"shipping_address", "shippingaddress"} and isinstance(v, dict)
+        ),
+        {},
+    )
+    phone = _ten_digit_phone(_first(body.get("phone"), body.get("contact"), customer.get("contact"), customer.get("phone"), ship.get("contact")))
+    email = _first(body.get("email"), customer.get("email")).lower()
+    if len(phone) != 10 and "@" not in email:
+        return False
+
+    guest_id = str((order.transactionDetails or {}).get("guestId") or "").strip()
+    row = None
+    if guest_id:
+        row = await AbandonedCheckout.find_one(
+            AbandonedCheckout.guestId == guest_id,
+            AbandonedCheckout.status == "abandoned",
+            AbandonedCheckout.userId == None,  # noqa: E711
+        )
+    if row is None:
+        row = AbandonedCheckout(
+            guestId=guest_id or None,
+            items=[
+                {
+                    "productId": str(i.productId),
+                    "name": i.productName,
+                    "price": i.price,
+                    "quantity": i.quantity,
+                    "color": i.color,
+                    "size": i.size,
+                    "image": i.image,
+                }
+                for i in order.items or []
+            ],
+            totalAmount=float(order.total or 0),
+            status="abandoned",
+        )
+    details = dict(row.customerDetails or {})
+    if len(phone) == 10:
+        details["phone"] = phone
+    if "@" in email:
+        details["email"] = email
+    name = _first(ship.get("name"), customer.get("name"), body.get("name"))
+    if name and not details.get("name"):
+        details["name"] = name
+    row.customerDetails = details
+    row.orderId = order.id
+    row.lastActivityAt = datetime.utcnow()
+    await cart_recovery.ensure_recovery_token(row)
+    await row.save() if row.id else await row.insert()
+    return True
