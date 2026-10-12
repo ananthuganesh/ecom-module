@@ -10,6 +10,8 @@ os.environ["RAZORPAY_LIVE_API_KEY"] = "rzp_test_key"
 os.environ["RAZORPAY_LIVE_KEY_SECRET"] = "rzp_test_secret"
 os.environ["ALLOWED_ORIGINS"] = "http://test.local"
 os.environ["MONGO_URI"] = "mongodb://127.0.0.1:27017/urbanaana_test"
+# The root .env's DSN would otherwise report test requests to the live Sentry project.
+os.environ["SENTRY_DSN"] = ""
 
 from app.config import get_settings
 
