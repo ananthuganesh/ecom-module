@@ -272,15 +272,26 @@ async def create_order(
         payment = "razorpay"
     await ensure_payment_method_enabled(payment)
 
-    shipping_address = body.get("shippingAddress") or {}
-    await _assert_deliverable(shipping_address)
-    delivery = await _storefront_shipping_price(shipping_address)
-    is_gift = bool(body.get("isGift"))
+    magic = str(body.get("checkoutMode") or "").lower() == "magic"
+    if magic:
+        from app.services import magic_checkout
+
+        if not await magic_checkout.is_enabled():
+            raise HTTPException(status_code=400, detail="Express checkout is currently unavailable")
+        # Address, delivery fee and coupon come from the Razorpay popup and are
+        # copied on at payment (magic_checkout.prepare_paid_order).
+        shipping_address = {"email": str(user.email or "").strip().lower()} if user.email else {}
+        delivery = 0.0
+    else:
+        shipping_address = body.get("shippingAddress") or {}
+        await _assert_deliverable(shipping_address)
+        delivery = await _storefront_shipping_price(shipping_address)
+    is_gift = bool(body.get("isGift")) and not magic
     gift_fee = 39 if is_gift else 0
     discount = 0.0
     applied = None
     coupon_reserved = False
-    coupon_code = body.get("couponCode")
+    coupon_code = None if magic else body.get("couponCode")
     if coupon_code:
         from app.services import discounts as discount_svc
 
@@ -334,6 +345,7 @@ async def create_order(
         transactionDetails={
             "paymentMethod": payment,
             "paymentStatus": "pending",
+            **({"checkout": "magic"} if magic else {}),
             **({"couponReserved": True} if coupon_reserved else {}),
             **(
                 {"guestId": str(body.get("guestId")).strip()}

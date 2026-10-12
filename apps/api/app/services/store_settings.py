@@ -7,7 +7,8 @@ from fastapi import HTTPException
 from app.documents import Setting
 
 
-PAYMENT_METHOD_DEFAULTS = {"razorpay": True}
+# razorpayMagic: open Razorpay Magic Checkout instead of the address form.
+PAYMENT_METHOD_DEFAULTS = {"razorpay": True, "razorpayMagic": False}
 NOTIFICATION_PREF_DEFAULTS = {
     "emailOrderConfirmation": True,  # placed + paid/confirmed customer emails
     "emailOrderShipped": True,

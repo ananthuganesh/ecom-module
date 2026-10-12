@@ -10,6 +10,7 @@ from app.deps import CurrentUser
 from app.documents import Order, PaymentTransaction, User
 from app.routers.orders import assign_order_number
 from app.serializers import remap_order
+from app.services import magic_checkout
 from app.services import payment_instrument as pay_instrument
 from app.services import razorpay_cfg
 from app.services.fulfillment import process_full_order_flow
@@ -88,6 +89,55 @@ def _apply_auto_refund_to_order(order: Order, *, reason: str, result: dict) -> N
     else:
         details["autoRefundReason"] = reason
         order.transactionDetails = details
+
+
+async def _prepare_magic_payment(order: Order, txn: PaymentTransaction, payment: dict, rz_order_id: str) -> bool:
+    """Magic Checkout: copy address/fee/coupon from Razorpay and check the amount.
+
+    The Razorpay order was created for the item total only; delivery and the
+    coupon were added in the popup, so the captured amount is checked against
+    our own rates instead of the transaction's original amount. Returns False
+    when the payment was refused (and refunded); True otherwise, including for
+    orders that are not Magic Checkout ones.
+    """
+    if not magic_checkout.is_magic_order(order):
+        return True
+    status = str(order.paymentStatus or "").lower()
+    if status == "paid":
+        return True
+    if status in {"refunded", "refund_pending", "partially_refunded"}:
+        return False
+
+    import razorpay
+
+    key_id, key_secret = await _get_razorpay_creds()
+    try:
+        rz_order = razorpay.Client(auth=(key_id, key_secret)).order.fetch(rz_order_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not fetch order from payment provider") from exc
+
+    paid = int(payment.get("amount") or 0)
+    try:
+        await magic_checkout.prepare_paid_order(order, rz_order or {}, paid)
+    except magic_checkout.MagicAmountMismatch as exc:
+        rz_payment_id = str(payment.get("id") or "")
+        refund_result = await _auto_refund_razorpay_payment(rz_payment_id, reason="magic_amount_mismatch")
+        _apply_auto_refund_to_order(order, reason="magic_amount_mismatch", result=refund_result)
+        details = dict(order.transactionDetails or {})
+        details["magicMismatch"] = str(exc)
+        order.transactionDetails = details
+        await order.save()
+        txn.status = "failed"
+        txn.failureReason = f"Magic Checkout amount mismatch: {exc}"
+        txn.updatedAt = datetime.utcnow()
+        await txn.save()
+        print(f"[Payment] Magic Checkout refused {order.id}: {exc}")
+        return False
+
+    txn.amountInPaise = paid
+    txn.updatedAt = datetime.utcnow()
+    await txn.save()
+    return True
 
 
 async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dict, user: User | None = None) -> None:
@@ -237,7 +287,10 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
 async def payment_config():
     """Public checkout config (no secrets)."""
     prefs = await razorpay_cfg.get_prefs()
-    return {"razorpayConfigured": prefs["isConnected"]}
+    return {
+        "razorpayConfigured": prefs["isConnected"],
+        "magicCheckout": bool(prefs["isConnected"] and await magic_checkout.is_enabled()),
+    }
 
 
 @router.post("/create-order")
@@ -308,12 +361,15 @@ async def create_razorpay_order(
     amount_paise = int(round(float(order.finalPrice) * 100))
     if amount_paise < 100:
         raise HTTPException(status_code=400, detail="Order amount is too low for online payment")
-    payload: dict = {
-        "currency": "INR",
-        "amount": amount_paise,
-        "receipt": str(local_order_id)[:40],
-        "notes": {"localOrderId": str(local_order_id), "userId": str(user.id)},
-    }
+    if magic_checkout.is_magic_order(order):
+        payload: dict = await magic_checkout.order_payload(order, user_id=str(user.id))
+    else:
+        payload = {
+            "currency": "INR",
+            "amount": amount_paise,
+            "receipt": str(local_order_id)[:40],
+            "notes": {"localOrderId": str(local_order_id), "userId": str(user.id)},
+        }
 
     try:
         import razorpay
@@ -340,6 +396,7 @@ async def create_razorpay_order(
         "razorpayOrderId": rz_order["id"],
         "amount": int(payload["amount"]),
         "currency": "INR",
+        "magicCheckout": magic_checkout.is_magic_order(order),
     }
 
 
@@ -416,6 +473,12 @@ async def verify_payment(
         await txn.save()
         raise HTTPException(status_code=400, detail=f"Payment not captured (status={pay_status})")
 
+    if not await _prepare_magic_payment(order, txn, payment, rz_order_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Payment amount does not match the order. It is being refunded.",
+        )
+
     amount = int(payment.get("amount") or 0)
     if amount != int(txn.amountInPaise or 0):
         txn.status = "failed"
@@ -477,6 +540,9 @@ async def razorpay_webhook(
         txn = await PaymentTransaction.find_one(PaymentTransaction.razorpayOrderId == rz_order_id)
         if not txn:
             raise HTTPException(status_code=400, detail="Unknown Razorpay order for webhook")
+        # Refused Magic Checkout payments are refunded; acknowledge so Razorpay stops retrying.
+        if order and not await _prepare_magic_payment(order, txn, payment, rz_order_id):
+            return {"status": "ok"}
         if payment.get("amount") is not None:
             if int(payment.get("amount") or 0) != int(txn.amountInPaise or 0):
                 raise HTTPException(status_code=400, detail="Webhook payment amount does not match transaction")

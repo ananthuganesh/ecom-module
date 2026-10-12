@@ -12,7 +12,7 @@ from pymongo.errors import ConnectionFailure
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, contact, coupons, erp, media, orders, payments, products, returns, reviews, shipping, stock_admin, store_theme, tracking, users
+from app.routers import abandoned, admin, contact, coupons, erp, magic_checkout, media, orders, payments, products, returns, reviews, shipping, stock_admin, store_theme, tracking, users
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,7 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     app.include_router(products.router)
     app.include_router(orders.router)
     app.include_router(payments.router)
+    app.include_router(magic_checkout.router)
     app.include_router(shipping.router)
     app.include_router(coupons.router)
     app.include_router(contact.router)

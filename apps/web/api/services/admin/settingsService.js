@@ -7,6 +7,8 @@ export const adminSettingsService = {
   saveDtdcSettings: (data) => client.put("/admin/dtdc/settings", data).then((r) => r.data),
   getNotificationPrefs: () => client.get("/admin/notification-prefs").then((r) => r.data),
   saveNotificationPrefs: (data) => client.put("/admin/notification-prefs", data).then((r) => r.data),
+  getPaymentMethods: () => client.get("/admin/payment-methods").then((r) => r.data),
+  savePaymentMethods: (data) => client.put("/admin/payment-methods", data).then((r) => r.data),
 };
 
 export default adminSettingsService;

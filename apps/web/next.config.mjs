@@ -184,10 +184,10 @@ const nextConfig = {
               "media-src 'self' blob: https:",
               "font-src 'self' data: https://fonts.gstatic.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              // Razorpay; GTM; Meta Pixel (+ optional clientParamBuilder); Cloudflare
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net https://capi-automation.s3.us-east-2.amazonaws.com https://checkout.razorpay.com https://cdn.razorpay.com https://static.cloudflareinsights.com",
+              // Razorpay (Magic Checkout loads from more *.razorpay.com hosts); GTM; Meta Pixel (+ optional clientParamBuilder); Cloudflare
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://connect.facebook.net https://capi-automation.s3.us-east-2.amazonaws.com https://checkout.razorpay.com https://cdn.razorpay.com https://*.razorpay.com https://static.cloudflareinsights.com",
               "connect-src 'self' https: blob: http://127.0.0.1:* http://localhost:*",
-              "frame-src https://api.razorpay.com https://checkout.razorpay.com https://cdn.razorpay.com https://www.googletagmanager.com https://www.facebook.com https://web.facebook.com",
+              "frame-src https://api.razorpay.com https://checkout.razorpay.com https://cdn.razorpay.com https://*.razorpay.com https://www.googletagmanager.com https://www.facebook.com https://web.facebook.com",
             ].join("; "),
           },
         ],
