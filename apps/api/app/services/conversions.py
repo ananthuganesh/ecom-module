@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import time
 from datetime import datetime
@@ -85,6 +86,10 @@ def _normalize_phone(value: Any) -> str | None:
     if len(digits) == 10:
         digits = f"91{digits}"
     return digits or None
+
+
+def site_url() -> str:
+    return (os.environ.get("PUBLIC_WEB_URL") or "https://urbanaana.com").strip().rstrip("/")
 
 
 def _config() -> dict[str, str]:
@@ -250,25 +255,68 @@ def build_ga4_refund(order: Order, user: User | None, amount: float | None) -> d
 # --------------------------------------------------------------------------
 
 
-async def build_meta_purchase(order: Order, user: User | None) -> dict[str, Any]:
-    ctx = _context(order)
-    addr = order.shippingAddress or {}
-    email = (user.email if user else None) or addr.get("email")
-    phone = _normalize_phone(addr.get("phone") or (user.phone if user else None))
+def _letters(value: Any) -> str | None:
+    """Meta's city/state normalisation: lowercase letters only."""
+    text = re.sub(r"[^a-z]", "", str(value or "").lower())
+    return text or None
 
+
+def _meta_user_data(
+    ctx: dict[str, Any],
+    *,
+    email: str | None = None,
+    phone: Any = None,
+    user_id: str | None = None,
+    address: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Hashed identifiers plus the raw browser ones Meta matches a visit on.
+
+    The more of these there are, the higher the Event Match Quality, and the
+    more of the campaign's purchases Meta can attribute to the ad that drove them.
+    """
+    addr = address or {}
     user_data: dict[str, Any] = {
         "client_ip_address": ctx.get("ip"),
         "client_user_agent": ctx.get("userAgent"),
         "fbp": ctx.get("fbp"),
         "fbc": ctx.get("fbc"),
     }
+    phone = _normalize_phone(phone)
     if email:
         user_data["em"] = [_sha256(email)]
     if phone:
         user_data["ph"] = [_sha256(phone)]
-    if user and user.id:
-        user_data["external_id"] = [_sha256(str(user.id))]
-    user_data = {k: v for k, v in user_data.items() if v}
+    if user_id:
+        user_data["external_id"] = [_sha256(user_id)]
+
+    name = str(addr.get("fullName") or addr.get("name") or "").strip().split()
+    if name:
+        user_data["fn"] = [_sha256(name[0])]
+        if len(name) > 1:
+            user_data["ln"] = [_sha256(name[-1])]
+    city = _letters(addr.get("city"))
+    state = _letters(addr.get("stateName") or addr.get("state"))
+    pin = re.sub(r"\D", "", str(addr.get("pincode") or addr.get("zipcode") or addr.get("zip") or ""))
+    if city:
+        user_data["ct"] = [_sha256(city)]
+    if state:
+        user_data["st"] = [_sha256(state)]
+    if len(pin) == 6:
+        user_data["zp"] = [_sha256(pin)]
+    if addr:
+        user_data["country"] = [_sha256("in")]
+    return {k: v for k, v in user_data.items() if v}
+
+
+async def build_meta_purchase(order: Order, user: User | None) -> dict[str, Any]:
+    addr = order.shippingAddress or {}
+    user_data = _meta_user_data(
+        _context(order),
+        email=(user.email if user else None) or addr.get("email"),
+        phone=addr.get("phone") or (user.phone if user else None),
+        user_id=str(user.id) if user and user.id else None,
+        address=addr,
+    )
 
     items = await _items(order)
     event: dict[str, Any] = {
@@ -276,16 +324,20 @@ async def build_meta_purchase(order: Order, user: User | None) -> dict[str, Any]
         "event_time": int(time.time()),
         "event_id": event_id_for(order),
         "action_source": "website",
+        # Required for website events; the page the browser Purchase fires on.
+        "event_source_url": f"{site_url()}/checkout/success?orderId={event_id_for(order)}",
         "user_data": user_data,
         "custom_data": {
             "currency": CURRENCY,
             "value": _order_value(order),
             "order_id": order.orderNumber or event_id_for(order),
             "content_type": "product",
+            "content_ids": list(dict.fromkeys(i["item_id"] for i in items)),
             "contents": [
                 {"id": i["item_id"], "quantity": i["quantity"], "item_price": i["price"]}
                 for i in items
             ],
+            "num_items": sum(i["quantity"] for i in items),
         },
     }
     return {"data": [event]}
@@ -345,3 +397,44 @@ async def send_refund(
     outcome = await _send_ga4(build_ga4_refund(order, user, amount), cfg)
     await _record(order, key, "ga4", outcome)
     return {"ga4": outcome}
+
+
+BROWSER_MIRRORED_EVENTS = frozenset({"ViewContent", "AddToCart", "InitiateCheckout"})
+
+
+async def send_browser_event(
+    *,
+    event_name: str,
+    event_id: str,
+    event_source_url: str,
+    custom_data: dict[str, Any],
+    request: Request | None,
+    user: User | None = None,
+) -> dict[str, Any]:
+    """Server copy of a storefront pixel event, deduplicated on `event_id`.
+
+    Catches the shoppers whose browsers block the pixel. Purchase is not
+    accepted here: it is sent from the verified payment path, so it cannot be
+    forged through a public endpoint.
+    """
+    cfg = _config()
+    if event_name not in BROWSER_MIRRORED_EVENTS or not meta_configured(cfg):
+        return {}
+    event = {
+        "event_name": event_name,
+        "event_time": int(time.time()),
+        "event_id": event_id,
+        "action_source": "website",
+        "event_source_url": event_source_url,
+        "user_data": _meta_user_data(
+            browser_context_from_request(request),
+            email=user.email if user else None,
+            phone=user.phone if user else None,
+            user_id=str(user.id) if user and user.id else None,
+        ),
+        "custom_data": {**custom_data, "currency": CURRENCY, "content_type": "product"},
+    }
+    outcome = await _send_meta({"data": [event]}, cfg)
+    if not outcome.get("ok"):
+        logger.warning("Meta %s %s not sent: %s", event_name, event_id, outcome.get("error"))
+    return outcome

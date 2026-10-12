@@ -1,7 +1,11 @@
 /**
  * GA4-style ecommerce DataLayer helper for GTM.
- * Meta Pixel / GA tags are configured in GTM — not hardcoded here.
+ * GA tags are configured in GTM. The Meta Pixel is fired from code
+ * (lib/metaPixel.js) so its events carry value, content_ids and event_id.
  */
+
+// Relative rather than "@/lib/…" so the module also loads under node --test.
+import { trackMetaEvent } from "./metaPixel.js";
 
 export const TRACKING_CURRENCY = "INR";
 
@@ -106,6 +110,8 @@ export function pushEcommerceEvent(event, ecommerce = {}) {
     ...(ecommerce.event_id ? { event_id: String(ecommerce.event_id) } : {}),
     ecommerce: payload,
   });
+
+  trackMetaEvent(event, payload, payload.event_id);
 }
 
 export function trackViewItem(product) {
@@ -189,17 +195,19 @@ export function trackSearch(searchTerm, products = []) {
   const term = String(searchTerm || "").trim();
   if (!dl || !term) return;
   const items = products.map((p) => toTrackingItem(p, 1)).filter(Boolean);
+  const ecommerce = {
+    currency: TRACKING_CURRENCY,
+    value: Number(itemsValue(items).toFixed(2)),
+    items,
+  };
   dl.push({ ecommerce: null });
   dl.push({
     event: "search",
     search_term: term,
     search_string: term,
-    ecommerce: {
-      currency: TRACKING_CURRENCY,
-      value: Number(itemsValue(items).toFixed(2)),
-      items,
-    },
+    ecommerce,
   });
+  trackMetaEvent("search", { ...ecommerce, search_term: term });
 }
 
 /** Wishlist — call when a wishlist UI exists and user saves an item. */
@@ -234,16 +242,15 @@ export function trackAddPaymentInfo(cartItems = [], paymentType = "razorpay") {
   if (!items.length) return;
   const dl = ensureDataLayer();
   if (!dl) return;
+  const ecommerce = {
+    currency: TRACKING_CURRENCY,
+    value: Number(itemsValue(items).toFixed(2)),
+    payment_type: paymentType,
+    items,
+  };
   dl.push({ ecommerce: null });
-  dl.push({
-    event: "add_payment_info",
-    ecommerce: {
-      currency: TRACKING_CURRENCY,
-      value: Number(itemsValue(items).toFixed(2)),
-      payment_type: paymentType,
-      items,
-    },
-  });
+  dl.push({ event: "add_payment_info", ecommerce });
+  trackMetaEvent("add_payment_info", ecommerce);
 }
 
 export function trackSelectPromotion({

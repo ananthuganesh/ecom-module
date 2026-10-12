@@ -10,6 +10,7 @@ export {
   contactService,
   returnService,
   reviewService,
+  trackingService,
 } from "./user/index.js";
 
 // Admin services

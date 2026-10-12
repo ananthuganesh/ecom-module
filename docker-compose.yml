@@ -86,6 +86,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         NEXT_PUBLIC_GTM_ID: ${NEXT_PUBLIC_GTM_ID:-}
         NEXT_PUBLIC_GTM_ENABLED: ${NEXT_PUBLIC_GTM_ENABLED:-true}
+        # Baked in at build: storefront pages are prerendered.
+        NEXT_PUBLIC_META_PIXEL_ID: ${META_PIXEL_ID:-}
     image: urbanaana-web:latest
     restart: unless-stopped
     init: true

@@ -19,6 +19,7 @@ export {
   contactService,
   returnService,
   reviewService,
+  trackingService,
   adminCouponService,
   adminTaxClassService,
   adminCompanyProfileService,

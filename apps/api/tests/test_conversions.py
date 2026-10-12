@@ -202,6 +202,179 @@ async def test_meta_purchase_hashes_personal_data(configured):
     assert event["custom_data"]["contents"][0]["quantity"] == 1
 
 
+@pytest.mark.usefixtures("db")
+async def test_meta_purchase_carries_address_match_keys_and_catalogue_ids(configured, monkeypatch):
+    monkeypatch.setenv("PUBLIC_WEB_URL", "https://urbanaana.com/")
+    order = await _order(
+        shippingAddress={
+            "fullName": "Anu  Thomas",
+            "phone": "9876543210",
+            "city": "Kochi",
+            "state": "Kerala",
+            "pincode": "682 001",
+        },
+        items=[
+            OrderItem(productId="p1", productName="Tee", quantity=2, price=999),
+            OrderItem(productId="p2", productName="Tee 2", quantity=1, price=1199),
+        ],
+    )
+    event = (await conversions.build_meta_purchase(order, None))["data"][0]
+    sha = lambda v: [hashlib.sha256(v.encode()).hexdigest()]  # noqa: E731
+
+    assert event["user_data"]["fn"] == sha("anu")
+    assert event["user_data"]["ln"] == sha("thomas")
+    assert event["user_data"]["ct"] == sha("kochi")
+    assert event["user_data"]["st"] == sha("kerala")
+    assert event["user_data"]["zp"] == sha("682001")
+    assert event["user_data"]["country"] == sha("in")
+    # Website events must name the page; this is where the browser copy fires.
+    assert event["event_source_url"] == f"https://urbanaana.com/checkout/success?orderId={order.id}"
+    assert event["custom_data"]["content_ids"] == ["p1", "p2"]
+    assert event["custom_data"]["num_items"] == 3
+
+
+# ---------------------------------------------------------------- browser mirror
+
+
+def _mirror_body(**overrides):
+    body = {
+        "event_name": "AddToCart",
+        "event_id": "addtocart_6f1c2b9e-1111-2222-3333-444455556666",
+        "event_source_url": "https://urbanaana.com/product/escape-to-become",
+        "custom_data": {
+            "content_ids": ["p1"],
+            "contents": [{"id": "p1", "quantity": 1, "item_price": 999}],
+            "value": 999,
+        },
+    }
+    body.update(overrides)
+    return body
+
+
+async def _post_mirror(body):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import create_app
+
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app(with_lifespan=False)), base_url="http://test"
+    ) as client:
+        return await client.post(
+            "/api/tracking/meta",
+            json=body,
+            headers={"user-agent": "TestAgent/1.0", "cookie": "_fbp=fb.1.1.2"},
+        )
+
+
+@pytest.fixture
+def mirrored(monkeypatch):
+    monkeypatch.setenv("PUBLIC_WEB_URL", "https://urbanaana.com")
+    sent: list[dict] = []
+
+    async def fake_send(**kwargs):
+        sent.append(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(conversions, "send_browser_event", fake_send)
+    return sent
+
+
+@pytest.mark.usefixtures("db")
+async def test_mirror_endpoint_forwards_the_event_with_its_id(mirrored):
+    res = await _post_mirror(_mirror_body())
+    assert res.status_code == 204
+    assert len(mirrored) == 1
+    sent = mirrored[0]
+    assert sent["event_name"] == "AddToCart"
+    assert sent["event_id"] == "addtocart_6f1c2b9e-1111-2222-3333-444455556666"
+    assert sent["custom_data"]["value"] == 999
+    assert sent["user"] is None
+
+
+@pytest.mark.usefixtures("db")
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        # Purchase only comes from the verified payment path.
+        {"event_name": "Purchase"},
+        {"event_id": "x"},
+        {"event_source_url": "https://evil.example/product/1"},
+        {"event_source_url": "javascript:alert(1)"},
+        {"custom_data": {"content_ids": [], "contents": [], "value": 1}},
+        {"custom_data": {"content_ids": ["p1"], "contents": [{"id": "p1", "quantity": 1, "item_price": 1}], "value": -5}},
+    ],
+)
+async def test_mirror_endpoint_rejects_bad_events(mirrored, overrides):
+    res = await _post_mirror(_mirror_body(**overrides))
+    assert res.status_code in (400, 422)
+    assert mirrored == []
+
+
+@pytest.mark.usefixtures("db")
+async def test_mirror_accepts_www_host(mirrored):
+    res = await _post_mirror(_mirror_body(event_source_url="https://www.urbanaana.com/cart"))
+    assert res.status_code == 204
+
+
+async def test_browser_event_payload(configured, capture):
+    from starlette.requests import Request
+
+    calls, _ = capture
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/tracking/meta",
+        "headers": [(b"cookie", b"_fbp=fb.1.1.2"), (b"user-agent", b"TestAgent/1.0")],
+        "client": ("203.0.113.7", 1234),
+    }
+    user = User(email="Buyer@Example.com", phone="9876543210", name="Buyer")
+    result = await conversions.send_browser_event(
+        event_name="InitiateCheckout",
+        event_id="initiatecheckout_abc12345",
+        event_source_url="https://urbanaana.com/checkout",
+        custom_data={"content_ids": ["p1"], "contents": [{"id": "p1", "quantity": 2, "item_price": 999}], "value": 1998, "num_items": 2},
+        request=Request(scope),
+        user=user,
+    )
+    assert result["ok"] is True
+    event = _body(calls[0])["data"][0]
+    assert event["event_id"] == "initiatecheckout_abc12345"
+    assert event["event_source_url"] == "https://urbanaana.com/checkout"
+    assert event["custom_data"]["currency"] == "INR"
+    assert event["custom_data"]["content_type"] == "product"
+    assert event["user_data"]["em"] == [hashlib.sha256(b"buyer@example.com").hexdigest()]
+    assert event["user_data"]["fbp"] == "fb.1.1.2"
+    assert event["user_data"]["client_ip_address"] == "203.0.113.7"
+    # No shipping address on a browsing event, so no country claim either.
+    assert "country" not in event["user_data"]
+
+
+async def test_browser_event_never_sends_purchase(configured, capture):
+    calls, _ = capture
+    result = await conversions.send_browser_event(
+        event_name="Purchase",
+        event_id="purchase_abc12345",
+        event_source_url="https://urbanaana.com/",
+        custom_data={"value": 1},
+        request=None,
+    )
+    assert result == {}
+    assert calls == []
+
+
+async def test_browser_event_skipped_when_unconfigured(unconfigured, capture):
+    calls, _ = capture
+    result = await conversions.send_browser_event(
+        event_name="AddToCart",
+        event_id="addtocart_abc12345",
+        event_source_url="https://urbanaana.com/",
+        custom_data={"value": 1},
+        request=None,
+    )
+    assert result == {}
+    assert calls == []
+
+
 # ---------------------------------------------------------------- sending
 
 

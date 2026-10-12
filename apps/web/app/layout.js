@@ -1,6 +1,8 @@
 import "./globals.css";
 import { Inter, Geist, Lato, Archivo_Black, Noto_Sans_Malayalam } from "next/font/google";
 import GtmClient from "@/components/GtmClient";
+import MetaPixel from "@/components/MetaPixel";
+import { metaPixelBootstrap, normalizeMetaPixelId } from "@/lib/metaPixel";
 import TrackingUser from "@/components/TrackingUser";
 import CustomerSessionSync from "@/components/CustomerSessionSync";
 import AttributionCapture from "@/components/AttributionCapture";
@@ -80,6 +82,11 @@ function resolveGtmId() {
 
 export default function RootLayout({ children }) {
   const gtmId = resolveGtmId();
+  // Same id the API sends Conversions API events to. The pixel must not also
+  // be loaded by a GTM tag, or every event is counted twice.
+  const metaPixelId = normalizeMetaPixelId(
+    process.env.NEXT_PUBLIC_META_PIXEL_ID || process.env.META_PIXEL_ID
+  );
 
   return (
     <html
@@ -93,9 +100,16 @@ export default function RootLayout({ children }) {
         <link rel="dns-prefetch" href="https://images.urbanaana.com" />
         <link rel="preconnect" href="https://www.googletagmanager.com" />
         <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+        {metaPixelId ? (
+          <script
+            id="meta-pixel-bootstrap"
+            dangerouslySetInnerHTML={{ __html: metaPixelBootstrap(metaPixelId) }}
+          />
+        ) : null}
       </head>
       <body className="font-sans" suppressHydrationWarning>
         <GtmClient gtmId={gtmId} />
+        <MetaPixel pixelId={metaPixelId} />
         <TrackingUser />
         <CustomerSessionSync />
         <AttributionCapture />
