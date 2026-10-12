@@ -186,6 +186,8 @@ describe("bootstrap", () => {
         ["track", "PageView"],
       ]
     );
+    // MetaPixel.jsx owns route-change PageViews; fbevents must not add its own.
+    assert.equal(store.fbq.disablePushState, true);
     assert.equal(run("/admin/orders").fbq, undefined);
   });
 });

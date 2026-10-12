@@ -147,6 +147,10 @@ export function normalizeMetaPixelId(value) {
  * before React hydrates, so events fired on first render are queued rather
  * than lost. components/MetaPixel.jsx loads fbevents.js, which drains it.
  * Admin pages are skipped.
+ *
+ * disablePushState: fbevents otherwise fires its own PageView on every
+ * pushState *and* replaceState, doubling the one MetaPixel.jsx sends when the
+ * path changes and adding more whenever Next.js rewrites the URL in place.
  */
 export function metaPixelBootstrap(pixelId) {
   const id = normalizeMetaPixelId(pixelId);
@@ -154,7 +158,7 @@ export function metaPixelBootstrap(pixelId) {
   return (
     "(function(w,id){if(w.fbq||w.location.pathname.indexOf('/admin')===0)return;" +
     "var n=w.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
-    "if(!w._fbq)w._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];" +
+    "if(!w._fbq)w._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];n.disablePushState=!0;" +
     `w.__uaMetaPixelId=id;n('init',id);n('track','PageView');})(window,"${id}");`
   );
 }
