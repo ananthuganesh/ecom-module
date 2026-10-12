@@ -125,11 +125,10 @@ async def _recover_payload(token: str, response: Response) -> dict:
         except Exception:
             user = None
 
-    if not user:
-        email = str(details.get("email") or "").strip().lower()
-        if email:
-            user = await User.find_one(User.email == email)
-
+    # Only a cart saved by the account's own session may sign that account in.
+    # A guest cart's email and phone are whatever the visitor typed (or what a
+    # webhook reported), and the WhatsApp link goes to that phone, so looking
+    # the account up by that email would hand it to whoever typed it.
     if user:
         is_staff = bool(getattr(user, "isAdmin", False)) or bool(
             getattr(user, "roleId", None) and str(user.roleId).strip()
