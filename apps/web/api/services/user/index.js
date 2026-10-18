@@ -1,5 +1,6 @@
 export { authService } from "./authService.js";
 export { productService } from "./productService.js";
+export { collectionService } from "./collectionService.js";
 export { orderService } from "./orderService.js";
 export { paymentService } from "./paymentService.js";
 export { shippingService } from "./shippingService.js";

@@ -92,3 +92,45 @@ export async function fetchStoreFilters(options = {}) {
     };
   }
 }
+
+/**
+ * One active collection's details by slug, or null when it doesn't exist or is
+ * hidden. Any other failure throws, so ISR keeps serving the last good page
+ * instead of caching a 404 while the API restarts.
+ */
+export async function fetchStoreCollection(slug, options = {}) {
+  const { revalidate: defaultRevalidate } = getCatalogConfig();
+  const revalidate =
+    options.revalidate != null ? options.revalidate : defaultRevalidate;
+  const base = getInternalApiBase();
+  const res = await fetch(
+    `${base}/api/collections/${encodeURIComponent(String(slug || ""))}`,
+    {
+      next: { revalidate, tags: ["store-catalog"] },
+      headers: { Accept: "application/json" },
+    }
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Collection ${slug} failed to load (${res.status})`);
+  return res.json();
+}
+
+/** Active collections with live product counts (sitemap, nav). */
+export async function fetchStoreCollections(options = {}) {
+  const { revalidate: defaultRevalidate } = getCatalogConfig();
+  const revalidate =
+    options.revalidate != null ? options.revalidate : defaultRevalidate;
+  const base = getInternalApiBase();
+  try {
+    const res = await fetch(`${base}/api/collections`, {
+      next: { revalidate, tags: ["store-catalog"] },
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error("fetchStoreCollections failed", err);
+    return [];
+  }
+}

@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.deps import OptionalUser
 from app.documents import Product
 from app.serializers import product_dict
+from app.services import collections as collections_svc
+from app.services import product_sales
 from app.services.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/api/products", tags=["products"])
@@ -185,6 +187,7 @@ async def list_products(
     minPrice: float | None = None,
     maxPrice: float | None = None,
     priceRange: str | None = None,
+    collection: str | None = None,
     sort: str | None = None,
     _: None = Depends(rate_limit_dependency("products", limit=120)),
 ):
@@ -204,6 +207,10 @@ async def list_products(
         maxPrice=maxPrice,
         priceRange=priceRange,
     )
+    if collection:
+        found = await collections_svc.by_slug(collection)
+        # An unknown or hidden collection lists nothing rather than the whole catalog.
+        query["collections"] = str(found.id) if found else "__none__"
 
     # Manual order first (admin drag-to-reorder), newest first within ties.
     # Products with no position sort ahead, so a new arrival leads until placed.
@@ -376,12 +383,20 @@ async def create_stock_alert(
     )
 
 
+async def _product_detail(product: Product) -> dict:
+    return {
+        **product_dict(product),
+        "soldThisWeek": await product_sales.sold_this_week(str(product.id)),
+        "collectionLinks": await collections_svc.links_for(product),
+    }
+
+
 @router.get("/slug/{slug}")
 async def by_slug(slug: str):
     product = await Product.find_one(Product.slug == slug)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product_dict(product)
+    return await _product_detail(product)
 
 
 @router.get("/{product_id}")
@@ -391,5 +406,5 @@ async def by_id(product_id: str):
     product = await Product.get(ObjectId(product_id))
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product_dict(product)
+    return await _product_detail(product)
 

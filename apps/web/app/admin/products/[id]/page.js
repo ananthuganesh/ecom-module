@@ -59,6 +59,7 @@ import ProductVariantsCard from "@/components/admin/ProductVariantsCard";
 import ProductColorChips from "@/components/admin/ProductColorChips";
 import ProductAttrCombobox from "@/components/admin/ProductAttrCombobox";
 import ProductInventoryCard from "@/components/admin/ProductInventoryCard";
+import ProductSaleCard from "@/components/admin/ProductSaleCard";
 import ProductSeoCard from "@/components/admin/ProductSeoCard";
 import { cn } from "@/lib/utils";
 import { adminProductHref, productUrlKey } from "@/utils/formatProductUrl";
@@ -1105,6 +1106,12 @@ export default function AdminProductDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <ProductSaleCard
+              form={form}
+              updateForm={updateForm}
+              savedSale={product?.sale}
+            />
 
             <ProductInventoryCard form={form} setForm={setForm} />
 

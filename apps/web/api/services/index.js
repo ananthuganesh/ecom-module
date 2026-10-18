@@ -2,6 +2,7 @@
 export {
   authService,
   productService,
+  collectionService,
   orderService,
   paymentService,
   shippingService,
@@ -19,6 +20,7 @@ export {
   adminProductService,
   adminOrderService,
   adminCategoryService,
+  adminCollectionService,
   adminProductColorService,
   adminShippingService,
   adminAisensyService,

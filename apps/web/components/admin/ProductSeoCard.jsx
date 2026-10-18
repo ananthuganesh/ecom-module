@@ -57,10 +57,13 @@ export default function ProductSeoCard({
   form,
   updateForm,
   storeName = "Urban Aana",
+  // Reused by collections: /collections/{slug}, titled by form.name.
+  pathPrefix = "product",
+  breadcrumbSection = "products",
 }) {
   const [editing, setEditing] = useState(false);
   const slug = String(form?.slug || "").trim();
-  const productName = String(form?.productName || "").trim();
+  const productName = String(form?.productName || form?.name || "").trim();
   const metaTitle = String(form?.metaTitle || "");
   const metaDescription = String(form?.metaDescription || "");
 
@@ -80,9 +83,9 @@ export default function ProductSeoCard({
 
   const origin = storeOrigin();
   const originHost = origin.replace(/^https?:\/\//, "");
-  const handlePath = slug ? `product/${slug}` : "product/";
+  const handlePath = slug ? `${pathPrefix}/${slug}` : `${pathPrefix}/`;
   const fullUrl = `${origin}/${handlePath}`;
-  const breadcrumb = [originHost, "products", slug || undefined].filter(
+  const breadcrumb = [originHost, breadcrumbSection, slug || undefined].filter(
     Boolean
   );
 
@@ -171,9 +174,12 @@ export default function ProductSeoCard({
             <Field>
               <FieldLabel>URL handle</FieldLabel>
               <Input
-                value={slug ? `product/${slug}` : "product/"}
+                value={handlePath}
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/^products?\//i, "");
+                  const raw = e.target.value.replace(
+                    new RegExp(`^${pathPrefix}s?/`, "i"),
+                    ""
+                  );
                   updateForm({
                     slug: slugify(raw),
                     slugManual: true,

@@ -26,6 +26,11 @@ const products = {
   byId: (id) => `products/${id}`,
 };
 
+const collections = {
+  base: "collections",
+  bySlug: (slug) => `collections/${encodeURIComponent(slug)}`,
+};
+
 const orders = {
   base: "orders",
   myOrders: "orders/myorders",
@@ -44,4 +49,4 @@ const razorpay = {
   magicVerify: "payments/magic/verify",
 };
 
-export const userEndpoints = { users, products, orders, razorpay };
+export const userEndpoints = { users, products, collections, orders, razorpay };

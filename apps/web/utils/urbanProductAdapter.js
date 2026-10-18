@@ -4,6 +4,7 @@ const CARD_BADGE_LABELS = {
   new_arrival: "New Arrival",
   trending: "Trending",
   best_seller: "Best Seller",
+  sale: "Sale",
 };
 
 const MANUAL_BADGES = new Set(["new_arrival", "trending", "best_seller"]);
@@ -69,6 +70,13 @@ export function resolveCardBadge(product) {
   const manual = normalizeBadgeKey(product?.badge);
   if (MANUAL_BADGES.has(manual)) {
     return { key: manual, label: CARD_BADGE_LABELS[manual] };
+  }
+
+  // A badge the admin picked always wins over SALE. Only a scheduled sale that is
+  // running now counts — most products sit below MRP all the time, so
+  // "discounted" alone would badge the whole catalog.
+  if (product?.sale?.live) {
+    return { key: "sale", label: CARD_BADGE_LABELS.sale };
   }
 
   const createdRaw = product?.createdAt || product?.created_at;

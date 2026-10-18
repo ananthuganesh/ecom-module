@@ -32,6 +32,13 @@ const categories = {
   byId: (id) => `/admin/categories/${id}`,
 };
 
+const collections = {
+  base: "/admin/collections",
+  byId: (id) => `/admin/collections/${id}`,
+  addProducts: (id) => `/admin/collections/${id}/products`,
+  removeProducts: (id) => `/admin/collections/${id}/products/remove`,
+};
+
 const productColors = {
   base: "/admin/product-colors",
 };
@@ -64,6 +71,7 @@ export const adminEndpoints = {
   products,
   orders,
   categories,
+  collections,
   productColors,
   aisensy,
   taxClasses,

@@ -117,21 +117,32 @@ describe("aggregateRating", () => {
 });
 
 describe("breadcrumbs", () => {
-  it("runs Home › Category › Product", () => {
-    const data = productBreadcrumbJsonLd(SIZED);
+  it("runs Home › Collection › Product", () => {
+    const data = productBreadcrumbJsonLd({
+      ...SIZED,
+      collectionLinks: [
+        { name: "New Drop", slug: "new-drop" },
+        { name: "T-Shirt", slug: "t-shirt" },
+      ],
+    });
     assert.deepEqual(
       data.itemListElement.map((i) => [i.position, i.name, i.item]),
       [
         [1, "Home", "https://urbanaana.com"],
-        [2, "T-Shirt", "https://urbanaana.com/category/t-shirt"],
+        [2, "T-Shirt", "https://urbanaana.com/collections/t-shirt"],
         [3, "Luffy - The Onepiece", "https://urbanaana.com/product/luffy-the-onepiece"],
       ]
     );
   });
 
-  it("uses All products when there's no category", () => {
+  it("uses All products when the product is in no live collection", () => {
     const data = productBreadcrumbJsonLd({ productName: "Tee", slug: "tee" });
     assert.equal(data.itemListElement[1].item, "https://urbanaana.com/all-products");
+    // A category name alone no longer guesses a collection URL that may 404.
+    assert.equal(
+      productBreadcrumbJsonLd(SIZED).itemListElement[1].item,
+      "https://urbanaana.com/all-products"
+    );
   });
 
   it("needs at least two crumbs", () => {

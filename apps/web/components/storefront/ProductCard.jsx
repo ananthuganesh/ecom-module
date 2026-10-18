@@ -166,7 +166,7 @@ export default function ProductCard({
                 <div className="pointer-events-none absolute top-1.5 left-1.5 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5 lg:top-3 lg:left-3 lg:h-6 lg:px-2">
                   <span
                     className={`text-[8px] font-medium uppercase leading-none tracking-wide lg:text-xs ${
-                      badge.key === "sold_out"
+                      badge.key === "sold_out" || badge.key === "sale"
                         ? "text-[#c70a24]"
                         : badge.key === "low_stock"
                           ? "text-[#b45309]"

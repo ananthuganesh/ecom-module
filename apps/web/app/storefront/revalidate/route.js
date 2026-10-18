@@ -35,7 +35,7 @@ export async function POST(request) {
   revalidateTag("store-theme");
   revalidatePath("/");
   revalidatePath("/all-products");
-  revalidatePath("/category", "layout");
+  revalidatePath("/collections", "layout");
 
   return NextResponse.json({ revalidated: true, at: Date.now() });
 }

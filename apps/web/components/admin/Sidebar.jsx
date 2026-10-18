@@ -200,6 +200,7 @@ const menuItems = [
     href: "/admin/products",
     icon: Package,
     subItems: [
+      { name: "Collections", href: "/admin/products/collections" },
       { name: "Inventory", href: "/admin/products/inventory" },
       { name: "Reviews", href: "/admin/reviews" },
     ],

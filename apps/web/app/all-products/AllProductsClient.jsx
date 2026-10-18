@@ -11,6 +11,7 @@ import {
 import { ChevronDown, Loader2, SearchX } from "lucide-react";
 import { FilterIcon } from "@/components/icons/storeIcons";
 import ProductCard from "@/components/storefront/ProductCard";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { productService } from "@/api";
 import FilterSidebar from "@/components/FilterSidebar";
@@ -111,16 +112,38 @@ function SortDropdown({ value, onChange, options }) {
   );
 }
 
+/** "Kerala Prints" → Kerala <accent>Prints</accent>, matching "All Products". */
+function AccentTitle({ text }) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) {
+    return <span className="title-knewave-accent">{words[0] || ""}</span>;
+  }
+  return (
+    <>
+      {words.slice(0, -1).join(" ")}{" "}
+      <span className="title-knewave-accent">{words[words.length - 1]}</span>
+    </>
+  );
+}
+
 function AllProductsContent({
   initialProducts = [],
   initialHasMore = false,
   initialFacets = EMPTY_FACETS,
   catalogPageSize = 40,
   cardPriorityCount = 2,
+  collection = null,
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const keyword = searchParams.get("search") || "";
+  const keyword = collection ? "" : searchParams.get("search") || "";
+  const basePath = collection ? `/collections/${collection.slug}` : "/all-products";
+  const listName = keyword
+    ? "Search results"
+    : collection
+      ? `Collection: ${collection.name}`
+      : "All products";
+  const listId = keyword ? "search" : collection ? `collection-${collection.slug}` : "all-products";
 
   const [products, setProducts] = useState(initialProducts);
   const [page, setPage] = useState(1);
@@ -165,7 +188,7 @@ function AllProductsContent({
       if (value) q.set(key, value);
     });
     const queryString = q.toString();
-    router.replace(queryString ? `/all-products?${queryString}` : "/all-products", {
+    router.replace(queryString ? `${basePath}?${queryString}` : basePath, {
       scroll: false,
     });
   };
@@ -205,9 +228,10 @@ function AllProductsContent({
         ...activeFilters,
       };
       if (keyword) params.keyword = keyword;
+      if (collection) params.collection = collection.slug;
       return params;
     },
-    [catalogPageSize, sortBy, activeFilters, keyword]
+    [catalogPageSize, sortBy, activeFilters, keyword, collection]
   );
 
   const fetchPage = useCallback(
@@ -234,11 +258,7 @@ function AllProductsContent({
         setHasMore(more);
         if (!append) {
           if (keyword) trackSearch(keyword, list);
-          trackViewItemList(
-            list,
-            keyword ? "Search results" : "All products",
-            keyword ? "search" : "all-products"
-          );
+          trackViewItemList(list, listName, listId);
         }
       } catch (error) {
         if (gen !== fetchGen.current) return;
@@ -254,7 +274,7 @@ function AllProductsContent({
         }
       }
     },
-    [buildParams, catalogPageSize, keyword]
+    [buildParams, catalogPageSize, keyword, listName, listId]
   );
 
   useEffect(() => {
@@ -266,16 +286,12 @@ function AllProductsContent({
         setPage(1);
         setHasMore(initialHasMore);
         if (keyword) trackSearch(keyword, initialProducts);
-        trackViewItemList(
-          initialProducts,
-          keyword ? "Search results" : "All products",
-          keyword ? "search" : "all-products"
-        );
+        trackViewItemList(initialProducts, listName, listId);
         return;
       }
     }
     fetchPage(1, { append: false });
-  }, [fetchPage, initialProducts, initialHasMore, keyword]);
+  }, [fetchPage, initialProducts, initialHasMore, keyword, listName, listId]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -319,7 +335,9 @@ function AllProductsContent({
             className="w-full text-center"
           >
             <h1 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
-              {keyword ? (
+              {collection ? (
+                <AccentTitle text={collection.name} />
+              ) : keyword ? (
                 <>
                   Search <span className="title-knewave-accent">Results</span>
                 </>
@@ -329,6 +347,11 @@ function AllProductsContent({
                 </>
               )}
             </h1>
+            {collection?.description ? (
+              <p className="mx-auto mt-3 max-w-2xl text-[13px] leading-relaxed whitespace-pre-line text-gray-600 md:text-sm">
+                {collection.description}
+              </p>
+            ) : null}
           </motion.header>
         </div>
       </section>
@@ -393,18 +416,29 @@ function AllProductsContent({
                   <p className="mb-2 text-base font-semibold text-black">
                     {keyword
                       ? `No products found for “${keyword}”`
-                      : "No matching products"}
+                      : collection && activeFilterCount === 0
+                        ? "No products in this collection yet"
+                        : "No matching products"}
                   </p>
                   <p className="mb-7 max-w-sm text-sm text-gray-500">
                     Try clearing filters or browsing the full catalog.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => handleFilterChange({})}
-                    className="rounded-lg bg-black px-5 py-2.5 text-[12px] font-semibold text-white transition hover:bg-[#DF1721]"
-                  >
-                    Clear filters
-                  </button>
+                  {activeFilterCount > 0 || keyword ? (
+                    <button
+                      type="button"
+                      onClick={() => handleFilterChange({})}
+                      className="rounded-lg bg-black px-5 py-2.5 text-[12px] font-semibold text-white transition hover:bg-[#DF1721]"
+                    >
+                      Clear filters
+                    </button>
+                  ) : (
+                    <Link
+                      href="/all-products"
+                      className="rounded-lg bg-black px-5 py-2.5 text-[12px] font-semibold text-white transition hover:bg-[#DF1721]"
+                    >
+                      Browse all products
+                    </Link>
+                  )}
                 </div>
               ) : (
                 <>
@@ -413,8 +447,8 @@ function AllProductsContent({
                       <ProductCard
                         key={product._id}
                         product={product}
-                        listName={keyword ? "Search results" : "All products"}
-                        listId={keyword ? "search" : "all-products"}
+                        listName={listName}
+                        listId={listId}
                         priority={index < cardPriorityCount}
                       />
                     ))}
@@ -451,6 +485,7 @@ export default function AllProductsClient({
   initialFacets = EMPTY_FACETS,
   catalogPageSize = 40,
   cardPriorityCount = 2,
+  collection = null,
 }) {
   return (
     <main className="min-h-screen bg-white">
@@ -469,6 +504,7 @@ export default function AllProductsClient({
           initialFacets={initialFacets}
           catalogPageSize={catalogPageSize}
           cardPriorityCount={cardPriorityCount}
+          collection={collection}
         />
       </Suspense>
       <WhyUrbanAana />

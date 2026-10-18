@@ -5,7 +5,7 @@ import {
   CloseIcon,
   RulerIcon,
 } from "@/components/icons/storeIcons";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
@@ -19,6 +19,7 @@ import { productService } from "@/api";
 import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
 import BackInStockNotify from "@/components/storefront/BackInStockNotify";
+import SaleOfferCard from "@/components/storefront/SaleOfferCard";
 import ProductReviews from "@/components/storefront/ProductReviews";
 import StarRating from "@/components/storefront/StarRating";
 import { productRating, reviewCountLabel } from "@/lib/reviews";
@@ -423,6 +424,24 @@ export default function ProductDetailPage({ initialProduct = null }) {
       : 0;
   const rating = productRating(product);
   const price = Number(product?.pricing?.sellingPrice ?? product?.price ?? 0);
+
+  // When the countdown ends, the API restores the regular price within its next
+  // one-minute sweep — reload then so the page stops showing the sale price.
+  const saleRefreshRef = useRef(null);
+  useEffect(() => () => clearTimeout(saleRefreshRef.current), []);
+  const handleSaleEnded = useCallback(() => {
+    const slug = product?.slug || params?.id;
+    if (!slug) return;
+    clearTimeout(saleRefreshRef.current);
+    saleRefreshRef.current = setTimeout(async () => {
+      try {
+        const fresh = await productService.getBySlug(slug);
+        if (fresh) setProduct(fresh);
+      } catch {
+        // Keep the current paint; the next visit shows the regular price.
+      }
+    }, 65000);
+  }, [product?.slug, params?.id]);
   const mrp = Number(product?.pricing?.mrp ?? 0);
   const hasCompareAt = mrp > 0 && mrp > price;
   const originalPrice = hasCompareAt ? mrp : null;
@@ -787,22 +806,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   )}
                 </div>
 
-                {productBadge ? (
-                  <div className="pointer-events-none absolute top-2 left-2 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
-                    <span
-                      className={`text-[8px] font-medium uppercase leading-none tracking-wide ${
-                        productBadge.key === "sold_out"
-                          ? "text-[#c70a24]"
-                          : productBadge.key === "low_stock"
-                            ? "text-[#b45309]"
-                            : "text-[#133b5f]"
-                      }`}
-                    >
-                      {productBadge.label}
-                    </span>
-                  </div>
-                ) : null}
-
                 <WishlistButton
                   product={product}
                   iconSize={18}
@@ -873,21 +876,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
                       className="object-cover"
                     />
                   ) : null}
-                  {productBadge ? (
-                    <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
-                      <span
-                        className={`text-[8px] font-medium uppercase leading-none tracking-wide ${
-                          productBadge.key === "sold_out"
-                            ? "text-[#c70a24]"
-                            : productBadge.key === "low_stock"
-                              ? "text-[#b45309]"
-                              : "text-[#133b5f]"
-                        }`}
-                      >
-                        {productBadge.label}
-                      </span>
-                    </div>
-                  ) : null}
                 </div>
               ) : (
                 <div className="grid grid-cols-[1.35fr_1fr] gap-2">
@@ -904,21 +892,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
                           sizes="42vw"
                           className="object-cover"
                         />
-                        {productBadge ? (
-                          <div className="pointer-events-none absolute top-3 left-3 z-10 inline-flex h-5 items-center rounded-sm bg-white px-1.5">
-                            <span
-                              className={`text-[8px] font-medium uppercase leading-none tracking-wide ${
-                                productBadge.key === "sold_out"
-                                  ? "text-[#c70a24]"
-                                  : productBadge.key === "low_stock"
-                                    ? "text-[#b45309]"
-                                    : "text-[#133b5f]"
-                              }`}
-                            >
-                              {productBadge.label}
-                            </span>
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -950,6 +923,19 @@ export default function ProductDetailPage({ initialProduct = null }) {
           <div className="min-w-0 lg:max-w-md xl:max-w-lg lg:sticky lg:top-24 lg:self-start">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
+                  {productBadge ? (
+                    <span
+                      className={`mb-2 inline-flex h-7 items-center rounded-sm border px-2 text-xs font-semibold uppercase leading-none tracking-wide ${
+                        productBadge.key === "sold_out" || productBadge.key === "sale"
+                          ? "border-[#c70a24]/30 text-[#c70a24]"
+                          : productBadge.key === "low_stock"
+                            ? "border-[#b45309]/30 text-[#b45309]"
+                            : "border-[#133b5f]/30 text-[#133b5f]"
+                      }`}
+                    >
+                      {productBadge.label}
+                    </span>
+                  ) : null}
                   <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
                     {title}
                   </h1>
@@ -958,19 +944,37 @@ export default function ProductDetailPage({ initialProduct = null }) {
                       {productType}
                     </p>
                   ) : null}
-                  {rating ? (
-                    <a
-                      href="#reviews"
-                      className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-black"
-                    >
-                      <StarRating rating={rating.average} size={13} />
-                      <span className="font-semibold text-black tabular-nums">
-                        {rating.average.toFixed(1)}
-                      </span>
-                      <span className="underline underline-offset-2">
-                        {reviewCountLabel(rating.count)}
-                      </span>
-                    </a>
+                  {rating || product.soldThisWeek ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-gray-600">
+                      {rating ? (
+                        <a
+                          href="#reviews"
+                          className="inline-flex items-center gap-1.5 hover:text-black"
+                        >
+                          <StarRating rating={rating.average} size={15} />
+                          <span className="font-semibold text-black tabular-nums">
+                            {rating.average.toFixed(1)}
+                          </span>
+                          <span className="capitalize">
+                            ({reviewCountLabel(rating.count)})
+                          </span>
+                        </a>
+                      ) : null}
+                      {rating && product.soldThisWeek ? (
+                        <span aria-hidden className="h-4 w-px bg-gray-300" />
+                      ) : null}
+                      {product.soldThisWeek ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span aria-hidden>🔥</span>
+                          <span>
+                            <span className="font-semibold text-black tabular-nums">
+                              {product.soldThisWeek.toLocaleString("en-IN")}+
+                            </span>{" "}
+                            sold this week
+                          </span>
+                        </span>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 <WishlistButton
@@ -1012,6 +1016,10 @@ export default function ProductDetailPage({ initialProduct = null }) {
               ) : null}
               <p className="text-[11px] text-gray-400">Inclusive of all taxes</p>
             </div>
+
+            {product.sale?.live ? (
+              <SaleOfferCard sale={product.sale} onEnded={handleSaleEnded} />
+            ) : null}
 
             {sizes.length > 0 ? (
               <div className="mt-6">

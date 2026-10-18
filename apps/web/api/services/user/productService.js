@@ -13,6 +13,7 @@ export const productService = {
       searchParams.append("product", params.product);
     if (params.category && params.category !== "All")
       searchParams.append("category", params.category);
+    if (params.collection) searchParams.append("collection", params.collection);
 
     ["brand", "color", "size", "fit", "fabric", "badge"].forEach((key) => {
       if (!params[key]) return;

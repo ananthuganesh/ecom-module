@@ -1,16 +1,7 @@
 import { absoluteUrl, getInternalApiBase, getSiteUrl } from "@/lib/siteUrl";
-import { fetchStoreFilters } from "@/lib/fetchProducts";
-import { PRODUCT_CATEGORIES } from "@/utils/productForm";
+import { fetchStoreCollections } from "@/lib/fetchProducts";
 
 export const revalidate = 3600;
-
-function categorySlug(name) {
-  return String(name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function parseDate(value) {
   if (!value) return null;
@@ -78,20 +69,12 @@ export default async function sitemap() {
     priority: row.priority,
   }));
 
-  const facets = await fetchStoreFilters({ revalidate: 3600 });
-  const categoryNames = [
-    ...new Set(
-      [...(facets.categories || []), ...PRODUCT_CATEGORIES]
-        .map((name) => String(name || "").trim())
-        .filter(Boolean)
-    ),
-  ];
-  const categoryRoutes = categoryNames
-    .map((name) => categorySlug(name))
-    .filter(Boolean)
-    .map((slug) => ({
-      url: absoluteUrl(`/category/${slug}`),
-      lastModified: now,
+  const collections = await fetchStoreCollections({ revalidate: 3600 });
+  const collectionRoutes = collections
+    .filter((c) => c?.slug && Number(c.productCount) > 0)
+    .map((c) => ({
+      url: absoluteUrl(`/collections/${c.slug}`),
+      lastModified: parseDate(c.updatedAt) || now,
       changeFrequency: "weekly",
       priority: 0.8,
     }));
@@ -116,5 +99,5 @@ export default async function sitemap() {
     });
   }
 
-  return [...staticRoutes, ...categoryRoutes, ...productRoutes];
+  return [...staticRoutes, ...collectionRoutes, ...productRoutes];
 }

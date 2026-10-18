@@ -37,6 +37,8 @@ from app.documents import (
     Variant,
 )
 from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
+from app.services import collections as collections_svc
+from app.services import sale_pricing
 from app.services import erp_ops
 from app.services.rate_limit import rate_limit_dependency
 from app.services.shipping_settings import get_shipping_settings as load_shipping_settings
@@ -812,16 +814,19 @@ async def admin_create_product(body: dict, _: AdminUser):
     from app.services.product_url_id import ensure_product_url_id
 
     data = _normalize_product_payload({k: v for k, v in body.items() if k not in ("_id", "id")})
+    sale_body = data.pop("sale", None)
     if "hsnCode" in data:
         data["hsnCode"] = _validate_hsn(data.get("hsnCode"))
     if data.get("priceTaxMode") and data["priceTaxMode"] not in ("inclusive", "exclusive"):
         raise HTTPException(status_code=400, detail="priceTaxMode must be inclusive or exclusive")
     product = Product(**data)
+    sale_pricing.finish_edit(product, (False, None), price_written=True, sale_body=sale_body)
     await product.insert()
     try:
         await ensure_product_url_id(product)
     except Exception:
         pass
+    await collections_svc.file_new_product(product)
     try:
         await _ensure_product_colors(
             getattr(product, "colors", None) or getattr(product, "color", None)
@@ -968,7 +973,10 @@ async def admin_update_product(product_id: str, body: dict, _: AdminUser):
     product = await resolve_product(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    for k, v in _normalize_product_payload(body).items():
+    payload = _normalize_product_payload(body)
+    sale_body = payload.pop("sale", sale_pricing.UNSET)
+    sale_state = sale_pricing.begin_edit(product)
+    for k, v in payload.items():
         if k in ("_id", "id"):
             continue
         if k == "hsnCode":
@@ -976,6 +984,7 @@ async def admin_update_product(product_id: str, body: dict, _: AdminUser):
         if k == "priceTaxMode" and v and v not in ("inclusive", "exclusive"):
             raise HTTPException(status_code=400, detail="priceTaxMode must be inclusive or exclusive")
         setattr(product, k, v)
+    sale_pricing.finish_edit(product, sale_state, price_written="pricing" in payload, sale_body=sale_body)
     product.updatedAt = datetime.utcnow()
     await product.save()
     try:
@@ -1015,6 +1024,7 @@ async def bulk_products(body: dict, _: AdminUser):
             if not product:
                 continue
 
+            sale_state = sale_pricing.begin_edit(product)
             pricing = entry.get("pricing")
             if isinstance(pricing, dict):
                 pricing_update = _normalize_pricing(pricing)
@@ -1050,6 +1060,12 @@ async def bulk_products(body: dict, _: AdminUser):
             if product.variants:
                 product.totalStock = sum(int(v.quantity or 0) for v in product.variants)
 
+            sale_pricing.finish_edit(
+                product,
+                sale_state,
+                # Blank values are dropped above, so only a real new price counts.
+                price_written=bool(pricing_update) and pricing_update.get("sellingPrice") is not None,
+            )
             product.updatedAt = datetime.utcnow()
             await product.save()
             if entry.get("variants") is not None:
@@ -1060,12 +1076,19 @@ async def bulk_products(body: dict, _: AdminUser):
     ids = body.get("ids") or []
     updates = body.get("updates") or {}
     count = 0
+    sale_body = updates.get("sale", sale_pricing.UNSET)
     for pid in ids:
         product = await Product.get(ObjectId(pid))
         if not product:
             continue
+        sale_state = sale_pricing.begin_edit(product)
         for k, v in updates.items():
+            if k in ("_id", "id", "sale", "productUrlId"):
+                continue
             setattr(product, k, v)
+        sale_pricing.finish_edit(
+            product, sale_state, price_written="pricing" in updates, sale_body=sale_body
+        )
         await product.save()
         count += 1
     return {"updated": count}
@@ -1901,30 +1924,21 @@ async def list_categories(_: AdminUser):
     return await _crud_list(Category, _)
 
 
+# Categories are collections now — these legacy routes share its slug rules and
+# keep Product.collections in sync on delete.
 @router.post("/categories", status_code=201)
 async def create_category(body: dict, _: AdminUser):
-    doc = Category(**body)
-    await doc.insert()
-    return doc_to_dict(doc)
+    return await collections_svc.create(body or {})
 
 
 @router.put("/categories/{item_id}")
 async def update_category(item_id: str, body: dict, _: AdminUser):
-    doc = await Category.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    for k, v in body.items():
-        setattr(doc, k, v)
-    await doc.save()
-    return doc_to_dict(doc)
+    return await collections_svc.update(item_id, body or {})
 
 
 @router.delete("/categories/{item_id}")
 async def delete_category(item_id: str, _: AdminUser):
-    doc = await Category.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    await doc.delete()
+    await collections_svc.delete(item_id)
     return {"message": "removed"}
 
 

@@ -2,6 +2,7 @@ export { adminUserService } from "./userService.js";
 export { adminProductService } from "./productService.js";
 export { adminOrderService } from "./orderService.js";
 export { adminCategoryService } from "./categoryService.js";
+export { adminCollectionService } from "./collectionService.js";
 export { adminProductColorService } from "./productColorService.js";
 export { adminShippingService } from "./shippingService.js";
 export { default as adminAisensyService } from "./adminAisensyService.js";

@@ -1,3 +1,5 @@
+import { saleFormFromProduct, salePayload } from "@/lib/saleSchedule";
+
 export const STATUSES = ["draft", "active"];
 
 export const PRODUCT_CLASSES = [
@@ -235,6 +237,7 @@ export function defaultForm() {
     metaTitle: "",
     metaDescription: "",
     slugManual: false,
+    sale: { price: "", startsAt: "", endsAt: "", dailyStart: "", dailyEnd: "" },
   };
 }
 
@@ -282,8 +285,13 @@ export function productToForm(product) {
         product.pricing?.mrp != null && product.pricing?.mrp !== ""
           ? formatPriceDisplay(product.pricing.mrp)
           : "",
+      // During a live sale the stored selling price is the sale price; the
+      // form edits the regular price the store returns to when it ends.
       sellingPrice: formatPriceDisplay(
-        product.pricing?.sellingPrice ?? product.price ?? 0
+        (product.sale?.live ? product.sale.regularPrice : null) ??
+          product.pricing?.sellingPrice ??
+          product.price ??
+          0
       ),
     },
     variants,
@@ -314,6 +322,7 @@ export function productToForm(product) {
     metaTitle: product.metaTitle || "",
     metaDescription: product.metaDescription || "",
     slugManual: Boolean(product.slug),
+    sale: saleFormFromProduct(product),
   };
 }
 
@@ -433,6 +442,7 @@ export function buildProductPayload(formData) {
     slug,
     metaTitle: (formData.metaTitle || "").trim() || null,
     metaDescription: (formData.metaDescription || "").trim() || null,
+    sale: salePayload(formData.sale),
   };
 }
 

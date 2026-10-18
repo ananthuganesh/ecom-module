@@ -12,7 +12,7 @@ from pymongo.errors import ConnectionFailure
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, contact, coupons, erp, magic_checkout, media, orders, payments, products, returns, reviews, shipping, stock_admin, store_theme, tracking, users
+from app.routers import abandoned, admin, collections, contact, coupons, erp, magic_checkout, media, orders, payments, products, returns, reviews, shipping, stock_admin, store_theme, tracking, users
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,9 @@ async def lifespan(_: FastAPI):
     from app.services.stock_alerts import stock_alert_sweep_loop
 
     stock_alert_task = asyncio.create_task(stock_alert_sweep_loop(stop_event))
+    from app.services.sale_pricing import sale_sweep_loop
+
+    sale_task = asyncio.create_task(sale_sweep_loop(stop_event))
     try:
         yield
     finally:
@@ -67,7 +70,8 @@ async def lifespan(_: FastAPI):
         dtdc_sync_task.cancel()
         monthly_report_task.cancel()
         stock_alert_task.cancel()
-        for task in (abandoned_task, stock_task, dtdc_sync_task, monthly_report_task, stock_alert_task):
+        sale_task.cancel()
+        for task in (abandoned_task, stock_task, dtdc_sync_task, monthly_report_task, stock_alert_task, sale_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -146,6 +150,8 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
 
     app.include_router(users.router)
     app.include_router(products.router)
+    app.include_router(collections.router)
+    app.include_router(collections.admin_router)
     app.include_router(orders.router)
     app.include_router(payments.router)
     app.include_router(magic_checkout.router)

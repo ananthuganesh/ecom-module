@@ -113,6 +113,24 @@ class Pricing(MongoModel):
     offerPrice: Optional[float] = None
 
 
+class ProductSale(MongoModel):
+    """Scheduled sale price. While ``live``, pricing.sellingPrice holds ``price`` and
+    ``regularPrice`` keeps the pre-sale price to restore — see services/sale_pricing."""
+
+    price: Optional[float] = None
+    startsAt: Optional[datetime] = None
+    endsAt: Optional[datetime] = None
+    # Optional daily flash window, "HH:MM" in India time — the price is on only
+    # between these each day, inside startsAt..endsAt.
+    dailyStart: Optional[str] = None
+    dailyEnd: Optional[str] = None
+    live: bool = False
+    regularPrice: Optional[float] = None
+    # While live: when this stretch of the sale stops (today's window close or
+    # endsAt, whichever is first). Drives the storefront countdown.
+    liveUntil: Optional[datetime] = None
+
+
 class Variant(MongoModel):
     color: str = ""
     size: str = ""
@@ -148,6 +166,8 @@ class Product(Document):
     name: Optional[str] = None
     slug: Optional[str] = None
     category: Optional[str] = None
+    # Category (collection) ids, as strings — a product can sit in several.
+    collections: list[str] = Field(default_factory=list)
     type: Optional[str] = None
     brand: Optional[str] = None
     description: Optional[str] = None
@@ -163,6 +183,7 @@ class Product(Document):
     sleeveType: Optional[str] = None
     pricing: Optional[Pricing] = None
     price: Optional[float] = None
+    sale: Optional[ProductSale] = None
     variants: list[Variant] = Field(default_factory=list)
     thumbnails: list[str] = Field(default_factory=list)
     totalStock: int = 0
@@ -238,6 +259,13 @@ class Product(Document):
 
         return sanitize_rich_text(value)
 
+    @field_validator("collections", mode="before")
+    @classmethod
+    def coerce_collection_ids(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(str(v) for v in value if v))
+
     @field_validator("totalStock", mode="before")
     @classmethod
     def coerce_stock(cls, value: Any) -> int:
@@ -254,6 +282,7 @@ class Product(Document):
             IndexModel([("sortOrder", 1), ("createdAt", -1)]),
             IndexModel([("productUrlId", 1)], unique=True, sparse=True),
             IndexModel([("createdAt", -1)]),
+            IndexModel([("collections", 1)]),
         ]
 
 
@@ -343,14 +372,24 @@ class Order(Document):
 
 
 class Category(Document):
+    """A storefront collection (/collections/{slug}). Products join via Product.collections."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
     name: str
     slug: Optional[str] = None
     parent: Optional[Any] = None
     description: Optional[str] = None
+    image: Optional[str] = None
     isActive: bool = True
+    metaTitle: Optional[str] = None
+    metaDescription: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "categories"
+        indexes = [IndexModel([("slug", 1)], sparse=True)]
 
 
 class Brand(Document):

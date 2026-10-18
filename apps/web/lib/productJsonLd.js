@@ -193,14 +193,19 @@ export function productJsonLdScript(product) {
   return jsonLdScript(buildProductJsonLd(product));
 }
 
-/** Home › Category › Product */
+/** Home › Collection › Product — only linking a collection the API says is live. */
 export function productBreadcrumbJsonLd(product) {
   const name = plainText(product?.productName || product?.name || product?.product);
   if (!name) return null;
-  const categoryName = plainText(product?.category?.name || product?.category);
+  const links = Array.isArray(product?.collectionLinks)
+    ? product.collectionLinks.filter((c) => c?.slug && c?.name)
+    : [];
+  // Prefer the collection named after the product's category ("T-Shirt").
+  const wanted = categorySlug(plainText(product?.category?.name || product?.category));
+  const collection = links.find((c) => c.slug === wanted) || links[0];
   const crumbs = [{ name: "Home", path: "/" }];
-  if (categoryName && categorySlug(categoryName)) {
-    crumbs.push({ name: categoryName, path: `/category/${categorySlug(categoryName)}` });
+  if (collection) {
+    crumbs.push({ name: plainText(collection.name), path: `/collections/${collection.slug}` });
   } else {
     crumbs.push({ name: "All products", path: "/all-products" });
   }
