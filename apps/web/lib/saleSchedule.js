@@ -35,8 +35,6 @@ export function saleFormFromProduct(product) {
     price: sale?.price != null ? String(sale.price) : "",
     startsAt: toDateTimeLocal(sale?.startsAt),
     endsAt: toDateTimeLocal(sale?.endsAt),
-    dailyStart: sale?.dailyStart || "",
-    dailyEnd: sale?.dailyEnd || "",
   };
 }
 
@@ -48,24 +46,15 @@ export function salePayload(form) {
     price: Math.round(price * 100) / 100,
     startsAt: fromDateTimeLocal(form.startsAt),
     endsAt: fromDateTimeLocal(form.endsAt),
-    // Daily flash window, "HH:MM" India time — both or neither.
-    dailyStart: form.dailyStart && form.dailyEnd ? form.dailyStart : null,
-    dailyEnd: form.dailyStart && form.dailyEnd ? form.dailyEnd : null,
+    // The admin no longer sets daily flash hours; null clears any older window.
+    dailyStart: null,
+    dailyEnd: null,
   };
 }
 
 /** When the running stretch of a live sale stops — today's window close or the sale end. */
 export function saleCountdownTarget(sale) {
   return sale?.liveUntil || sale?.endsAt || null;
-}
-
-/** "10:00" → "10:00 AM" for admin copy. */
-export function formatClock(value) {
-  const match = /^(\d{1,2}):(\d{2})/.exec(String(value || ""));
-  if (!match) return "";
-  const hours = Number(match[1]);
-  const suffix = hours >= 12 ? "PM" : "AM";
-  return `${hours % 12 || 12}:${match[2]} ${suffix}`;
 }
 
 /** Status of a saved sale: "live" | "scheduled" | "ended" | null. */

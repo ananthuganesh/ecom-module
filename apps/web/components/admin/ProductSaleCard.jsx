@@ -4,7 +4,9 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/componen
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { AdminStatusText } from "@/components/admin/list";
-import { formatClock, percentOff, saleStatus } from "@/lib/saleSchedule";
+import DateTimePicker from "@/components/admin/DateTimePicker";
+import { parseLocalValue } from "@/lib/dateTimeValue";
+import { percentOff, saleStatus } from "@/lib/saleSchedule";
 
 const STATUS_COPY = {
   live: { label: "Live", tone: "success" },
@@ -12,7 +14,7 @@ const STATUS_COPY = {
   ended: { label: "Ended", tone: "neutral" },
 };
 
-const EMPTY_SALE = { price: "", startsAt: "", endsAt: "", dailyStart: "", dailyEnd: "" };
+const EMPTY_SALE = { price: "", startsAt: "", endsAt: "" };
 
 const inr = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
 
@@ -32,14 +34,7 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
   const notLower = salePrice > 0 && regular > 0 && salePrice >= regular;
   const badEnd =
     sale.startsAt && sale.endsAt && new Date(sale.endsAt) <= new Date(sale.startsAt);
-  const daily = Boolean(sale.dailyStart && sale.dailyEnd);
-  const halfDaily = Boolean(sale.dailyStart) !== Boolean(sale.dailyEnd);
-  const sameDaily = daily && sale.dailyStart === sale.dailyEnd;
-  const savedState = saleStatus(savedSale);
-  const status =
-    savedState === "scheduled" && savedSale?.dailyStart
-      ? { label: `Next at ${formatClock(savedSale.dailyStart)}`, tone: "info" }
-      : STATUS_COPY[savedState];
+  const status = STATUS_COPY[saleStatus(savedSale)];
 
   return (
     <Card className="@container/card">
@@ -54,7 +49,7 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-3 @md/card:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 @md/card:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,1fr)]">
           <Field>
             <FieldLabel>Sale price</FieldLabel>
             <div className="relative">
@@ -74,42 +69,22 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
           </Field>
           <Field>
             <FieldLabel>Starts</FieldLabel>
-            <Input
-              type="datetime-local"
+            <DateTimePicker
               value={sale.startsAt}
-              onChange={(e) => setSale({ startsAt: e.target.value })}
+              onChange={(startsAt) => setSale({ startsAt })}
+              placeholder="As soon as you save"
+              ariaLabel="Sale starts"
             />
           </Field>
           <Field>
             <FieldLabel>Ends</FieldLabel>
-            <Input
-              type="datetime-local"
+            <DateTimePicker
               value={sale.endsAt}
-              min={sale.startsAt || undefined}
-              onChange={(e) => setSale({ endsAt: e.target.value })}
-            />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 @md/card:grid-cols-3">
-          <div className="text-[12px] leading-5 text-[#616161] @md/card:pt-6">
-            <span className="font-[550] text-[#303030]">Daily flash hours</span> (optional, India
-            time). Leave empty to run all day.
-          </div>
-          <Field>
-            <FieldLabel>Every day from</FieldLabel>
-            <Input
-              type="time"
-              value={sale.dailyStart}
-              onChange={(e) => setSale({ dailyStart: e.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel>Until</FieldLabel>
-            <Input
-              type="time"
-              value={sale.dailyEnd}
-              onChange={(e) => setSale({ dailyEnd: e.target.value })}
+              onChange={(endsAt) => setSale({ endsAt })}
+              placeholder="No end date"
+              minDate={parseLocalValue(sale.startsAt)?.date}
+              align="end"
+              ariaLabel="Sale ends"
             />
           </Field>
         </div>
@@ -122,10 +97,6 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
               </p>
             ) : badEnd ? (
               <p className="font-medium text-[#8e1f0b]">The end must be after the start.</p>
-            ) : halfDaily ? (
-              <p className="font-medium text-[#8e1f0b]">Set both daily times, or clear both.</p>
-            ) : sameDaily ? (
-              <p className="font-medium text-[#8e1f0b]">Daily start and end can’t be the same.</p>
             ) : (
               <p className="text-[#616161]">
                 Shows as{" "}
@@ -134,10 +105,7 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
                   {offMrp ? ` · ${offMrp}% off` : ""}
                 </span>
                 {mrp > 0 ? ` (MRP ${inr(mrp)})` : ""}
-                {offRegular ? ` — ${offRegular}% below the regular ${inr(regular)}` : ""}
-                {daily
-                  ? `, every day ${formatClock(sale.dailyStart)}–${formatClock(sale.dailyEnd)}. The countdown shows the time left today.`
-                  : "."}{" "}
+                {offRegular ? ` — ${offRegular}% below the regular ${inr(regular)}` : ""}.{" "}
                 {sale.startsAt ? "" : "Starts as soon as you save. "}
                 {sale.endsAt ? "" : "Runs until you remove it."}
               </p>
@@ -152,9 +120,9 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
           </div>
         ) : (
           <p className="text-[12px] leading-5 text-[#616161]">
-            Set a sale price and dates — and daily hours for a flash deal. It goes live on time,
-            shows a “Sale” badge and countdown, and the price returns to{" "}
-            {regular ? inr(regular) : "the regular price"} on its own.
+            Set a sale price and dates. It goes live on time, shows a “Sale” badge and
+            countdown, and the price returns to {regular ? inr(regular) : "the regular price"} on
+            its own.
           </p>
         )}
       </CardContent>

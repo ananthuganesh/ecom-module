@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   countdownParts,
-  formatClock,
   showLiveCountdown,
   fromDateTimeLocal,
   saleCountdownTarget,
@@ -33,9 +32,8 @@ test("salePayload clears on empty or invalid price", () => {
     dailyStart: null,
     dailyEnd: null,
   });
-  // A half-filled daily window is dropped rather than sent.
-  assert.equal(salePayload({ price: "949", dailyStart: "10:00" }).dailyStart, null);
-  assert.equal(salePayload({ price: "949", dailyStart: "10:00", dailyEnd: "16:00" }).dailyEnd, "16:00");
+  // Daily windows are always cleared now the admin can't set them.
+  assert.equal(salePayload({ price: "949", dailyStart: "10:00", dailyEnd: "16:00" }).dailyEnd, null);
 });
 
 test("saleStatus reads live, scheduled and ended sales", () => {
@@ -72,13 +70,6 @@ test("countdown targets today's window close before the sale end", () => {
   );
   assert.equal(saleCountdownTarget({ endsAt: "2026-11-15T00:00:00Z" }), "2026-11-15T00:00:00Z");
   assert.equal(saleCountdownTarget({}), null);
-});
-
-test("formatClock reads 24h times as 12h", () => {
-  assert.equal(formatClock("10:00"), "10:00 AM");
-  assert.equal(formatClock("16:30"), "4:30 PM");
-  assert.equal(formatClock("00:15"), "12:15 AM");
-  assert.equal(formatClock(""), "");
 });
 
 test("the live timer only shows in the final 24 hours", () => {

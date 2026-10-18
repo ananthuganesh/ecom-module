@@ -237,7 +237,7 @@ export function defaultForm() {
     metaTitle: "",
     metaDescription: "",
     slugManual: false,
-    sale: { price: "", startsAt: "", endsAt: "", dailyStart: "", dailyEnd: "" },
+    sale: { price: "", startsAt: "", endsAt: "" },
   };
 }
 
