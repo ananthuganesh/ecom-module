@@ -83,6 +83,36 @@ def _addr_field(addr: dict, *keys: str, default: str = "") -> str:
     return default
 
 
+# Shipsy strips non-ASCII and rejects a line 1 that is left too short
+# ("remaining characters are insufficient"), e.g. a bare house number "30".
+_MIN_ADDRESS_LINE_1 = 10
+
+
+def _ascii_text(value: str) -> str:
+    text = value.encode("ascii", "ignore").decode("ascii")
+    return " ".join(text.split()).strip(" ,")
+
+
+def _address_lines(line1: str, line2: str, city: str = "") -> tuple[str, str]:
+    """Fold line 2 (then city) into a too-short line 1 so DTDC accepts it."""
+    line1 = _ascii_text(line1)
+    line2 = _ascii_text(line2)
+    if len(line1) < _MIN_ADDRESS_LINE_1 and line2:
+        line1 = ", ".join(p for p in (line1, line2) if p)
+        line2 = ""
+    city = _ascii_text(city)
+    if len(line1) < _MIN_ADDRESS_LINE_1 and city and city.lower() not in line1.lower():
+        line1 = ", ".join(p for p in (line1, city) if p)
+    return line1 or "Address", line2
+
+
+def _error_message(value: Any) -> str | None:
+    """DTDC sometimes nests the reason as {'message': ..., 'reason': ...}."""
+    if isinstance(value, dict):
+        return value.get("message") or value.get("reason") or None
+    return value or None
+
+
 async def _origin_details() -> dict[str, Any]:
     profile = {}
     s = await Setting.find_one(Setting.key == "company_profile")
@@ -162,12 +192,17 @@ def _destination_details(order: Order, user: User | None) -> dict[str, Any]:
             status_code=400,
             detail="Customer phone required for DTDC shipment",
         )
+    line1, line2 = _address_lines(
+        _addr_field(addr, "address", "street", "house", "line1"),
+        _addr_field(addr, "address2", "line2"),
+        _addr_field(addr, "city"),
+    )
     return {
         "name": _addr_field(addr, "name", default=(user.name if user else "") or "Customer"),
         "phone": phone_digits[-10:],
         "alternate_phone": "",
-        "address_line_1": _addr_field(addr, "address", "street", "house", "line1", default="Address"),
-        "address_line_2": _addr_field(addr, "address2", "line2"),
+        "address_line_1": line1,
+        "address_line_2": line2,
         "pincode": _addr_field(addr, "postalCode", "pincode", "zipcode"),
         "city": _addr_field(addr, "city"),
         "state": _addr_field(addr, "state"),
@@ -374,9 +409,9 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 if isinstance(consignment, dict):
                     msg = consignment.get("message")
                 last_error = str(
-                    msg
-                    or data.get("message")
-                    or data.get("error")
+                    _error_message(msg)
+                    or _error_message(data.get("message"))
+                    or _error_message(data.get("error"))
                     or (resp.text if resp.status_code >= 400 else None)
                     or "DTDC create failed"
                 )[:500]
