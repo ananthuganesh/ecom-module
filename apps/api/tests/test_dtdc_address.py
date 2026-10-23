@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 from app.services.dtdc import _address_lines, _destination_details, _error_message
 
 
@@ -19,7 +22,23 @@ def test_long_line_1_is_kept():
 
 
 def test_short_line_1_without_line_2_uses_city():
-    assert _address_lines("12", "", "Kochi") == ("12, Kochi", "")
+    assert _address_lines("12", "", "Bengaluru") == ("12, Bengaluru", "")
+
+
+def test_short_city_keeps_folding_state_and_pincode():
+    # "12, Kochi" is still under DTDC's minimum, so the state goes in too.
+    assert _address_lines("12", "", "Kochi", "Kerala", "682001") == ("12, Kochi, Kerala", "")
+
+
+def test_non_latin_line_1_uses_english_line_2():
+    assert _address_lines("പുതിയ വീട്", "Near St. Mary's Church", "Kochi") == (
+        "Near St. Mary's Church",
+        "",
+    )
+
+
+def test_accented_latin_keeps_base_letters():
+    assert _address_lines("Café Lane, Fort", "", "Kochi") == ("Cafe Lane, Fort", "")
 
 
 def test_non_ascii_is_stripped_before_measuring():
@@ -28,8 +47,12 @@ def test_non_ascii_is_stripped_before_measuring():
     assert line2 == ""
 
 
-def test_empty_address_falls_back():
-    assert _address_lines("", "", "") == ("Address", "")
+def test_unusable_address_raises_clear_error():
+    with pytest.raises(HTTPException) as exc:
+        # All Malayalam strips to nothing; city and state alone aren't an address.
+        _address_lines("പുതിയ വീട്", "", "Kochi", "Kerala", "682001")
+    assert exc.value.status_code == 400
+    assert "too short" in exc.value.detail
 
 
 def test_destination_details_uses_folded_lines():

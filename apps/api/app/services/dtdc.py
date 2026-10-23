@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import unicodedata
 from datetime import datetime
 from typing import Any
 
@@ -89,21 +90,34 @@ _MIN_ADDRESS_LINE_1 = 10
 
 
 def _ascii_text(value: str) -> str:
-    text = value.encode("ascii", "ignore").decode("ascii")
+    # NFKD first so accented Latin keeps its base letter ("é" -> "e").
+    text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     return " ".join(text.split()).strip(" ,")
 
 
-def _address_lines(line1: str, line2: str, city: str = "") -> tuple[str, str]:
-    """Fold line 2 (then city) into a too-short line 1 so DTDC accepts it."""
+def _address_lines(
+    line1: str, line2: str, city: str = "", state: str = "", pincode: str = ""
+) -> tuple[str, str]:
+    """Fold line 2, then city, state and pincode into a too-short line 1 so DTDC accepts it."""
     line1 = _ascii_text(line1)
     line2 = _ascii_text(line2)
     if len(line1) < _MIN_ADDRESS_LINE_1 and line2:
         line1 = ", ".join(p for p in (line1, line2) if p)
         line2 = ""
-    city = _ascii_text(city)
-    if len(line1) < _MIN_ADDRESS_LINE_1 and city and city.lower() not in line1.lower():
-        line1 = ", ".join(p for p in (line1, city) if p)
-    return line1 or "Address", line2
+    # City/state/pincode only top up a real street line; alone they can't be delivered to.
+    for extra in (city, state, pincode) if line1 else ():
+        if len(line1) >= _MIN_ADDRESS_LINE_1:
+            break
+        extra = _ascii_text(extra)
+        if extra and extra.lower() not in line1.lower():
+            line1 = ", ".join(p for p in (line1, extra) if p)
+    if len(line1) < _MIN_ADDRESS_LINE_1:
+        raise HTTPException(
+            status_code=400,
+            detail="Shipping address is too short for DTDC once non-English characters "
+            "are removed. Edit the order's address in English and try again.",
+        )
+    return line1, line2
 
 
 def _error_message(value: Any) -> str | None:
@@ -196,6 +210,8 @@ def _destination_details(order: Order, user: User | None) -> dict[str, Any]:
         _addr_field(addr, "address", "street", "house", "line1"),
         _addr_field(addr, "address2", "line2"),
         _addr_field(addr, "city"),
+        _addr_field(addr, "state"),
+        _addr_field(addr, "postalCode", "pincode", "zipcode"),
     )
     return {
         "name": _addr_field(addr, "name", default=(user.name if user else "") or "Customer"),
