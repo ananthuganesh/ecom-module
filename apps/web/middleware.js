@@ -22,6 +22,18 @@ const APEX_HOST = apexHostFromEnv();
 const WWW_HOST = `www.${APEX_HOST}`;
 
 export function middleware(request) {
+  /**
+   * The app defines no server actions, so a Next-Action header only comes from
+   * scanners. Left alone, Next renders the not-found page for them and throws
+   * "Invariant: Expected RSC response, got text/plain" with a 500.
+   */
+  if (request.headers.has("next-action")) {
+    return new NextResponse("Not Found", {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+
   const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
   if (host !== WWW_HOST) {
     return NextResponse.next();
