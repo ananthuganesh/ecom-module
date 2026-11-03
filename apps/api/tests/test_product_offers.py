@@ -33,8 +33,9 @@ async def test_lists_only_opted_in_coupons_that_apply_to_the_product():
 
     assert [o["code"] for o in offers] == ["SITEWIDE", "THISONE"]
     assert offers[0]["badge"] == "Most popular"
-    assert offers[1]["maxDiscount"] == 80
-    assert "productIds" not in offers[1] and "usedCount" not in offers[1]
+    # Cap, minimum order and usage stay out of the store.
+    for key in ("maxDiscount", "minOrderAmount", "productIds", "usedCount"):
+        assert key not in offers[1]
 
 
 @pytest.mark.usefixtures("db")

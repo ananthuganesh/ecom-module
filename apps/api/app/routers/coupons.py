@@ -89,8 +89,6 @@ async def product_offers(
             "kind": c.kind or "order",
             "discountType": c.discountType,
             "discountValue": c.discountValue,
-            "maxDiscount": c.maxDiscount,
-            "minOrderAmount": c.minOrderAmount,
             "buyQuantity": c.buyQuantity,
             "getQuantity": c.getQuantity,
             "getDiscountPercent": c.getDiscountPercent,

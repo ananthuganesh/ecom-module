@@ -75,7 +75,6 @@ export default function ProductOffers({ productId }) {
               <p className="text-[14px] leading-snug font-semibold text-black">{lines.title}</p>
               <span aria-hidden className="my-2 h-px w-full bg-emerald-600/20" />
               <p className="text-[13px] font-semibold text-emerald-700">{lines.subtitle}</p>
-              {lines.note ? <p className="mt-0.5 text-[11px] text-gray-500">{lines.note}</p> : null}
               <button
                 type="button"
                 onClick={() => copy(offer.code)}
