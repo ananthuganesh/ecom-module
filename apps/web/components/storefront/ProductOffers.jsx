@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CheckIcon } from "@/components/icons/storeIcons";
 import { couponService } from "@/api";
 import { offerLines } from "@/lib/couponOffers";
+import { rememberCopiedCoupon } from "@/lib/copiedCoupon";
 
 function CopyGlyph({ className }) {
   return (
@@ -43,6 +44,8 @@ export default function ProductOffers({ productId }) {
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
   const copy = async (code) => {
+    // Checkout pre-applies it, so shoppers don't have to paste it.
+    rememberCopiedCoupon(code);
     try {
       await navigator.clipboard.writeText(code);
     } catch {

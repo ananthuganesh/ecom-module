@@ -158,8 +158,16 @@ async def test_carrier_outage_does_not_block_delivery(monkeypatch):
 
 
 @pytest.mark.usefixtures("db")
-async def test_promotions_list_is_empty_so_private_codes_stay_private():
-    await _coupon()
+async def test_promotions_list_only_public_codes_this_cart_qualifies_for():
+    await _coupon()  # private
+    await _coupon(code="SHOWN", name="Festive offer", showOnProduct=True)
+    await _coupon(code="BIGCART", showOnProduct=True, minOrderAmount=5000)
+    await _coupon(code="OTHERPRODUCT", kind="products", productIds=["p9"], showOnProduct=True)
+    order = await _magic_order()
+
+    assert await magic_checkout.get_promotions({"order_id": str(order.id)}) == {
+        "promotions": [{"code": "SHOWN", "summary": "10% off on order", "description": "Festive offer"}]
+    }
     assert await magic_checkout.get_promotions({"order_id": "x"}) == {"promotions": []}
 
 

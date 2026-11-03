@@ -34,6 +34,7 @@ import { trackBeginCheckout, stashPurchaseEvent, trackSelectPromotion, trackAddP
 import { getAttributionSnapshot } from "@/lib/attribution";
 import { persistAuth } from "@/lib/persistAuth";
 import { userErrorMessage } from "@/lib/userMessage";
+import { clearCopiedCoupon, readCopiedCoupon } from "@/lib/copiedCoupon";
 
 const INPUT =
   "h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-0 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#222222] focus:outline-none focus:ring-1 focus:ring-[#222222]";
@@ -336,6 +337,11 @@ function CheckoutPageContent() {
   // which must never block payment.
   const [deliverable, setDeliverable] = useState(null);
   const [couponInput, setCouponInput] = useState("");
+  // Standard checkout: start the coupon box with a code copied on a product page.
+  useEffect(() => {
+    const copied = readCopiedCoupon();
+    if (copied) setCouponInput(copied);
+  }, []);
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [showCouponPanel, setShowCouponPanel] = useState(false);
@@ -827,6 +833,7 @@ function CheckoutPageContent() {
   };
 
   const openRazorpayCheckout = ({ paymentData, localOrderId, magic = false }) => {
+    const copiedCoupon = magic ? readCopiedCoupon() : null;
     const rzOrderId = paymentData.razorpayOrderId || paymentData.razorpayOrder?.id;
     const keyId = paymentData.keyId;
     const amount = Number(paymentData.amount || paymentData.razorpayOrder?.amount || 0);
@@ -867,6 +874,7 @@ function CheckoutPageContent() {
             : await paymentService.verifyPayment(verification);
           if (isBuyNow) clearBuyNow();
           else removeItems(availableItems);
+          clearCopiedCoupon();
           // Magic Checkout adds delivery and the coupon in the popup, so the
           // paid total comes from the server rather than this page.
           const paidOrder = verified?.order || {};
@@ -887,7 +895,11 @@ function CheckoutPageContent() {
         }
       },
       prefill: magic
-        ? paymentData.prefill || {}
+        ? {
+            ...(paymentData.prefill || {}),
+            // A code copied on a product page; Razorpay checks it with our apply-promotion endpoint.
+            ...(copiedCoupon ? { coupon_code: copiedCoupon } : {}),
+          }
         : {
             name: formData.name || userInfo?.name || "",
             contact,

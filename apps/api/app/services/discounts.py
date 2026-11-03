@@ -34,8 +34,8 @@ async def eligible_product_ids(coupon: Coupon) -> set[str] | None:
     return None
 
 
-async def product_offers(product_id: str) -> list[Coupon]:
-    """Coupons the admin chose to show on this product's page and that a shopper can use now."""
+async def shown_coupons() -> list[Coupon]:
+    """Coupons the admin chose to show shoppers ("Show on product page") that are usable now."""
     now = datetime.utcnow()
     out = []
     for coupon in await Coupon.find(Coupon.status == "active", Coupon.showOnProduct == True).to_list():  # noqa: E712
@@ -43,10 +43,17 @@ async def product_offers(product_id: str) -> list[Coupon]:
             continue
         if coupon.usageLimit is not None and (coupon.usedCount or 0) >= coupon.usageLimit:
             continue
-        eligible = await eligible_product_ids(coupon)
-        if eligible is not None and str(product_id) not in eligible:
-            continue
         out.append(coupon)
+    return out
+
+
+async def product_offers(product_id: str) -> list[Coupon]:
+    """Shown coupons that apply to this product."""
+    out = []
+    for coupon in await shown_coupons():
+        eligible = await eligible_product_ids(coupon)
+        if eligible is None or str(product_id) in eligible:
+            out.append(coupon)
     return out
 
 
@@ -198,7 +205,7 @@ def summary_text(coupon: Coupon) -> str:
         off = "FREE" if pct >= 100 else f"{pct}% off"
         return f"Buy {coupon.buyQuantity or 1} get {coupon.getQuantity or 1} {off}"
     if (coupon.discountType or "percentage") == "percentage":
-        base = f"{coupon.discountValue}% off"
+        base = f"{float(coupon.discountValue or 0):g}% off"
     else:
         base = f"₹{int(coupon.discountValue or 0)} off"
     if kind == "products":

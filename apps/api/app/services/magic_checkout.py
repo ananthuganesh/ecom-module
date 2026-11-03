@@ -201,9 +201,27 @@ def _order_lines(order: Order) -> list[dict[str, Any]]:
 
 
 async def get_promotions(body: dict[str, Any]) -> dict[str, Any]:
-    # Coupons have no "show publicly" flag, so listing them would expose private
-    # codes (influencer, staff). Shoppers type a code and apply_promotion checks it.
-    return {"promotions": []}
+    """Coupons already public on product pages that this cart qualifies for.
+
+    Private codes (influencer, staff) are never listed; shoppers type those
+    and apply_promotion checks them.
+    """
+    from app.services import discounts
+
+    order = await _pending_magic_order(body.get("order_id"))
+    if not order:
+        return {"promotions": []}
+    out = []
+    for coupon in await discounts.shown_coupons():
+        try:
+            await discounts.validate_coupon(coupon.code, items=_order_lines(order), subtotal=float(order.total or 0))
+        except HTTPException:
+            continue
+        promo = {"code": coupon.code, "summary": discounts.summary_text(coupon)}
+        if coupon.name:
+            promo["description"] = coupon.name
+        out.append(promo)
+    return {"promotions": out}
 
 
 def _failure(code: str, reason: str) -> dict[str, Any]:

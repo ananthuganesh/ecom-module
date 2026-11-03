@@ -9,6 +9,7 @@ export const RECENTLY_VIEWED_STORAGE_KEY = "urban-aana-recently-viewed";
 export const ATTRIBUTION_KEY = "urban-aana-attribution";
 export const PURCHASE_EVENT_KEY = "urban-aana-purchase-event";
 export const PURCHASE_FIRED_KEY = "urban-aana-purchase-fired";
+export const COPIED_COUPON_KEY = "urban-aana-copied-coupon";
 
 const LEGACY_LOCAL = {
   [AUTH_STORAGE_KEY]: "siyara-auth",
