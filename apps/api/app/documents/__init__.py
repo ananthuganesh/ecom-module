@@ -424,6 +424,9 @@ class Coupon(Document):
     getDiscountPercent: float = 100.0
     buyProductIds: list[str] = Field(default_factory=list)
     getProductIds: list[str] = Field(default_factory=list)
+    # Opt-in: listed (with its code) in "Active offers" on product pages it applies to.
+    showOnProduct: bool = False
+    badge: Optional[str] = None
 
     @field_validator("usageLimit", mode="before")
     @classmethod

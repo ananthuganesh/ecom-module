@@ -29,6 +29,7 @@ import { TicketPercent } from "@/components/admin/LocalIcons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 
 const KINDS = [
   {
@@ -68,6 +69,8 @@ const emptyForm = (kind = "order") => ({
   getDiscountPercent: "100",
   buyProductIds: [],
   getProductIds: [],
+  showOnProduct: false,
+  badge: "",
 });
 
 function kindLabel(kind) {
@@ -249,6 +252,8 @@ export default function AdminDiscountsPage() {
       getDiscountPercent: String(c.getDiscountPercent ?? 100),
       buyProductIds: c.buyProductIds || [],
       getProductIds: c.getProductIds || [],
+      showOnProduct: !!c.showOnProduct,
+      badge: c.badge || "",
     });
     setError("");
     setSuccess("");
@@ -313,6 +318,8 @@ export default function AdminDiscountsPage() {
       getDiscountPercent: Number(form.getDiscountPercent || 100),
       buyProductIds: form.kind === "bxgy" ? (form.buyProductIds.length ? form.buyProductIds : form.productIds) : [],
       getProductIds: form.kind === "bxgy" ? form.getProductIds : [],
+      showOnProduct: !!form.showOnProduct,
+      badge: form.badge.trim() || null,
     };
 
     setSaving(true);
@@ -621,6 +628,34 @@ export default function AdminDiscountsPage() {
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-foreground">Show on product page</p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    Lists this code under &ldquo;Active offers&rdquo; on the products it applies to. Leave off for private codes.
+                  </p>
+                </div>
+                <Switch
+                  checked={!!form.showOnProduct}
+                  onCheckedChange={(checked) => setForm({ ...form, showOnProduct: !!checked })}
+                  aria-label="Show on product page"
+                />
+              </div>
+              {form.showOnProduct ? (
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-medium text-muted-foreground">Badge (optional)</label>
+                  <input
+                    className="w-full max-w-xs h-10 px-3 border border-border rounded-lg text-[13px]"
+                    value={form.badge}
+                    maxLength={20}
+                    onChange={(e) => setForm({ ...form, badge: e.target.value })}
+                    placeholder="e.g. Most popular"
+                  />
+                </div>
+              ) : null}
             </div>
           </CardContent>
           </Card>

@@ -1,0 +1,101 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { CheckIcon } from "@/components/icons/storeIcons";
+import { couponService } from "@/api";
+import { offerLines } from "@/lib/couponOffers";
+
+function CopyGlyph({ className }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden className={className}>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+      <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" />
+    </svg>
+  );
+}
+
+/**
+ * "Active offers" on the product page: coupons the admin marked "Show on product
+ * page" that apply to this product. Renders nothing when there are none.
+ */
+export default function ProductOffers({ productId }) {
+  const [offers, setOffers] = useState([]);
+  const [copied, setCopied] = useState(null);
+  const copiedTimer = useRef(null);
+
+  useEffect(() => {
+    if (!productId) return undefined;
+    let cancelled = false;
+    couponService
+      .getForProduct(productId)
+      .then((rows) => {
+        if (!cancelled) setOffers(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        // Offers are a nice-to-have; never block the product page on them.
+        if (!cancelled) setOffers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
+
+  const copy = async (code) => {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      return;
+    }
+    setCopied(code);
+    clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(null), 1800);
+  };
+
+  if (!offers.length) return null;
+
+  return (
+    <section className="mt-6" aria-label="Active offers">
+      <p className="mb-2.5 text-[12px] font-medium text-gray-600">Active offers</p>
+      <div className="flex snap-x gap-2.5 overflow-x-auto pt-2.5 pb-1 [scrollbar-width:none]">
+        {offers.map((offer) => {
+          const lines = offerLines(offer);
+          const isCopied = copied === offer.code;
+          return (
+            <div
+              key={offer.code}
+              className="relative flex w-[9.5rem] shrink-0 snap-start flex-col items-center rounded-lg border border-emerald-600/40 bg-gradient-to-b from-emerald-50 to-emerald-100/70 px-3 pt-4 pb-3 text-center"
+            >
+              {offer.badge ? (
+                <span className="absolute -top-2.5 left-1/2 max-w-[90%] -translate-x-1/2 truncate rounded-sm bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap text-white uppercase">
+                  {offer.badge}
+                </span>
+              ) : null}
+              <p className="text-[14px] leading-snug font-semibold text-black">{lines.title}</p>
+              <span aria-hidden className="my-2 h-px w-full bg-emerald-600/20" />
+              <p className="text-[13px] font-semibold text-emerald-700">{lines.subtitle}</p>
+              {lines.note ? <p className="mt-0.5 text-[11px] text-gray-500">{lines.note}</p> : null}
+              <button
+                type="button"
+                onClick={() => copy(offer.code)}
+                aria-label={isCopied ? `Copied ${offer.code}` : `Copy code ${offer.code}`}
+                className="mt-auto inline-flex items-center gap-1 pt-2.5 text-[12px] font-bold text-black hover:text-emerald-700"
+              >
+                {isCopied ? (
+                  <>
+                    Copied <CheckIcon className="h-3 w-3" />
+                  </>
+                ) : (
+                  <>
+                    Code: {offer.code} <CopyGlyph className="h-3.5 w-3.5 text-gray-500" />
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

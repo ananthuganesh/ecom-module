@@ -2019,6 +2019,8 @@ _COUPON_UPDATE_FIELDS = frozenset({
     "getDiscountPercent",
     "buyProductIds",
     "getProductIds",
+    "showOnProduct",
+    "badge",
 })
 
 

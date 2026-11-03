@@ -76,6 +76,30 @@ async def list_public(user: OptionalUser):
     return [_public_coupon(c) for c in coupons]
 
 
+@router.get("/product/{product_id}")
+async def product_offers(
+    product_id: str,
+    _: None = Depends(rate_limit_dependency("coupon-offers", limit=120)),
+):
+    """Offers shown on a product page. Only coupons marked showOnProduct are listed."""
+    return [
+        {
+            "code": c.code,
+            "badge": (c.badge or "").strip() or None,
+            "kind": c.kind or "order",
+            "discountType": c.discountType,
+            "discountValue": c.discountValue,
+            "maxDiscount": c.maxDiscount,
+            "minOrderAmount": c.minOrderAmount,
+            "buyQuantity": c.buyQuantity,
+            "getQuantity": c.getQuantity,
+            "getDiscountPercent": c.getDiscountPercent,
+            "summary": discount_svc.summary_text(c),
+        }
+        for c in await discount_svc.product_offers(product_id)
+    ]
+
+
 @router.post("/validate")
 async def validate(
     body: ValidateBody,

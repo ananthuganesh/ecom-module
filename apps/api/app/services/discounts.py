@@ -34,6 +34,22 @@ async def eligible_product_ids(coupon: Coupon) -> set[str] | None:
     return None
 
 
+async def product_offers(product_id: str) -> list[Coupon]:
+    """Coupons the admin chose to show on this product's page and that a shopper can use now."""
+    now = datetime.utcnow()
+    out = []
+    for coupon in await Coupon.find(Coupon.status == "active", Coupon.showOnProduct == True).to_list():  # noqa: E712
+        if coupon.expiryDate and now > coupon.expiryDate:
+            continue
+        if coupon.usageLimit is not None and (coupon.usedCount or 0) >= coupon.usageLimit:
+            continue
+        eligible = await eligible_product_ids(coupon)
+        if eligible is not None and str(product_id) not in eligible:
+            continue
+        out.append(coupon)
+    return out
+
+
 def _apply_value(coupon: Coupon, base: float) -> float:
     if base <= 0:
         return 0.0

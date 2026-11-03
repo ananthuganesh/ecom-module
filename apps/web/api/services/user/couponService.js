@@ -14,4 +14,8 @@ export const couponService = {
     const response = await axiosInstance.get('/coupons');
     return response.data;
   },
+  getForProduct: async (productId) => {
+    const response = await axiosInstance.get(`/coupons/product/${encodeURIComponent(productId)}`);
+    return response.data;
+  },
 };

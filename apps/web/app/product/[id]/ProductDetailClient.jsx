@@ -20,6 +20,7 @@ import { trackViewItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
 import BackInStockNotify from "@/components/storefront/BackInStockNotify";
 import SaleOfferCard from "@/components/storefront/SaleOfferCard";
+import ProductOffers from "@/components/storefront/ProductOffers";
 import ProductReviews from "@/components/storefront/ProductReviews";
 import StarRating from "@/components/storefront/StarRating";
 import { productRating, reviewCountLabel } from "@/lib/reviews";
@@ -1083,6 +1084,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
             ) : !inStock ? (
               <BackInStockNotify productId={product?._id} soldOut />
             ) : null}
+
+            <ProductOffers productId={product?._id} />
 
             <div ref={primaryCtaRef} className="mt-5 flex gap-2">
               {isInCart && ctaPending !== "add" ? (
