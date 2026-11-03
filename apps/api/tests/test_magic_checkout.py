@@ -193,6 +193,23 @@ async def test_apply_promotion_failures():
 
 
 @pytest.mark.usefixtures("db")
+async def test_zero_usage_limit_means_unlimited():
+    from app.services import discounts
+
+    # Stored raw, as an older admin form saved a typed "0".
+    await Coupon.get_pymongo_collection().insert_one(
+        {"code": "ZERO", "discountType": "percentage", "discountValue": 10, "status": "active",
+         "usageLimit": 0, "usedCount": 1}
+    )
+    order = await _magic_order()
+
+    ok, _ = await magic_checkout.apply_promotion({"order_id": str(order.id), "code": "ZERO"})
+    assert ok is True
+    assert await discounts.reserve_coupon_usage("ZERO") is True
+    assert Coupon(code="X", usageLimit=0).usageLimit is None
+
+
+@pytest.mark.usefixtures("db")
 async def test_apply_promotion_only_for_pending_magic_orders():
     await _coupon()
     standard = await _magic_order(transactionDetails={})

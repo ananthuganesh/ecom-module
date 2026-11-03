@@ -140,7 +140,7 @@ async def reserve_coupon_usage(code: str) -> bool:
             "status": "active",
             "$expr": {
                 "$or": [
-                    {"$eq": [{"$ifNull": ["$usageLimit", None]}, None]},
+                    {"$lte": [{"$ifNull": ["$usageLimit", 0]}, 0]},  # null/0 = unlimited
                     {
                         "$lt": [
                             {"$ifNull": ["$usedCount", 0]},

@@ -425,6 +425,16 @@ class Coupon(Document):
     buyProductIds: list[str] = Field(default_factory=list)
     getProductIds: list[str] = Field(default_factory=list)
 
+    @field_validator("usageLimit", mode="before")
+    @classmethod
+    def zero_limit_is_unlimited(cls, value: Any) -> int | None:
+        # The admin form shows a blank limit as "Unlimited", so 0 means the same.
+        try:
+            limit = int(value)
+        except (TypeError, ValueError):
+            return None
+        return limit if limit > 0 else None
+
     class Settings:
         name = "coupons"
 

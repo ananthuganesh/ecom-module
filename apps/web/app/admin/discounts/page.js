@@ -304,7 +304,7 @@ export default function AdminDiscountsPage() {
       discountValue: form.kind === "bxgy" ? Number(form.getDiscountPercent || 100) : Number(form.discountValue),
       minOrderAmount: Number(form.minOrderAmount || 0),
       maxDiscount: form.maxDiscount ? Number(form.maxDiscount) : null,
-      usageLimit: form.usageLimit ? Number(form.usageLimit) : null,
+      usageLimit: Number(form.usageLimit) > 0 ? Number(form.usageLimit) : null,
       expiryDate: form.expiryDate,
       status: form.status,
       productIds: form.kind === "products" ? form.productIds : [],
