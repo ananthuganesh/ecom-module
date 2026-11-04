@@ -91,16 +91,16 @@ export default function Invoice({ order }) {
                         <span className="text-gray-400">Subtotal</span>
                         <span>₹{subtotal.toFixed(2)}</span>
                     </div>
+                    {money.discount > 0 && (
+                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
+                            <span className="text-gray-400">{money.discountLabel}</span>
+                            <span>−₹{money.discount.toFixed(2)}</span>
+                        </div>
+                    )}
                     <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                         <span className="text-gray-400">Shipping</span>
                         <span>₹{shippingPrice.toFixed(2)}</span>
                     </div>
-                    {taxPrice > 0 && (
-                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                            <span className="text-gray-400">Tax</span>
-                            <span>₹{taxPrice.toFixed(2)}</span>
-                        </div>
-                    )}
                     {order.isGift && (
                         <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                             <span className="text-gray-400">Gift Wrap</span>
@@ -111,6 +111,12 @@ export default function Invoice({ order }) {
                         <span>Total</span>
                         <span>₹{totalPrice.toFixed(2)}</span>
                     </div>
+                    {taxPrice > 0 && (
+                        <div className="flex justify-between text-[9px] font-bold uppercase tracking-widest text-gray-400">
+                            <span>Includes GST</span>
+                            <span>₹{taxPrice.toFixed(2)}</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

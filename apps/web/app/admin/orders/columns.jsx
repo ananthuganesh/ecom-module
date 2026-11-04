@@ -9,6 +9,7 @@ import { estimateDtdcSurfaceCost } from "@/utils/dtdcEstCost";
 import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 import { displayCustomerName } from "@/utils/displayCustomerName";
 import { returnStatusDisplay } from "@/lib/returnStatus";
+import { orderCouponCode } from "@/lib/orderDiscount";
 
 const STATUS_LABELS = {
   // Order status — package / fulfillment wording
@@ -360,9 +361,17 @@ function totalColumn({ widthClass = "w-[100px]", size = 100 } = {}) {
     cell: ({ row }) => {
       const order = row.original;
       const { ink, wt } = orderCellMeta(order);
+      const coupon = orderCouponCode(order);
       return (
-        <span className={`text-[13px] tabular-nums ${wt} ${ink}`}>
-          {formatINR(order.finalPrice ?? order.total ?? 0)}
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className={`text-[13px] tabular-nums ${wt} ${ink}`}>
+            {formatINR(order.finalPrice ?? order.total ?? 0)}
+          </span>
+          {coupon ? (
+            <span className="truncate font-mono text-[11px] text-[#616161]" title={`Coupon ${coupon}`}>
+              {coupon}
+            </span>
+          ) : null}
         </span>
       );
     },

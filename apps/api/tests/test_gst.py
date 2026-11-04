@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.gst import (
+    gst_rate_for_line,
     gst_rate_for_unit_price,
     resolve_state_code,
     split_cgst_sgst_igst,
@@ -12,6 +13,14 @@ def test_gst_slabs():
     assert gst_rate_for_unit_price(2500) == 5.0
     assert gst_rate_for_unit_price(2500.01) == 18.0
     assert gst_rate_for_unit_price(999) == 5.0
+
+
+def test_line_slab_is_per_piece():
+    # Two pieces at ₹1,300 is ₹2,600 on the line but ₹1,300 a piece → 5%.
+    assert gst_rate_for_line(2600, 2) == 5.0
+    assert gst_rate_for_line(2501, 1) == 18.0
+    assert gst_rate_for_line(2500, 1) == 5.0
+    assert gst_rate_for_line(0, 0) == 5.0
 
 
 def test_inclusive_split():

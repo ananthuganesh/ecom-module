@@ -560,6 +560,8 @@ class LineItem(MongoModel):
     hsnCode: Optional[str] = None
     quantity: float = 0
     unitPrice: float = 0
+    # Share of an order-level coupon taken off this line before GST (Sec 15(3)(a)).
+    discountAmount: float = 0
     taxRate: float = 0
     taxableAmount: float = 0
     taxAmount: float = 0
@@ -662,6 +664,8 @@ class SalesInvoice(Document):
     amountPaid: float = 0
     balanceDue: float = 0
     isGstInvoice: bool = False
+    # Coupon the order was placed with; its value is spread over items[].discountAmount.
+    couponCode: Optional[str] = None
     invoiceDate: datetime = Field(default_factory=datetime.utcnow)
     notes: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)

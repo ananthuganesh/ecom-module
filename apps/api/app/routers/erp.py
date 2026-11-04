@@ -73,9 +73,11 @@ async def create_si(body: dict, admin: InvoicesWriter):
         unit_price = float(raw.get("unitPrice") or 0)
         rate = float(raw.get("taxRate") or 0) if use_gst else 0.0
         if use_gst and rate <= 0:
-            from app.services.gst import gst_rate_for_unit_price
+            from app.services.gst import gst_rate_for_line
 
-            rate = gst_rate_for_unit_price(unit_price)
+            qty = float(raw.get("quantity") or 0)
+            sale_value = unit_price * qty - float(raw.get("discountAmount") or 0)
+            rate = gst_rate_for_line(sale_value, qty)
         items.append(
             erp_ops.build_line(
                 product_id=raw.get("productId"),
@@ -86,6 +88,7 @@ async def create_si(body: dict, admin: InvoicesWriter):
                 inclusive=bool(raw.get("inclusive", True)),
                 variant_sku=raw.get("variantSku") or "",
                 hsn_code=raw.get("hsnCode"),
+                discount=raw.get("discountAmount") or 0,
             )
         )
 
@@ -163,6 +166,7 @@ async def create_cn(body: dict, admin: InvoicesWriter):
                 inclusive=False,
                 variant_sku=raw.get("variantSku") or "",
                 hsn_code=raw.get("hsnCode"),
+                discount=raw.get("discountAmount") or 0,
             )
         )
     buyer = (inv.customerStateCode if inv else body.get("customerStateCode")) or ""

@@ -18,7 +18,8 @@ import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { printHtml } from "@/utils/printHtml";
 import { printPdfBlob } from "@/utils/printPdfBlob";
 import { buildInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
-import { gstRateForUnitPrice, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { orderCouponCode, orderDiscountAmount } from "@/lib/orderDiscount";
 import { displayCustomerName } from "@/utils/displayCustomerName";
 import { formatOrderNumber, adminOrderHref, orderUrlKey } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
@@ -166,12 +167,13 @@ function computeInvoiceGstBreakdown(order, items, _taxClasses, invoice) {
     invoice?.grandTotal ?? order?.finalPrice ?? order?.total ?? 0
   );
 
-  // Line-level apparel slabs: ≤ ₹2,500 → 5%, above → 18%
+  // Line-level apparel slabs on sale value per piece: ≤ ₹2,500 → 5%, above → 18%
   const sourceItems =
     Array.isArray(invoice?.items) && invoice.items.length
       ? invoice.items.map((line) => ({
           price: Number(line.unitPrice || 0),
           quantity: Number(line.quantity || 0),
+          discount: Number(line.discountAmount || 0),
         }))
       : (items || []).map((item) => ({
           price: Number(item.price || item.unitPrice || 0),
@@ -185,9 +187,10 @@ function computeInvoiceGstBreakdown(order, items, _taxClasses, invoice) {
     const unit = Number(line.price) || 0;
     const qty = Number(line.quantity) || 0;
     if (unit <= 0 || qty <= 0) continue;
-    const rate = gstRateForUnitPrice(unit);
+    const saleValue = Math.max(0, unit * qty - (Number(line.discount) || 0));
+    const rate = gstRateForLine(saleValue, qty);
     rates.add(rate);
-    const split = splitInclusiveGst(unit * qty, rate);
+    const split = splitInclusiveGst(saleValue, rate);
     taxable += split.taxable;
     gst += split.gst;
   }
@@ -1462,10 +1465,17 @@ export default function AdminOrderDetailPage() {
             </div>
 
             <div className="space-y-3">
-               {order.discount > 0 && (
-                  <div className="flex items-center justify-between text-[0.8125rem] font-[450]">
-                    <span className="text-foreground">Offer Applied</span>
-                    <span className="text-muted-foreground">{formatINR(-(Number(order.discount) || 0), { signed: true })}</span>
+               {orderDiscountAmount(order) > 0 && (
+                  <div className="flex items-center justify-between gap-3 text-[0.8125rem] font-[450]">
+                    <span className="flex min-w-0 items-center gap-2 text-foreground">
+                      {orderCouponCode(order) ? "Coupon" : "Offer Applied"}
+                      {orderCouponCode(order) ? (
+                        <span className="truncate rounded-[0.375rem] bg-black/[0.06] px-1.5 py-0.5 font-mono text-[0.75rem] font-[550] text-[#616161]">
+                          {orderCouponCode(order)}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">{formatINR(-orderDiscountAmount(order), { signed: true })}</span>
                   </div>
                )}
                {order.isGift && (

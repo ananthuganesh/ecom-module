@@ -1,4 +1,5 @@
-import { gstRateForUnitPrice, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { allocateDiscount, discountLabel, orderCouponCode, orderDiscountAmount } from "@/lib/orderDiscount";
+import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
 
 function storedTax(order) {
   const details = order?.transactionDetails && typeof order.transactionDetails === "object"
@@ -19,36 +20,59 @@ function storedTax(order) {
   return 0;
 }
 
-/** Tax-inclusive retail totals for storefront order summaries. */
+/**
+ * Tax-inclusive retail totals for storefront order summaries.
+ *
+ * subtotal is the item value at selling price; the coupon comes off that, and
+ * GST is the part of what was actually charged (after the coupon) that is tax —
+ * shown as "included", not added on top. Slabs follow the sale value per piece.
+ */
 export function orderMoneySummary(order) {
   const items = order?.orderItems || order?.items || [];
+  const lines = items.map((item) => {
+    const unit = Number(item?.price ?? item?.unitPrice ?? 0);
+    const qty = Number(item?.qty ?? item?.quantity ?? 0);
+    return { qty, value: unit > 0 && qty > 0 ? unit * qty : 0 };
+  });
+  const discount = orderDiscountAmount(order);
+  const shares = allocateDiscount(
+    lines.map((l) => l.value),
+    discount
+  );
+
   let taxable = 0;
   let gst = 0;
   let itemsGross = 0;
-
-  for (const item of items) {
-    const unit = Number(item?.price ?? item?.unitPrice ?? 0);
-    const qty = Number(item?.qty ?? item?.quantity ?? 0);
-    if (unit <= 0 || qty <= 0) continue;
-    const gross = unit * qty;
-    itemsGross += gross;
-    const split = splitInclusiveGst(gross, gstRateForUnitPrice(unit));
+  lines.forEach((line, i) => {
+    if (line.value <= 0) return;
+    itemsGross += line.value;
+    const saleValue = line.value - shares[i];
+    const split = splitInclusiveGst(saleValue, gstRateForLine(saleValue, line.qty));
     taxable += split.taxable;
     gst += split.gst;
-  }
+  });
 
   taxable = roundMoney(taxable);
   gst = roundMoney(gst);
   itemsGross = roundMoney(itemsGross);
 
   const shipping = roundMoney(order?.shippingPrice ?? order?.deliveryAmount ?? 0);
-  const discount = roundMoney(order?.discountAmount ?? order?.discount ?? 0);
   const gift = order?.isGift ? roundMoney(order?.giftFee || 39) : 0;
   const total = roundMoney(
     order?.totalPrice ?? order?.finalPrice ?? order?.total ?? 0
   );
   const tax = storedTax(order) || gst;
-  const subtotal = tax > 0 ? taxable : itemsGross;
 
-  return { subtotal, shipping, tax, gift, discount, total, itemsGross };
+  return {
+    subtotal: itemsGross,
+    discount,
+    couponCode: orderCouponCode(order),
+    discountLabel: discountLabel(order),
+    taxable,
+    tax,
+    shipping,
+    gift,
+    total,
+    itemsGross,
+  };
 }

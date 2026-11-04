@@ -351,7 +351,7 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
               </div>
               {money.discount > 0 ? (
                 <div className="flex justify-between text-emerald-700">
-                  <span>Discount</span>
+                  <span>{money.discountLabel}</span>
                   <span>−{formatPrice(money.discount)}</span>
                 </div>
               ) : null}
@@ -360,10 +360,6 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
                 <span>
                   {money.shipping === 0 ? "FREE" : formatPrice(money.shipping)}
                 </span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Tax (GST)</span>
-                <span>{formatPrice(money.tax)}</span>
               </div>
               {order.isGift ? (
                 <div className="flex justify-between text-gray-600">
@@ -375,6 +371,12 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
                 <span>Total</span>
                 <span>{formatPrice(money.total)}</span>
               </div>
+              {money.tax > 0 ? (
+                <div className="flex justify-between text-[12px] text-gray-500">
+                  <span>Includes GST</span>
+                  <span>{formatPrice(money.tax)}</span>
+                </div>
+              ) : null}
             </div>
           </aside>
 

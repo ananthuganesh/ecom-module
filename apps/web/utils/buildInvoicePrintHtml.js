@@ -1,4 +1,5 @@
-import { gstRateForUnitPrice, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { orderCouponCode } from "@/lib/orderDiscount";
 
 function esc(value) {
   return String(value ?? "")
@@ -291,7 +292,8 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
   const invItems = Array.isArray(invoice?.items) && invoice.items.length ? invoice.items : null;
   const orderItems = order?.items || order?.orderItems || [];
 
-  const resolveLineRate = (unitPrice) => gstRateForUnitPrice(unitPrice);
+  // Slab from sale value per piece after discount (≤ ₹2,500 → 5%).
+  const resolveLineRate = (lineValue, qty) => gstRateForLine(lineValue, qty);
 
   const lineRows = [];
   if (invItems) {
@@ -305,7 +307,7 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
       const unitPrice = Number(item.unitPrice || 0);
       const lineDiscount = Number(item.discount || item.discountAmount || 0);
       const gross = Math.max(0, unitPrice * qty - lineDiscount);
-      const taxRate = resolveLineRate(unitPrice);
+      const taxRate = resolveLineRate(gross, qty);
       const split = splitInclusive(gross, taxRate);
       const taxable = split.taxable;
       const taxAmt = split.tax;
@@ -337,7 +339,7 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
       const unitPrice = Number(item.price || item.unitPrice || 0);
       const lineDiscount = Number(item.discount || item.discountAmount || 0);
       const gross = Math.max(0, unitPrice * qty - lineDiscount);
-      const taxRate = resolveLineRate(unitPrice);
+      const taxRate = resolveLineRate(gross, qty);
       const inclusive = (product.priceTaxMode || "inclusive") !== "exclusive";
       let taxable;
       let taxAmt;
@@ -398,9 +400,14 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
       : lineTaxableSum || Math.max(0, lineGrossSum - discount);
 
   let taxTotal = useLineTax ? lineTaxSum : storedTaxTotal;
-  let cgst = useLineTax ? 0 : Number(invoice?.cgst || 0);
-  let sgst = useLineTax ? 0 : Number(invoice?.sgst || 0);
-  let igst = useLineTax ? 0 : Number(invoice?.igst || 0);
+  // Keep the saved invoice's CGST/SGST/IGST when it agrees with the line tax,
+  // so the paise split on paper matches the stored record.
+  const storedSplit =
+    Number(invoice?.cgst || 0) + Number(invoice?.sgst || 0) + Number(invoice?.igst || 0);
+  const useStoredSplit = storedSplit > 0 && Math.abs(storedSplit - taxTotal) < 0.005;
+  let cgst = useStoredSplit ? Number(invoice?.cgst || 0) : 0;
+  let sgst = useStoredSplit ? Number(invoice?.sgst || 0) : 0;
+  let igst = useStoredSplit ? Number(invoice?.igst || 0) : 0;
 
   // If invoice has tax total but no CGST/SGST/IGST split, derive from place of supply
   if (taxTotal > 0 && cgst + sgst + igst <= 0) {
@@ -475,10 +482,12 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
 
   const emptyRow = `<tr><td colspan="9" class="empty">No items</td></tr>`;
 
+  const couponCode = String(invoice?.couponCode || "").trim().toUpperCase() || orderCouponCode(order);
   const taxCalcRows = [];
   if (discount > 0) {
+    const discountKey = couponCode ? `Coupon Discount (${couponCode})` : "Discount";
     taxCalcRows.push(
-      `<div class="tot-row"><span class="tot-k">Discount</span><span class="tot-v">${esc(moneyNeg(discount))}</span></div>`
+      `<div class="tot-row"><span class="tot-k">${esc(discountKey)}</span><span class="tot-v">${esc(moneyNeg(discount))}</span></div>`
     );
   }
   taxCalcRows.push(
@@ -514,6 +523,9 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
     ["Payment Terms", terms],
     ["Due Date", fmtDate(dueDate)],
   ];
+  if (couponCode) {
+    metaPairs.push(["Coupon", couponCode]);
+  }
   if (isGst) {
     metaPairs.push(["Reverse Charge", reverseCharge]);
   }

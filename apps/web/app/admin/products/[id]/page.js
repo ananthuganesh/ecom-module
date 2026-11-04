@@ -1093,13 +1093,11 @@ export default function AdminProductDetailPage() {
                     <FieldLabel>Tax (Automatic)</FieldLabel>
                     <Input
                       readOnly
-                      value={
-                        form.pricing?.mrp != null &&
-                        form.pricing?.mrp !== "" &&
-                        Number(form.pricing.mrp) > 0
-                          ? `GST ${gstRateForUnitPrice(form.pricing.mrp)}%`
-                          : ""
-                      }
+                      value={(() => {
+                        // Slab follows the sale value per piece, not MRP.
+                        const sale = Number(form.pricing?.sellingPrice) || Number(form.pricing?.mrp) || 0;
+                        return sale > 0 ? `GST ${gstRateForUnitPrice(sale)}%` : "";
+                      })()}
                       className="bg-muted/40 text-muted-foreground"
                     />
                   </Field>

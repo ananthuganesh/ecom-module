@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.documents import LineItem, Role, Setting, TaxClass
-from app.services.gst import resolve_state_code, split_cgst_sgst_igst, taxable_and_tax, gst_rate_for_unit_price
+from app.services.gst import gst_rate_for_line, resolve_state_code, split_cgst_sgst_igst, taxable_and_tax
 from app.services.variants import variant_sku
 
 
@@ -50,11 +50,15 @@ def build_line(
     inclusive: bool = True,
     variant_sku: str = "",
     hsn_code: str | None = None,
+    discount: float = 0,
 ) -> LineItem:
+    """One invoice line. ``discount`` comes off the line value before GST is split out."""
     qty = float(quantity or 0)
     price = float(unit_price or 0)
     rate = float(tax_rate or 0)
-    line_amount = qty * price
+    gross = qty * price
+    line_discount = round(min(max(float(discount or 0), 0.0), gross), 2)
+    line_amount = gross - line_discount
     taxable, tax = taxable_and_tax(line_amount, rate, inclusive=inclusive)
     return LineItem(
         productId=product_id,
@@ -63,11 +67,41 @@ def build_line(
         hsnCode=hsn_code,
         quantity=qty,
         unitPrice=price,
+        discountAmount=line_discount,
         taxRate=rate,
         taxableAmount=taxable,
         taxAmount=tax,
         totalAmount=round(taxable + tax, 2) if not inclusive else round(line_amount, 2),
     )
+
+
+def allocate_order_discount(order) -> list[float]:
+    """Spread the order-level coupon across item lines by value, to the paise.
+
+    Rounding drift lands on the last priced line so the shares sum exactly to
+    the discount (capped at the item total). Mirrors returns._line_refund.
+    """
+    lines = list(getattr(order, "items", None) or [])
+    values = [
+        float(getattr(line, "price", 0) or 0) * float(getattr(line, "quantity", 0) or 0)
+        for line in lines
+    ]
+    gross = sum(values)
+    discount = float(getattr(order, "discountAmount", 0) or getattr(order, "discount", 0) or 0)
+    discount = round(min(max(discount, 0.0), gross), 2)
+    shares = [0.0] * len(lines)
+    if gross <= 0 or discount <= 0:
+        return shares
+
+    last = max(i for i, v in enumerate(values) if v > 0)
+    allocated = 0.0
+    for i, value in enumerate(values):
+        if i == last:
+            break
+        shares[i] = round(discount * value / gross, 2)
+        allocated += shares[i]
+    shares[last] = round(discount - allocated, 2)
+    return shares
 
 
 def summarize_lines(items: list[LineItem], seller_state: str, buyer_state: str) -> dict:
@@ -103,13 +137,6 @@ async def get_tax_rate(tax_class_id: str | None) -> float:
         return float(active.rate)
 
     return 0.0
-
-
-async def resolve_product_tax_rate(product) -> float:
-    """Apparel GST slab from product MRP (automatic)."""
-    pricing = getattr(product, "pricing", None) if product else None
-    mrp = float(getattr(pricing, "mrp", None) or 0) if pricing else 0.0
-    return gst_rate_for_unit_price(mrp)
 
 
 DEFAULT_ROLES = [
@@ -282,7 +309,8 @@ async def ensure_order_invoice(order, *, actor=None):
         customer_gstin = addr.get("gstin") or addr.get("GSTIN") or None
 
     items: list[LineItem] = []
-    for oi in order.items or []:
+    discount_shares = allocate_order_discount(order)
+    for idx, oi in enumerate(order.items or []):
         product = None
         if oi.productId:
             try:
@@ -292,8 +320,10 @@ async def ensure_order_invoice(order, *, actor=None):
                 product = None
 
         if use_gst:
-            # Override tax class, else apparel slab from MRP
-            rate = await resolve_product_tax_rate(product)
+            # Apparel slab from the sale value per piece after the coupon share
+            # (≤ ₹2,500 → 5%), never from MRP.
+            sale_value = float(oi.price or 0) * float(oi.quantity or 0) - discount_shares[idx]
+            rate = gst_rate_for_line(sale_value, oi.quantity)
             inclusive = (product.priceTaxMode if product else "inclusive") != "exclusive"
         else:
             rate = 0.0
@@ -317,6 +347,7 @@ async def ensure_order_invoice(order, *, actor=None):
                 inclusive=inclusive,
                 variant_sku=sku,
                 hsn_code=product.hsnCode if product else None,
+                discount=discount_shares[idx],
             )
         )
 
@@ -343,6 +374,7 @@ async def ensure_order_invoice(order, *, actor=None):
         balanceDue=round(totals["grandTotal"] - amount_paid, 2),
         status=status if amount_paid < totals["grandTotal"] else "paid",
         isGstInvoice=use_gst,
+        couponCode=(order.couponCode or None) if any(discount_shares) else None,
         **totals,
     )
     await doc.insert()

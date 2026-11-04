@@ -110,6 +110,17 @@ def gst_rate_for_unit_price(unit_price: float) -> float:
     return GST_RATE_HIGH if price > GST_SLAB_THRESHOLD else GST_RATE_LOW
 
 
+def gst_rate_for_line(line_value: float, quantity: float) -> float:
+    """Slab from the sale value per piece actually charged on this line.
+
+    ``line_value`` is after any coupon share, so it is the transaction value —
+    not MRP and not the pre-coupon selling price.
+    """
+    qty = float(quantity or 0)
+    per_piece = float(line_value or 0) / qty if qty > 0 else 0.0
+    return gst_rate_for_unit_price(per_piece)
+
+
 def split_cgst_sgst_igst(
     tax: float,
     seller_state_code: str,

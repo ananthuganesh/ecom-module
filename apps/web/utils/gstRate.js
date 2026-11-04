@@ -13,6 +13,16 @@ export function gstRateForUnitPrice(unitPrice) {
   return price > GST_SLAB_THRESHOLD ? GST_RATE_HIGH : GST_RATE_LOW;
 }
 
+/**
+ * Slab from the sale value per piece actually charged on a line — after any
+ * coupon share, never MRP. Mirrors gst_rate_for_line in apps/api/app/services/gst.py.
+ */
+export function gstRateForLine(lineValue, quantity) {
+  const qty = Number(quantity) || 0;
+  const perPiece = qty > 0 ? (Number(lineValue) || 0) / qty : 0;
+  return gstRateForUnitPrice(perPiece);
+}
+
 export function roundMoney(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }

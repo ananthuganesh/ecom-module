@@ -5,6 +5,7 @@ import { formatOrderNumber, adminOrderHref } from "@/utils/formatOrderNumber";
 import { Button } from "@/components/ui/button";
 import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
 import { displayCustomerName } from "@/utils/displayCustomerName";
+import { orderCouponCode } from "@/lib/orderDiscount";
 
 function formatINR(value) {
   return Number(value || 0).toLocaleString("en-IN", {
@@ -63,10 +64,18 @@ export const recentOrderColumns = [
     accessorFn: (row) => Number(row.finalPrice) || 0,
     header: () => <div className="text-right">Total</div>,
     size: 80,
-    cell: ({ row }) => (
-      <div className="flex h-8 items-center justify-end font-medium tabular-nums">
-        ₹{formatINR(row.original.finalPrice)}
-      </div>
-    ),
+    cell: ({ row }) => {
+      const coupon = orderCouponCode(row.original);
+      return (
+        <div className="flex min-h-8 flex-col items-end justify-center leading-tight">
+          <span className="font-medium tabular-nums">₹{formatINR(row.original.finalPrice)}</span>
+          {coupon ? (
+            <span className="max-w-full truncate font-mono text-[11px] text-muted-foreground" title={`Coupon ${coupon}`}>
+              {coupon}
+            </span>
+          ) : null}
+        </div>
+      );
+    },
   },
 ];
