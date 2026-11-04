@@ -83,7 +83,9 @@ async def line_items(order: Order) -> list[dict[str, Any]]:
     from app.services.variants import variant_sku
 
     out: list[dict[str, Any]] = []
-    for line in order.items or []:
+    # Automatic discounts are priced in: offer_price is the unit price after them.
+    line_discounts = list((_details(order).get("lineDiscounts") or []))
+    for idx, line in enumerate(order.items or []):
         product = None
         if line.productId and ObjectId.is_valid(str(line.productId)):
             product = await Product.get(ObjectId(str(line.productId)))
@@ -93,11 +95,14 @@ async def line_items(order: Order) -> list[dict[str, Any]]:
         )
         ref = (product.slug if product and product.slug else None) or str(line.productId)
         price = paise(line.price)
+        qty = max(1, int(line.quantity or 1))
+        off = float(line_discounts[idx]) if idx < len(line_discounts) else 0.0
+        offer = max(0, price - int(round(off * 100 / qty)))
         item: dict[str, Any] = {
             "sku": sku,
             "variant_id": f"{line.productId}:{variant}" if variant else str(line.productId),
             "price": price,
-            "offer_price": price,
+            "offer_price": offer,
             "quantity": int(line.quantity or 1),
             "name": (line.productName or "Product")[:255],
             "description": (variant or line.productName or "Product")[:255],
@@ -148,11 +153,27 @@ async def shipping_quote(zipcode: str, country: str = "IN") -> tuple[bool, float
 
 
 async def shipping_info(body: dict[str, Any]) -> dict[str, Any]:
+    """Fee per address, after any automatic free shipping this order qualifies for.
+
+    Each quote is remembered on the order so a free-shipping code (which
+    Razorpay applies without an address) and the post-payment check use the
+    same numbers Razorpay showed the shopper.
+    """
+    order = await _pending_magic_order(body.get("order_id"))
+    shopper = await _shopper(order, body.get("contact"), body.get("email")) if order else None
+    quotes: dict[str, dict[str, Any]] = {}
     out = []
     for addr in body.get("addresses") or []:
         if not isinstance(addr, dict):
             continue
         serviceable, fee = await shipping_quote(addr.get("zipcode"), addr.get("country") or "IN")
+        off, coupon = 0.0, None
+        if order and serviceable:
+            off, coupon = await free_shipping_for(order, shopper, fee)
+            zip_key = re.sub(r"\D", "", str(addr.get("zipcode") or ""))
+            if zip_key:
+                quotes[zip_key] = {"fee": fee, "discount": off, "discountId": str(coupon.id) if coupon else None}
+        charged = max(0.0, fee - off)
         out.append(
             {
                 "id": str(addr.get("id") or "0"),
@@ -163,15 +184,20 @@ async def shipping_info(body: dict[str, Any]) -> dict[str, Any]:
                     {
                         "id": SHIPPING_METHOD_ID,
                         "name": "Standard delivery" if serviceable else "Not deliverable",
-                        "description": "Free delivery" if serviceable and fee <= 0 else "Standard delivery",
+                        "description": "Free delivery" if serviceable and charged <= 0 else "Standard delivery",
                         "serviceable": serviceable,
-                        "shipping_fee": paise(fee) if serviceable else 0,
+                        "shipping_fee": paise(charged) if serviceable else 0,
                         # Prepaid only.
                         "cod": False,
                         "cod_fee": 0,
                     }
                 ],
             }
+        )
+    if order and quotes:
+        await Order.get_pymongo_collection().update_one(
+            {"_id": order.id},
+            {"$set": {f"transactionDetails.magicShippingQuotes.{z}": q for z, q in quotes.items()}},
         )
     return {"addresses": out}
 
@@ -242,44 +268,163 @@ def _failure(code: str, reason: str) -> dict[str, Any]:
     return {"failure_code": code, "failure_reason": reason}
 
 
-async def apply_promotion(body: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
-    """(ok, response body). Same rules and limits as the storefront coupon box."""
+def _details(order: Order) -> dict[str, Any]:
+    return order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
+
+
+def _baked(order: Order) -> list[dict[str, Any]]:
+    """Automatic discounts already priced into this order's Razorpay line items."""
+    return [d for d in _details(order).get("discounts") or [] if d.get("method") == "automatic" and not d.get("shipping")]
+
+
+def _baked_goods(order: Order) -> float:
+    details = _details(order)
+    if details.get("autoGoodsDiscount") is not None:
+        return float(details.get("autoGoodsDiscount") or 0)
+    return round(sum(float(d.get("amount") or 0) for d in _baked(order)), 2)
+
+
+async def _coupons(ids: list[Any]) -> list[Any]:
+    from app.documents import Coupon
+
+    oids = [ObjectId(str(i)) for i in ids if ObjectId.is_valid(str(i))]
+    return await Coupon.find({"_id": {"$in": oids}}).to_list() if oids else []
+
+
+async def _in_force(order: Order) -> list[Any]:
+    """Coupons currently shaping this order's price (an applied code's set, else the automatic ones)."""
+    promo = _details(order).get("magicPromotion") or {}
+    if promo.get("discounts"):
+        return await _coupons([d.get("id") for d in promo["discounts"]])
+    return await _coupons([d.get("id") for d in _baked(order)])
+
+
+async def free_shipping_for(order: Order, shopper: Any, fee: float) -> tuple[float, Any]:
+    """(amount off the delivery fee, coupon) from automatic free shipping, if any.
+
+    Only a free-shipping discount that combines with everything already in
+    force counts, because those are fixed once Razorpay shows the prices.
+    """
     from app.services import discounts
 
+    if fee <= 0:
+        return 0.0, None
+    in_force = await _in_force(order)
+    best: tuple[float, Any] = (0.0, None)
+    for coupon in await discounts.live_automatic_discounts():
+        if discounts.discount_class(coupon) != "shipping":
+            continue
+        if any(not discounts.combines(coupon, other) for other in in_force if other.id != coupon.id):
+            continue
+        if not await discounts.passes_rules(coupon, _order_lines(order), shopper, exclude_order_id=order.id):
+            continue
+        value = discounts.shipping_value(coupon, fee)
+        if value > best[0]:
+            best = (value, coupon)
+    return best
+
+
+_UNMET_PHRASES = (
+    "Minimum", "eligible", "Add products", "qualifying items", "Sign in or add",
+    "better discount", "delivery address", "doesn't apply", "combined with",
+)
+
+
+def _reject(detail: str, status: int = 400) -> tuple[bool, dict[str, Any]]:
+    unmet = status == 400 and any(phrase in detail for phrase in _UNMET_PHRASES)
+    return False, _failure("REQUIREMENT_NOT_MET" if unmet else "INVALID_PROMOTION", detail)
+
+
+async def quote_code(order: Order, code: str, shopper: Any) -> tuple[bool, dict[str, Any]]:
+    """(ok, quote | failure) for applying `code` on top of what this order already has.
+
+    The quote's `discount` is the extra amount Razorpay takes off; `goods`,
+    `shipping`, `discounts` and `lineDiscounts` describe the final result.
+    """
+    from app.services import discounts
+
+    lines = _order_lines(order)
+    baked = await _coupons([d.get("id") for d in _baked(order)])
+    baked_goods = _baked_goods(order)
+    details = _details(order)
+    quotes = details.get("magicShippingQuotes") or {}
+    ship_autos = await _coupons([q.get("discountId") for q in quotes.values() if q.get("discountId")])
+
+    try:
+        coupon = await discounts.find_code_coupon(code)
+    except discounts.DiscountRejected as exc:
+        return _reject(exc.detail, exc.status_code)
+
+    if discounts.discount_class(coupon) == "shipping":
+        try:
+            await discounts.check_rules(coupon, lines, shopper, exclude_order_id=order.id)
+        except discounts.DiscountRejected as exc:
+            return _reject(exc.detail, exc.status_code)
+        if any(not discounts.combines(coupon, other) for other in baked + ship_autos):
+            return _reject("This code can't be combined with your other discounts")
+        if not quotes:
+            return _reject("Choose your delivery address first, then apply this code")
+        # Razorpay doesn't say which address is chosen, so take the smallest fee quoted.
+        value = min(
+            min(max(0.0, float(q.get("fee") or 0) - float(q.get("discount") or 0)),
+                discounts.shipping_value(coupon, float(q.get("fee") or 0)))
+            for q in quotes.values()
+        )
+        if value <= 0:
+            return _reject("Free shipping doesn't apply to this delivery")
+        entry = {**discounts.AppliedDiscount(coupon, [0.0] * len(lines), value).as_dict()}
+        return True, {
+            "code": coupon.code,
+            "discount": round(value, 2),
+            "goods": baked_goods,
+            "shipping": round(value, 2),
+            "discounts": _baked(order) + [entry],
+            "lineDiscounts": details.get("lineDiscounts") or [0.0] * len(lines),
+        }
+
+    res = await discounts.resolve(lines, shopper=shopper, code=code, only=baked, exclude_order_id=order.id)
+    if res.code_error:
+        return _reject(res.code_error, res.code_status)
+    chosen = [a.coupon for a in res.applied]
+    if any(not discounts.combines(ship, c) for ship in ship_autos for c in chosen if c.id != ship.id):
+        return _reject("This code can't be combined with free shipping on your order")
+    value = round(res.goods - baked_goods, 2)
+    if value <= 0:
+        return _reject("Your cart already has a better discount")
+    return True, {
+        "code": coupon.code,
+        "discount": value,
+        "goods": res.goods,
+        "shipping": 0.0,
+        "discounts": [a.as_dict() for a in res.applied],
+        "lineDiscounts": [round(x, 2) for x in res.line_discounts],
+    }
+
+
+async def apply_promotion(body: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """(ok, response body). Same rules and limits as the storefront coupon box."""
     code = str(body.get("code") or "").strip().upper()
     order = await _pending_magic_order(body.get("order_id"))
     if not code or not order:
         return False, _failure("INVALID_PROMOTION", "This code can't be applied to this order.")
-    try:
-        coupon, discount = await discounts.validate_coupon(
-            code,
-            items=_order_lines(order),
-            subtotal=float(order.total or 0),
-            shopper=await _shopper(order, body.get("contact"), body.get("email")),
-        )
-    except HTTPException as exc:
-        # 404 = unknown code; 400 = expired, used up, or cart doesn't qualify.
-        detail = str(exc.detail or "This code can't be applied.")
-        unmet = exc.status_code == 400 and any(
-            phrase in detail
-            for phrase in ("Minimum", "eligible", "Add products", "qualifying items", "Sign in or add")
-        )
-        return False, _failure("REQUIREMENT_NOT_MET" if unmet else "INVALID_PROMOTION", detail)
-
-    discount = round(min(float(discount), float(order.total or 0)), 2)
+    ok, quote = await quote_code(order, code, await _shopper(order, body.get("contact"), body.get("email")))
+    if not ok:
+        return False, quote
     # Remembered so payment can be checked against what we quoted here.
     await Order.get_pymongo_collection().update_one(
-        {"_id": order.id},
-        {"$set": {"transactionDetails.magicPromotion": {"code": coupon.code, "discount": discount}}},
+        {"_id": order.id}, {"$set": {"transactionDetails.magicPromotion": quote}}
     )
+    from app.documents import Coupon
+
+    coupon = await Coupon.find_one(Coupon.code == quote["code"])
     return True, {
         "promotion": {
-            "reference_id": coupon.code,
+            "reference_id": quote["code"],
             "type": "coupon",
-            "code": coupon.code,
-            "value": paise(discount),
+            "code": quote["code"],
+            "value": paise(quote["discount"]),
             "value_type": "fixed_amount",
-            "description": coupon.name or f"{coupon.code} applied",
+            "description": (coupon.name if coupon and coupon.name else None) or f"{quote['code']} applied",
         }
     }
 
@@ -317,30 +462,16 @@ def shipping_address_from(customer: dict[str, Any], fallback_email: str = "") ->
     }
 
 
-async def _discount_for(
-    order: Order, codes: list[str], contact: Any = None, email: Any = None
-) -> tuple[str | None, float]:
-    """The discount we quoted for the code Razorpay says was applied."""
-    from app.services import discounts
-
+async def _promotion_for(order: Order, codes: list[str], shopper: Any) -> dict[str, Any] | None:
+    """The quote for the code Razorpay says was applied (recomputed if we never quoted it)."""
     if not codes:
-        return None, 0.0
+        return None
     code = codes[0].strip().upper()
-    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
-    quoted = details.get("magicPromotion") or {}
+    quoted = _details(order).get("magicPromotion") or {}
     if str(quoted.get("code") or "").upper() == code:
-        return code, float(quoted.get("discount") or 0)
-    try:
-        coupon, discount = await discounts.validate_coupon(
-            code,
-            items=_order_lines(order),
-            subtotal=float(order.total or 0),
-            shopper=await _shopper(order, contact, email),
-            exclude_order_id=order.id,
-        )
-    except HTTPException:
-        return code, 0.0
-    return coupon.code, round(min(float(discount), float(order.total or 0)), 2)
+        return quoted
+    ok, quote = await quote_code(order, code, shopper)
+    return quote if ok else None
 
 
 async def prepare_paid_order(order: Order, rz_order: dict[str, Any], paid_paise: int) -> None:
@@ -360,15 +491,42 @@ async def prepare_paid_order(order: Order, rz_order: dict[str, Any], paid_paise:
         for p in rz_order.get("promotions") or []
         if isinstance(p, dict) and p.get("code")
     ]
-    code, discount = await _discount_for(order, codes, address["phone"], address["email"])
+    shopper = await _shopper(order, address["phone"], address["email"])
+    promo = await _promotion_for(order, codes, shopper)
+
+    # Automatic free shipping: what Razorpay was quoted for this pincode, else our rule.
+    quote = (_details(order).get("magicShippingQuotes") or {}).get(address["pincode"]) or {}
+    if quote and float(quote.get("fee") or 0) == float(fee):
+        auto_ship, auto_ship_id = float(quote.get("discount") or 0), quote.get("discountId")
+    else:
+        off, ship_coupon = await free_shipping_for(order, shopper, fee)
+        auto_ship, auto_ship_id = off, (str(ship_coupon.id) if ship_coupon else None)
+
+    baked_goods = _baked_goods(order)
     subtotal = float(order.total or 0)
     gift_fee = float(order.giftFee or 0)
-    expected = paise(max(0.0, subtotal + fee + gift_fee - discount))
+    extra = float(promo.get("discount") or 0) if promo else 0.0
+    expected = paise(max(0.0, subtotal - baked_goods + (fee - auto_ship) + gift_fee - extra))
     # 1 paisa of slack for rounding between our rupees and Razorpay's paise.
     if paid_paise + 1 < expected:
         raise MagicAmountMismatch(f"paid {paid_paise} but expected {expected}")
 
     details = dict(order.transactionDetails or {})
+    applied = list(promo.get("discounts") or []) if promo else list(_baked(order))
+    if auto_ship > 0 and auto_ship_id:
+        ship_coupon = (await _coupons([auto_ship_id]) or [None])[0]
+        if ship_coupon is not None:
+            from app.services.discounts import AppliedDiscount
+
+            applied.append(AppliedDiscount(ship_coupon, [0.0] * len(order.items or []), auto_ship).as_dict())
+    goods = float(promo.get("goods") or 0) if promo else baked_goods
+    shipping_off = round(auto_ship + (float(promo.get("shipping") or 0) if promo else 0.0), 2)
+    discount = round(goods, 2)
+    code = promo.get("code") if promo else None
+    details["discounts"] = applied
+    details["lineDiscounts"] = (promo.get("lineDiscounts") if promo else None) or details.get("lineDiscounts") or []
+    details["shippingDiscount"] = shipping_off
+    details["deliveryFee"] = fee
     details["magicCheckout"] = {
         "shippingFee": rz_order.get("shipping_fee"),
         "promotions": codes,
@@ -377,11 +535,11 @@ async def prepare_paid_order(order: Order, rz_order: dict[str, Any], paid_paise:
         **({"notes": rz_order.get("notes")} if isinstance(rz_order.get("notes"), dict) else {}),
     }
     order.shippingAddress = address
-    order.deliveryAmount = fee
+    order.deliveryAmount = round(max(0.0, fee - shipping_off), 2)
     order.discount = discount
     order.discountAmount = discount
     # Usage is claimed when the order is committed (apply_order_commitments).
-    order.couponCode = code if discount > 0 else None
+    order.couponCode = code
     order.finalPrice = round(paid_paise / 100, 2)
     order.transactionDetails = details
     order.updatedAt = datetime.utcnow()

@@ -57,3 +57,26 @@ describe("allocateDiscount", () => {
     assert.deepEqual(allocateDiscount([1299], 0), [0]);
   });
 });
+
+describe("automatic discount names", () => {
+  it("names codes and automatic titles with an item discount", () => {
+    const order = {
+      couponCode: "SAVE80",
+      transactionDetails: {
+        discounts: [
+          { title: "Diwali 10", code: null, amount: 100 },
+          { code: "SAVE80", amount: 80 },
+          { title: "Free shipping", code: null, amount: 0, shipping: 60 },
+        ],
+      },
+    };
+    assert.equal(discountLabel(order), "Discount (Diwali 10, SAVE80)");
+  });
+
+  it("keeps the coupon wording for a code on its own", () => {
+    assert.equal(
+      discountLabel({ couponCode: "SAVE80", transactionDetails: { discounts: [{ code: "SAVE80", amount: 80 }] } }),
+      "Coupon (SAVE80)"
+    );
+  });
+});

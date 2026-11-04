@@ -178,3 +178,53 @@ describe("couponSummary", () => {
     );
   });
 });
+
+describe("automatic discounts, combinations and free shipping", () => {
+  it("automatic discounts need a title, not a code", () => {
+    const f = { ...emptyForm("order", NOW), method: "automatic", discountValue: "10" };
+    assert.equal(validateForm(f), "Enter a title for the discount.");
+    const payload = payloadFromForm({ ...f, name: "Diwali 10", limitTotal: true, usageLimit: "5", showOnProduct: true });
+    assert.equal(payload.method, "automatic");
+    assert.equal(payload.code, "");
+    assert.equal(payload.usageLimit, null);
+    assert.equal(payload.showOnProduct, true);
+    assert.equal(payloadFromForm({ ...f, name: "D", code: "AUTO-1A2B" }).code, "AUTO-1A2B");
+  });
+
+  it("sends only the combinations the type offers", () => {
+    const f = {
+      ...emptyForm("shipping", NOW), code: "SHIP", combinesWithProduct: true, combinesWithShipping: true,
+    };
+    const payload = payloadFromForm(f);
+    assert.equal(payload.combinesWithProduct, true);
+    assert.equal(payload.combinesWithShipping, false);
+    assert.equal(payload.discountValue, 0);
+  });
+
+  it("describes free shipping and combinations in the sidebar", () => {
+    const f = {
+      ...emptyForm("shipping", NOW), code: "SHIP", limitShippingRate: true, maxShippingRate: "100",
+      combinesWithProduct: true, combinesWithOrder: true,
+    };
+    const lines = detailLines(f, NOW);
+    assert.equal(lines[0], "Free shipping on rates up to ₹100");
+    assert.ok(lines.includes("Combines with product and order discounts"));
+    assert.equal(validateForm({ ...f, maxShippingRate: "" }), "Enter the highest shipping rate this discount covers.");
+    assert.equal(validateForm(f), "");
+  });
+
+  it("marks automatic discounts in the details and hides usage limits", () => {
+    const lines = detailLines({ ...emptyForm("order", NOW), method: "automatic", name: "D", discountValue: "5" }, NOW);
+    assert.ok(lines.includes("Applies automatically at checkout"));
+    assert.ok(!lines.includes("No usage limits"));
+  });
+
+  it("reads saved automatic and shipping discounts back", () => {
+    const f = formFromCoupon({ code: "AUTO-X", method: "automatic", name: "Free ship", kind: "shipping", maxShippingRate: 80,
+      combinesWithOrder: true });
+    assert.equal(f.method, "automatic");
+    assert.equal(f.limitShippingRate, true);
+    assert.equal(f.maxShippingRate, "80");
+    assert.equal(f.combinesWithOrder, true);
+  });
+});

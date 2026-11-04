@@ -1,3 +1,4 @@
+import math
 import re
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -305,37 +306,54 @@ async def place_pending_order(body: dict, user: User | None, request: Request) -
         delivery = await _storefront_shipping_price(shipping_address)
     is_gift = bool(body.get("isGift")) and not magic
     gift_fee = 39 if is_gift else 0
-    discount = 0.0
+    from app.services import discounts as discount_svc
+
+    cart_lines = [
+        {"productId": str(i.productId), "price": float(i.price), "quantity": int(i.quantity)}
+        for i in items
+    ]
+    shopper = discount_svc.Shopper.of(
+        user, phone=shipping_address.get("phone"), email=shipping_address.get("email")
+    )
     applied = None
     coupon_reserved = False
-    coupon_code = None if magic else body.get("couponCode")
-    if coupon_code:
-        from app.services import discounts as discount_svc
-
-        cart_lines = [
-            {
-                "productId": str(i.productId),
-                "price": float(i.price),
-                "quantity": int(i.quantity),
-            }
-            for i in items
+    coupon_code = None if magic else (str(body.get("couponCode") or "").strip() or None)
+    # Automatic discounts always; one code on standard checkout. Magic Checkout
+    # gets its code and shipping discount from Razorpay's popup later.
+    resolution = await discount_svc.resolve(
+        cart_lines,
+        shopper=shopper,
+        code=coupon_code,
+        shipping_fee=None if magic else delivery,
+    )
+    if coupon_code and resolution.code_error:
+        raise HTTPException(status_code=resolution.code_status, detail=resolution.code_error)
+    line_discounts = list(resolution.line_discounts)
+    if magic:
+        # Razorpay prices each unit in whole paise: round each line's discount up
+        # to a whole paisa per unit so offer_price × quantity matches exactly.
+        line_discounts = [
+            (math.ceil(round(d * 100 / max(1, i.quantity), 6)) * max(1, i.quantity)) / 100 if d > 0 else 0.0
+            for d, i in zip(line_discounts, items)
         ]
-        coupon, discount = await discount_svc.validate_coupon(
-            str(coupon_code),
-            items=cart_lines,
-            subtotal=subtotal,
-            shopper=discount_svc.Shopper.of(
-                user,
-                phone=shipping_address.get("phone"),
-                email=shipping_address.get("email"),
-            ),
-        )
-        if not await discount_svc.reserve_coupon_usage(coupon.code):
+        line_discounts = [min(d, float(i.price) * i.quantity) for d, i in zip(line_discounts, items)]
+    discount = round(sum(line_discounts), 2)
+    shipping_discount = 0.0 if magic else round(min(resolution.shipping, delivery), 2)
+    code_applied = resolution.code_applied
+    if code_applied is not None:
+        if not await discount_svc.reserve_coupon_usage(code_applied.coupon.code):
             raise HTTPException(status_code=400, detail="Discount usage limit reached")
         coupon_reserved = True
-        applied = coupon.code
+        applied = code_applied.coupon.code
+    applied_discounts = [a.as_dict() for a in resolution.applied]
+    if magic and applied_discounts:
+        # Rounded amounts are what the shopper is actually charged.
+        scale = discount / resolution.goods if resolution.goods else 1.0
+        for row in applied_discounts:
+            row["amount"] = round(float(row["amount"]) * scale, 2)
+    charged_delivery = round(max(0.0, delivery - shipping_discount), 2)
 
-    final_price = max(0.0, subtotal + delivery + gift_fee - discount)
+    final_price = max(0.0, subtotal + charged_delivery + gift_fee - discount)
     payment = "razorpay"
 
     attribution = sanitize_attribution(body.get("attribution"))
@@ -357,7 +375,7 @@ async def place_pending_order(body: dict, user: User | None, request: Request) -
         discount=discount,
         discountAmount=discount,
         finalPrice=final_price,
-        deliveryAmount=delivery,
+        deliveryAmount=charged_delivery,
         isGift=is_gift,
         giftFee=gift_fee,
         giftMessage=body.get("giftMessage") or "",
@@ -369,6 +387,17 @@ async def place_pending_order(body: dict, user: User | None, request: Request) -
             "paymentStatus": "pending",
             **({"checkout": "magic"} if magic else {}),
             **({"couponReserved": True} if coupon_reserved else {}),
+            **(
+                {
+                    "discounts": applied_discounts,
+                    "lineDiscounts": [round(d, 2) for d in line_discounts],
+                    "shippingDiscount": shipping_discount,
+                }
+                if applied_discounts
+                else {}
+            ),
+            **({"autoGoodsDiscount": discount} if magic else {}),
+            **({} if magic else {"deliveryFee": delivery}),
             **(
                 {"guestId": str(body.get("guestId")).strip()}
                 if body.get("guestId")

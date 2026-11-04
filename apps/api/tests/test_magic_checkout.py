@@ -183,7 +183,9 @@ async def test_apply_promotion_uses_our_coupon_rules_and_remembers_the_quote():
     assert promo["value"] == 21980  # 10% of ₹2,198, in paise
     assert promo["value_type"] == "fixed_amount"
     stored = (await Order.get(order.id)).transactionDetails["magicPromotion"]
-    assert stored == {"code": "SAVE10", "discount": 219.8}
+    assert stored["code"] == "SAVE10" and stored["discount"] == 219.8
+    assert stored["goods"] == 219.8 and stored["shipping"] == 0.0
+    assert [d["code"] for d in stored["discounts"]] == ["SAVE10"]
 
 
 @pytest.mark.usefixtures("db")

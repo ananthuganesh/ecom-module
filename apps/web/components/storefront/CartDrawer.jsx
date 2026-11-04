@@ -15,6 +15,7 @@ import { resolveImageUrl } from "@/utils/imageResolver";
 import { trackViewCart } from "@/lib/tracking";
 import productService from "@/api/services/user/productService";
 import { isCartLineUnavailable, sortCartByAvailability } from "@/utils/cartStock";
+import { useCartDiscounts } from "@/components/storefront/useCartDiscounts";
 
 const formatPrice = (price) => `₹${Number(price || 0).toLocaleString("en-IN")}`;
 
@@ -64,13 +65,18 @@ export default function CartDrawer() {
     (acc, item) => acc + (Number(item.price) || 0) * (item.qty || 1),
     0
   );
-  const totalSavings = availableItems.reduce((acc, item) => {
+  const { discounts: autoDiscounts, goods: autoDiscount } = useCartDiscounts(availableItems, {
+    enabled: isDrawerOpen,
+  });
+  const cartPayable = Math.max(0, cartTotal - autoDiscount);
+  const totalSavingsBeforeAuto = availableItems.reduce((acc, item) => {
     const price = Number(item.price) || 0;
     const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
     const qty = item.qty || 1;
     if (mrp > price) return acc + (mrp - price) * qty;
     return acc;
   }, 0);
+  const totalSavings = totalSavingsBeforeAuto + autoDiscount;
 
   useEffect(() => {
     if (isDrawerOpen) {
@@ -258,10 +264,16 @@ export default function CartDrawer() {
             {cartItems.length > 0 && (
               <div className="shrink-0 border-t border-gray-200 bg-white pb-[max(1.25rem,env(safe-area-inset-bottom))]">
                 <div className="space-y-4 px-5 pt-4">
+                  {autoDiscounts.map((d) => (
+                    <div key={d.id} className="-mb-2 flex items-center justify-between text-[13px] text-emerald-700">
+                      <span className="truncate pr-3">{d.title || "Discount"}</span>
+                      <span className="shrink-0">−{formatPrice(d.amount)}</span>
+                    </div>
+                  ))}
                   <div className="flex items-center justify-between">
                     <span className="text-base font-medium text-gray-900">Total</span>
                     <span className="text-xl font-bold text-gray-900">
-                      {formatPrice(cartTotal)}
+                      {formatPrice(cartPayable)}
                     </span>
                   </div>
                   {totalSavings > 0 ? (

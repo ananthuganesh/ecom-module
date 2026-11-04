@@ -107,6 +107,8 @@ function CheckoutOrderSummary({
   shippingPrice,
   appliedCoupon,
   discountAmount,
+  appliedDiscounts = [],
+  shippingDiscount = 0,
   totalPrice,
   totalSavings,
   couponInput,
@@ -179,16 +181,28 @@ function CheckoutOrderSummary({
                 : formatCheckoutMoney(shippingPrice)}
           </span>
         </div>
-        {!magic && appliedCoupon && discountAmount > 0 && (
+        {appliedDiscounts
+          .filter((d) => Number(d.amount) > 0 && (!magic || d.method === "automatic"))
+          .map((d) => (
+            <div key={d.id} className="flex justify-between text-emerald-700">
+              <span>{d.code ? `Coupon (${d.code})` : d.title || "Discount"}</span>
+              <span>−{formatCheckoutMoney(d.amount)}</span>
+            </div>
+          ))}
+        {!magic && shippingDiscount > 0 && (
           <div className="flex justify-between text-emerald-700">
-            <span>Coupon ({appliedCoupon.code})</span>
-            <span>−{formatCheckoutMoney(discountAmount)}</span>
+            <span>
+              {appliedDiscounts.find((d) => Number(d.shipping) > 0)?.title ||
+                appliedDiscounts.find((d) => Number(d.shipping) > 0)?.code ||
+                "Free shipping"}
+            </span>
+            <span>−{formatCheckoutMoney(shippingDiscount)}</span>
           </div>
         )}
         <div className="flex items-center justify-between border-t border-gray-200 pt-3">
           <span className="text-[16px] font-semibold text-gray-900">Total</span>
           <span className="text-[16px] font-semibold text-gray-900">
-            {formatCheckoutMoney(magic ? subtotal : totalPrice)}
+            {formatCheckoutMoney(magic ? Math.max(0, subtotal - discountAmount) : totalPrice)}
           </span>
         </div>
         {magic && (
@@ -208,7 +222,11 @@ function CheckoutOrderSummary({
         {appliedCoupon ? (
           <div className="flex w-full items-center justify-between rounded-md bg-emerald-600 px-3 py-2.5">
             <span className="text-[13px] font-medium text-white">
-              {appliedCoupon.code} applied (−{formatCheckoutMoney(discountAmount)})
+              {appliedCoupon.code} applied (−
+              {formatCheckoutMoney(
+                Number(appliedCoupon.codeDiscount ?? appliedCoupon.discountAmount) || 0
+              )}
+              )
             </span>
             <button
               type="button"
@@ -343,6 +361,8 @@ function CheckoutPageContent() {
     if (copied) setCouponInput(copied);
   }, []);
   const [appliedCoupon, setAppliedCoupon] = useState(null);
+  // Automatic discounts for this cart (no code), from the server.
+  const [autoPreview, setAutoPreview] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [showCouponPanel, setShowCouponPanel] = useState(false);
   const [isCouponLoading, setIsCouponLoading] = useState(false);
@@ -422,9 +442,17 @@ function CheckoutPageContent() {
     (acc, item) => acc + (Number(item.price) || 0) * (item.qty || 1),
     0
   );
-  const shippingPrice = subtotal > 150 ? 0 : 15;
+  const pricing = appliedCoupon || autoPreview;
+  const quotedFee = autoPreview?.shippingFee;
+  const shippingFee = quotedFee != null ? Number(quotedFee) : subtotal > 150 ? 0 : 15;
+  const shippingDiscount = Math.min(shippingFee, Number(pricing?.shippingDiscount) || 0);
+  const shippingPrice = Math.max(0, shippingFee - shippingDiscount);
   const baseTotalPrice = subtotal + shippingPrice;
-  const discountAmount = appliedCoupon ? appliedCoupon.discountAmount : 0;
+  // Everything off the items: automatic discounts plus the code, as the server prices it.
+  const discountAmount = Number(
+    appliedCoupon ? appliedCoupon.discountAmount : autoPreview?.goodsDiscount || 0
+  ) || 0;
+  const appliedDiscounts = pricing?.discounts || [];
   const totalPrice = baseTotalPrice - discountAmount;
   const mrpSavings = availableItems.reduce((acc, item) => {
     const price = Number(item.price) || 0;
@@ -433,7 +461,7 @@ function CheckoutPageContent() {
     if (mrp > price) return acc + (mrp - price) * qty;
     return acc;
   }, 0);
-  const totalSavings = mrpSavings + (Number(discountAmount) || 0);
+  const totalSavings = mrpSavings + (Number(discountAmount) || 0) + (Number(shippingDiscount) || 0);
 
   const syncFullName = (next) => {
     const name = [next.firstName, next.lastName].filter(Boolean).join(" ").trim();
@@ -577,6 +605,44 @@ function CheckoutPageContent() {
     return () => clearTimeout(timeoutId);
   }, [formData.postalCode]);
 
+  const cartKey = JSON.stringify(
+    availableItems.map((item) => [item._id, item.qty || 1, item.size || "", item.color || ""])
+  );
+  const previewKey = JSON.stringify([
+    JSON.parse(cartKey),
+    magicCheckout ? "" : String(formData.postalCode || "").replace(/\D/g, "").slice(0, 6),
+  ]);
+  useEffect(() => {
+    const [lines, pin] = JSON.parse(previewKey);
+    if (!lines.length) {
+      setAutoPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      couponService
+        .preview(
+          lines.map(([product, qty]) => ({ product, qty })),
+          pin.length === 6 ? { pincode: pin } : {}
+        )
+        .then((data) => {
+          if (!cancelled) setAutoPreview(data && Array.isArray(data.discounts) ? data : null);
+        })
+        .catch(() => {
+          if (!cancelled) setAutoPreview(null);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [previewKey]);
+
+  // A code's quote depends on the cart: drop it when the items change.
+  useEffect(() => {
+    setAppliedCoupon(null);
+  }, [cartKey]);
+
   const handleApplyCoupon = async (code) => {
     const couponCodeToApply = code || couponInput;
     if (!couponCodeToApply) return;
@@ -588,7 +654,12 @@ function CheckoutPageContent() {
         price: Number(item.price) || 0,
         quantity: item.qty || 1,
       }));
-      const result = await couponService.validate(couponCodeToApply, subtotal, items);
+      const pin = String(formData.postalCode || "").replace(/\D/g, "");
+      const result = await couponService.validate(couponCodeToApply, subtotal, items, {
+        ...(pin.length === 6 ? { pincode: pin } : {}),
+        ...(formData.phone ? { phone: formData.phone } : {}),
+        ...(formData.email ? { email: formData.email } : {}),
+      });
       setAppliedCoupon({
         ...result,
         code: result.code || result.coupon?.code || couponCodeToApply,
@@ -1548,6 +1619,8 @@ function CheckoutPageContent() {
                 shippingPrice={shippingPrice}
                 appliedCoupon={appliedCoupon}
                 discountAmount={discountAmount}
+                appliedDiscounts={appliedDiscounts}
+                shippingDiscount={shippingDiscount}
                 totalPrice={totalPrice}
                 totalSavings={totalSavings}
                 couponInput={couponInput}

@@ -998,6 +998,23 @@ async def apply_order_commitments(order) -> bool:
         else:
             changed = True
 
+    # Automatic discounts have no code to reserve at checkout: count them once here.
+    auto_ids = [
+        ObjectId(str(d.get("id")))
+        for d in ((order.transactionDetails or {}).get("discounts") or [])
+        if isinstance(d, dict) and d.get("method") == "automatic" and ObjectId.is_valid(str(d.get("id")))
+    ]
+    if auto_ids:
+        auto_claim = await col.find_one_and_update(
+            {"_id": order.id, "transactionDetails.autoDiscountsCounted": {"$ne": True}},
+            {"$set": {"transactionDetails.autoDiscountsCounted": True, "updatedAt": now}},
+        )
+        if auto_claim is not None:
+            await Coupon.get_pymongo_collection().update_many(
+                {"_id": {"$in": auto_ids}}, {"$inc": {"usedCount": 1}}
+            )
+            changed = True
+
     if changed:
         refreshed = await Order.get(order.id)
         if refreshed:

@@ -16,8 +16,9 @@ function CopyGlyph({ className }) {
 }
 
 /**
- * "Active offers" on the product page: coupons the admin marked "Show on product
- * page" that apply to this product. Renders nothing when there are none.
+ * "Active offers" on the product page: featured codes (tap to copy) and featured
+ * automatic discounts (applied at checkout, nothing to copy) that apply to this
+ * product. Renders nothing when there are none.
  */
 export default function ProductOffers({ productId }) {
   const [offers, setOffers] = useState([]);
@@ -64,10 +65,10 @@ export default function ProductOffers({ productId }) {
       <div className="flex snap-x gap-2.5 overflow-x-auto pt-2.5 pb-1 [scrollbar-width:none]">
         {offers.map((offer) => {
           const lines = offerLines(offer);
-          const isCopied = copied === offer.code;
+          const isCopied = !offer.automatic && copied === offer.code;
           return (
             <div
-              key={offer.code}
+              key={offer.code || offer.id}
               className="relative flex w-[9.5rem] shrink-0 snap-start flex-col items-center rounded-lg border border-emerald-600/40 bg-gradient-to-b from-emerald-50 to-emerald-100/70 px-3 pt-4 pb-3 text-center"
             >
               {offer.badge ? (
@@ -75,9 +76,14 @@ export default function ProductOffers({ productId }) {
                   {offer.badge}
                 </span>
               ) : null}
-              <p className="text-[14px] leading-snug font-semibold text-black">{lines.title}</p>
+              <p className="line-clamp-2 text-[14px] leading-snug font-semibold text-black">
+                {offer.automatic && offer.title ? offer.title : lines.title}
+              </p>
               <span aria-hidden className="my-2 h-px w-full bg-emerald-600/20" />
               <p className="text-[13px] font-semibold text-emerald-700">{lines.subtitle}</p>
+              {offer.automatic ? (
+                <p className="mt-auto pt-2.5 text-[12px] font-bold text-black">{lines.footer}</p>
+              ) : (
               <button
                 type="button"
                 onClick={() => copy(offer.code)}
@@ -94,6 +100,7 @@ export default function ProductOffers({ productId }) {
                   </>
                 )}
               </button>
+              )}
             </div>
           );
         })}

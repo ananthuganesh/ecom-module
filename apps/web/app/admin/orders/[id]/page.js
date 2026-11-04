@@ -19,7 +19,7 @@ import { printHtml } from "@/utils/printHtml";
 import { printPdfBlob } from "@/utils/printPdfBlob";
 import { buildInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
 import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
-import { orderCouponCode, orderDiscountAmount } from "@/lib/orderDiscount";
+import { orderCouponCode, orderDiscountAmount, orderDiscountNames } from "@/lib/orderDiscount";
 import { displayCustomerName } from "@/utils/displayCustomerName";
 import { formatOrderNumber, adminOrderHref, orderUrlKey } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
@@ -1463,13 +1463,22 @@ export default function AdminOrderDetailPage() {
             <div className="space-y-3">
                {orderDiscountAmount(order) > 0 && (
                   <div className="flex items-center justify-between gap-3 text-[0.8125rem] font-[450]">
-                    <span className="flex min-w-0 items-center gap-2 text-foreground">
-                      {orderCouponCode(order) ? "Coupon" : "Offer Applied"}
-                      {orderCouponCode(order) ? (
-                        <span className="truncate rounded-[0.375rem] bg-black/[0.06] px-1.5 py-0.5 font-mono text-[0.75rem] font-[550] text-[#616161]">
-                          {orderCouponCode(order)}
+                    <span className="flex min-w-0 flex-wrap items-center gap-2 text-foreground">
+                      {orderDiscountNames(order).length > 1 || !orderCouponCode(order)
+                        ? orderDiscountNames(order).length
+                          ? "Discounts"
+                          : "Offer Applied"
+                        : "Coupon"}
+                      {orderDiscountNames(order).map((name) => (
+                        <span
+                          key={name}
+                          className={`truncate rounded-[0.375rem] bg-black/[0.06] px-1.5 py-0.5 text-[0.75rem] font-[550] text-[#616161] ${
+                            name === orderCouponCode(order) ? "font-mono" : ""
+                          }`}
+                        >
+                          {name}
                         </span>
-                      ) : null}
+                      ))}
                     </span>
                     <span className="shrink-0 text-muted-foreground">{formatINR(-orderDiscountAmount(order), { signed: true })}</span>
                   </div>

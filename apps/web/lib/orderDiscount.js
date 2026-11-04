@@ -22,10 +22,31 @@ export function orderDiscountAmount(order) {
   return money(Math.max(0, Number(order?.discountAmount || order?.discount || 0)));
 }
 
-/** Label for a bill's discount row: "Coupon (SAVE80)" or plain "Discount". */
-export function discountLabel(order, fallback = "Discount") {
+/**
+ * Names of the item discounts on an order — codes and automatic discount
+ * titles — e.g. ["Diwali 10", "SAVE80"]. Falls back to the coupon code.
+ */
+export function orderDiscountNames(order) {
+  const details =
+    order?.transactionDetails && typeof order.transactionDetails === "object"
+      ? order.transactionDetails
+      : {};
+  const rows = Array.isArray(details.discounts) ? details.discounts : [];
+  const names = rows
+    .filter((d) => d && Number(d.amount) > 0)
+    .map((d) => String(d.code || d.title || "").trim())
+    .filter(Boolean);
+  if (names.length) return [...new Set(names)];
   const code = orderCouponCode(order);
-  return code ? `Coupon (${code})` : fallback;
+  return code ? [code] : [];
+}
+
+/** Label for a bill's discount row: "Coupon (SAVE80)", "Discount (Diwali 10, SAVE80)" or "Discount". */
+export function discountLabel(order, fallback = "Discount") {
+  const names = orderDiscountNames(order);
+  const code = orderCouponCode(order);
+  if (names.length === 1 && names[0] === code) return `Coupon (${code})`;
+  return names.length ? `${fallback} (${names.join(", ")})` : fallback;
 }
 
 /**

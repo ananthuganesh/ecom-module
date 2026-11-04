@@ -2044,10 +2044,16 @@ _COUPON_UPDATE_FIELDS = frozenset({
     "getValueType",
     "getAmountOff",
     "maxUsesPerOrder",
+    "method",
+    "combinesWithProduct",
+    "combinesWithOrder",
+    "combinesWithShipping",
+    "maxShippingRate",
 })
 
 _COUPON_CHOICES = {
-    "kind": {"order", "products", "bxgy"},
+    "kind": {"order", "products", "bxgy", "shipping"},
+    "method": {"code", "automatic"},
     "discountType": {"percentage", "fixed"},
     "appliesTo": {"products", "collections"},
     "minRequirement": {"none", "amount", "quantity"},
@@ -2075,8 +2081,16 @@ def _coupon_payload(body: dict | None) -> dict:
     return payload
 
 
+def _automatic_code() -> str:
+    import secrets
+
+    return "AUTO-" + secrets.token_hex(5).upper()
+
+
 def _check_coupon(coupon: Coupon) -> None:
     """Rules on the whole coupon (after defaults / merge), not just the sent fields."""
+    if (coupon.method or "code") == "automatic" and not (coupon.name or "").strip():
+        raise HTTPException(status_code=400, detail="Enter a title for the automatic discount")
     if coupon.discountType == "percentage" and float(coupon.discountValue or 0) > 100:
         raise HTTPException(status_code=400, detail="Percentage must be 1–100")
     if coupon.getValueType == "percentage" and float(coupon.getDiscountPercent or 0) > 100:
@@ -2121,6 +2135,10 @@ async def coupon_customer_search(
 
 @router.post("/coupons", status_code=201)
 async def create_coupon(body: dict, _: AdminUser):
+    body = dict(body or {})
+    if body.get("method") == "automatic" and not str(body.get("code") or "").strip():
+        # Shoppers never type an automatic discount; it still needs a unique id.
+        body["code"] = _automatic_code()
     payload = _coupon_payload(body)
     if not payload.get("code"):
         raise HTTPException(status_code=400, detail="Enter a discount code")
@@ -2141,6 +2159,9 @@ async def update_coupon(item_id: str, body: dict, _: AdminUser):
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     # Never accept usedCount or unknown keys (discount abuse / mass assignment).
+    body = dict(body or {})
+    if body.get("method") == "automatic" and not str(body.get("code") or "").strip():
+        body["code"] = doc.code if str(doc.code).startswith("AUTO-") else _automatic_code()
     payload = _coupon_payload(body)
     if payload.get("code") and payload["code"] != doc.code:
         if await Coupon.find_one(Coupon.code == payload["code"]):

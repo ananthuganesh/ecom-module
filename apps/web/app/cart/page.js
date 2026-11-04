@@ -9,6 +9,7 @@ import { useCartStore } from "@/store/useCartStore";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { isCartLineUnavailable, sortCartByAvailability } from "@/utils/cartStock";
 import productService from "@/api/services/user/productService";
+import { useCartDiscounts } from "@/components/storefront/useCartDiscounts";
 
 const formatPrice = (price) => `₹${Number(price || 0).toLocaleString("en-IN")}`;
 
@@ -59,13 +60,16 @@ export default function CartPage() {
     (total, item) => total + (Number(item.price) || 0) * (item.qty || 1),
     0
   );
-  const totalSavings = availableItems.reduce((acc, item) => {
+  const { discounts: autoDiscounts, goods: autoDiscount } = useCartDiscounts(availableItems);
+  const cartPayable = Math.max(0, cartTotal - autoDiscount);
+  const itemSavings = availableItems.reduce((acc, item) => {
     const price = Number(item.price) || 0;
     const mrp = Number(item.mrp ?? item.pricing?.mrp ?? 0);
     const qty = item.qty || 1;
     if (mrp > price) return acc + (mrp - price) * qty;
     return acc;
   }, 0);
+  const totalSavings = itemSavings + autoDiscount;
 
   return (
     <div className="mx-auto min-h-[60vh] w-full max-w-6xl bg-white px-4 py-8 md:px-4 md:py-12 lg:px-8">
@@ -209,6 +213,12 @@ export default function CartPage() {
                 <span>Subtotal</span>
                 <span>{formatPrice(cartTotal)}</span>
               </div>
+              {autoDiscounts.map((d) => (
+                <div key={d.id} className="flex justify-between text-emerald-700">
+                  <span className="truncate pr-3">{d.title || "Discount"}</span>
+                  <span className="shrink-0">−{formatPrice(d.amount)}</span>
+                </div>
+              ))}
               <div className="flex justify-between text-gray-600">
                 <span>Shipping</span>
                 <span>FREE</span>
@@ -218,7 +228,7 @@ export default function CartPage() {
                   Total
                 </span>
                 <span className="text-[16px] font-semibold text-gray-900">
-                  {formatPrice(cartTotal)}
+                  {formatPrice(cartPayable)}
                 </span>
               </div>
               {totalSavings > 0 ? (

@@ -455,6 +455,26 @@ class Coupon(Document):
     getValueType: str = "percentage"  # percentage | amount | free
     getAmountOff: float = 0
     maxUsesPerOrder: Optional[int] = None
+    # ── Automatic discounts, combinations, free shipping ──
+    # code: shopper types `code` | automatic: applies by itself; `name` is the title
+    # shoppers see, `code` is an internal unique id ("AUTO-…").
+    method: str = "code"
+    # Which other discount classes this one may stack with (both sides must allow it).
+    combinesWithProduct: bool = False
+    combinesWithOrder: bool = False
+    combinesWithShipping: bool = False
+    # Free shipping (kind "shipping"): skip delivery fees above this amount; None = any fee.
+    maxShippingRate: Optional[float] = None
+
+    @field_validator("maxShippingRate", mode="before")
+    @classmethod
+    def blank_rate_is_none(cls, value: Any) -> float | None:
+        if value in ("", None):
+            return None
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return None
 
     @field_validator("usageLimit", "maxUsesPerOrder", mode="before")
     @classmethod

@@ -16,6 +16,7 @@ import {
   CirclePlus,
   Search,
   Tag,
+  Truck,
   X,
 } from "lucide-react";
 import {
@@ -27,6 +28,8 @@ import { userErrorMessage } from "@/lib/userMessage";
 import {
   KIND_CLASS,
   KIND_TITLES,
+  combinationLine,
+  combinationOptions,
   couponStatus,
   couponSummary,
   detailLines,
@@ -50,6 +53,7 @@ const KINDS = [
   { id: "products", title: KIND_TITLES.products, description: "Discount specific products or collections of products", icon: Package },
   { id: "bxgy", title: KIND_TITLES.bxgy, description: "Discount products based on a customer's purchase", icon: Gift },
   { id: "order", title: KIND_TITLES.order, description: "Discount the total order amount", icon: ShoppingBag },
+  { id: "shipping", title: KIND_TITLES.shipping, description: "Offer free shipping on an order", icon: Truck },
 ];
 
 // ─────────────────────────────────────────────────────────── small controls
@@ -458,7 +462,11 @@ function createDiscountColumns({ onEdit, onDelete }) {
         const c = row.original;
         return (
           <div className="min-w-0">
-            <span className="block truncate font-mono text-[13px] font-medium text-foreground">{c.code}</span>
+            {(c.method || "code") === "automatic" ? (
+              <span className="block truncate text-[13px] font-medium text-foreground">{c.name || "Automatic discount"}</span>
+            ) : (
+              <span className="block truncate font-mono text-[13px] font-medium text-foreground">{c.code}</span>
+            )}
             <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{couponSummary(c)}</span>
           </div>
         );
@@ -469,8 +477,13 @@ function createDiscountColumns({ onEdit, onDelete }) {
       accessorFn: (row) => KIND_TITLES[row.kind || "order"],
       header: "Type",
       cell: ({ row }) => (
-        <span className="block truncate text-[13px] text-muted-foreground">
-          {KIND_TITLES[row.original.kind || "order"]}
+        <span className="block min-w-0">
+          <span className="block truncate text-[13px] text-muted-foreground">
+            {KIND_TITLES[row.original.kind || "order"]}
+          </span>
+          <span className="block truncate text-[12px] text-muted-foreground/80">
+            {(row.original.method || "code") === "automatic" ? "Automatic" : "Code"}
+          </span>
         </span>
       ),
     },
@@ -744,18 +757,21 @@ export default function AdminDiscountsPage() {
   const f = form;
   const isBxgy = f.kind === "bxgy";
   const isProducts = f.kind === "products";
+  const isShipping = f.kind === "shipping";
+  const isAutomatic = f.method === "automatic";
   const targetOptions = [
     { value: "collections", label: "Specific collections" },
     { value: "products", label: "Specific products" },
   ];
   const pickerItems = (target) => (target === "collections" ? collections : products);
   const details = detailLines(f);
-  const KindIcon = f.kind === "order" ? ShoppingBag : Tag;
+  const KindIcon = f.kind === "order" ? ShoppingBag : f.kind === "shipping" ? Truck : Tag;
+  const heading = isAutomatic ? f.name : String(f.code || "").startsWith("AUTO-") ? "" : f.code;
 
   return (
     <AdminListLayout
       fill={false}
-      title={editingId ? f.code || "Edit discount" : "Create discount"}
+      title={editingId ? heading || "Edit discount" : "Create discount"}
       actions={
         <AdminHeaderButton
           onClick={() => {
@@ -780,41 +796,103 @@ export default function AdminDiscountsPage() {
           {/* Method + code */}
           <Section title={KIND_TITLES[f.kind]}>
             <span className={labelCls}>Method</span>
-            <div className="mb-3 inline-flex rounded-lg bg-[#e3e3e3] p-0.5">
-              <span className="rounded-md bg-white px-3 py-1 text-[0.75rem] font-[550] text-[#303030] shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                Discount code
-              </span>
-              <span
-                title="Automatic discounts are coming next"
-                className="cursor-not-allowed px-3 py-1 text-[0.75rem] font-[550] text-[#8a8a8a]"
-              >
-                Automatic discount
-              </span>
+            <div role="radiogroup" aria-label="Method" className="mb-3 inline-flex rounded-lg bg-[#e3e3e3] p-0.5">
+              {[
+                { value: "code", label: "Discount code" },
+                { value: "automatic", label: "Automatic discount" },
+              ].map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={f.method === m.value}
+                  onClick={() =>
+                    set(
+                      // New automatic discounts are featured on product pages by default.
+                      !editingId && m.value === "automatic" && f.method !== "automatic"
+                        ? { method: m.value, showOnProduct: true }
+                        : { method: m.value }
+                    )
+                  }
+                  className={`rounded-md px-3 py-1 text-[0.75rem] font-[550] transition-colors ${
+                    f.method === m.value
+                      ? "bg-white text-[#303030] shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+                      : "text-[#616161] hover:text-[#303030]"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
-            <div className="flex items-center justify-between">
-              <label htmlFor="discount-code" className={labelCls}>
-                Discount code
-              </label>
-              <button
-                type="button"
-                onClick={() => set({ code: randomCode() })}
-                className="mb-1 text-[0.8125rem] text-[#005bd3] hover:underline"
-              >
-                Generate random code
-              </button>
-            </div>
-            <input
-              id="discount-code"
-              className={`${fieldCls} font-mono uppercase`}
-              value={f.code}
-              maxLength={40}
-              onChange={(e) => set({ code: e.target.value.toUpperCase().replace(/\s+/g, "") })}
-            />
-            <p className={helpCls}>Customers must enter this code at checkout.</p>
+            {isAutomatic ? (
+              <>
+                <label htmlFor="discount-title" className={labelCls}>
+                  Title
+                </label>
+                <input
+                  id="discount-title"
+                  className={fieldCls}
+                  value={f.name}
+                  maxLength={60}
+                  onChange={(e) => set({ name: e.target.value })}
+                />
+                <p className={helpCls}>Customers will see this in their cart and at checkout.</p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="discount-code" className={labelCls}>
+                    Discount code
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => set({ code: randomCode() })}
+                    className="mb-1 text-[0.8125rem] text-[#005bd3] hover:underline"
+                  >
+                    Generate random code
+                  </button>
+                </div>
+                <input
+                  id="discount-code"
+                  className={`${fieldCls} font-mono uppercase`}
+                  value={String(f.code || "").startsWith("AUTO-") ? "" : f.code}
+                  maxLength={40}
+                  onChange={(e) => set({ code: e.target.value.toUpperCase().replace(/\s+/g, "") })}
+                />
+                <p className={helpCls}>Customers must enter this code at checkout.</p>
+              </>
+            )}
           </Section>
 
           {/* Discount value */}
-          {!isBxgy ? (
+          {isShipping ? (
+            <>
+              <Section title="Countries">
+                <Radio checked onChange={() => {}}>
+                  India
+                </Radio>
+                <p className={helpCls}>The store ships within India only.</p>
+              </Section>
+              <Section title="Shipping rates">
+                <Check
+                  checked={!!f.limitShippingRate}
+                  onChange={(v) => set({ limitShippingRate: v })}
+                >
+                  Exclude shipping rates over a certain amount
+                </Check>
+                {f.limitShippingRate ? (
+                  <NumberField
+                    label="Highest shipping rate covered"
+                    className="ml-6 w-40"
+                    prefix="₹"
+                    step="0.01"
+                    value={f.maxShippingRate}
+                    onChange={(v) => set({ maxShippingRate: v })}
+                  />
+                ) : null}
+              </Section>
+            </>
+          ) : !isBxgy ? (
             <Section title="Discount value">
               <div className="flex gap-2">
                 <SelectBox
@@ -1033,7 +1111,8 @@ export default function AdminDiscountsPage() {
             </Section>
           ) : null}
 
-          {/* Maximum discount uses */}
+          {/* Maximum discount uses (Shopify has none for automatic discounts) */}
+          {!isAutomatic ? (
           <Section title="Maximum discount uses">
             <Check checked={!!f.limitTotal} onChange={(v) => set({ limitTotal: v })}>
               Limit number of times this discount can be used in total
@@ -1050,11 +1129,20 @@ export default function AdminDiscountsPage() {
               Limit to one use per customer
             </Check>
           </Section>
+          ) : null}
 
           {/* Combinations */}
           <Section title="Combinations">
-            <p className="text-[0.8125rem] text-[#303030]">
-              This discount won&apos;t combine with other product, order, or shipping discounts in the customer&apos;s cart.
+            <p className="mb-1 text-[0.8125rem] text-[#303030]">{KIND_TITLES[f.kind]} can be combined with:</p>
+            {combinationOptions(f.kind).map((o) => (
+              <Check key={o.key} checked={!!f[o.key]} onChange={(v) => set({ [o.key]: v })}>
+                {o.label}
+              </Check>
+            ))}
+            <p className={helpCls}>
+              {combinationLine(f) === "Can't combine with other discounts"
+                ? "This discount won't combine with other product, order, or shipping discounts in the customer's cart."
+                : "Both discounts must allow the combination. When they can't combine, the customer gets the one that saves more."}
             </p>
           </Section>
 
@@ -1155,9 +1243,15 @@ export default function AdminDiscountsPage() {
         <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
           <div className="rounded-xl bg-white p-4 shadow-[0_1px_0_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.07)]">
             <p className="font-mono text-[0.875rem] font-[650] text-[#303030]">
-              {f.code || <span className="font-sans">No discount code yet</span>}
+              {isAutomatic ? (
+                <span className="font-sans">{f.name || "No title yet"}</span>
+              ) : heading ? (
+                heading
+              ) : (
+                <span className="font-sans">No discount code yet</span>
+              )}
             </p>
-            <p className="text-[0.75rem] text-[#616161]">Code</p>
+            <p className="text-[0.75rem] text-[#616161]">{isAutomatic ? "Automatic discount" : "Code"}</p>
 
             <div className="my-3 border-t border-[#ebebeb]" />
             <p className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Type</p>
@@ -1180,7 +1274,9 @@ export default function AdminDiscountsPage() {
             <Check checked={!!f.showOnProduct} onChange={(v) => set({ showOnProduct: v })}>
               Allow discount to be featured on selected channels
               <span className="block text-[0.75rem] text-[#616161]">
-                Lists the code under &ldquo;Active offers&rdquo; on the product pages it applies to.
+                {isAutomatic
+                  ? "Shows this discount under “Active offers” on the product pages it applies to."
+                  : "Lists the code under “Active offers” on the product pages it applies to."}
               </span>
             </Check>
             {f.showOnProduct ? (

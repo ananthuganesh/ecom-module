@@ -82,6 +82,23 @@ def allocate_order_discount(order) -> list[float]:
     the discount (capped at the item total). Mirrors returns._line_refund.
     """
     lines = list(getattr(order, "items", None) or [])
+    # Orders priced by the discount resolver carry each line's exact share
+    # (a product discount belongs to its own items, not the whole cart).
+    details = getattr(order, "transactionDetails", None) or {}
+    exact = details.get("lineDiscounts") if isinstance(details, dict) else None
+    total = float(getattr(order, "discountAmount", 0) or getattr(order, "discount", 0) or 0)
+    if (
+        isinstance(exact, list)
+        and len(exact) == len(lines)
+        and total > 0
+        and abs(sum(float(x or 0) for x in exact) - total) < 0.011
+    ):
+        shares = [round(max(0.0, float(x or 0)), 2) for x in exact]
+        drift = round(total - sum(shares), 2)
+        if drift and shares:
+            last = max(i for i, v in enumerate(shares) if v > 0) if any(shares) else len(shares) - 1
+            shares[last] = round(shares[last] + drift, 2)
+        return shares
     values = [
         float(getattr(line, "price", 0) or 0) * float(getattr(line, "quantity", 0) or 0)
         for line in lines

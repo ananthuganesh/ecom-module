@@ -1,5 +1,5 @@
 import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
-import { orderCouponCode } from "@/lib/orderDiscount";
+import { orderCouponCode, orderDiscountNames } from "@/lib/orderDiscount";
 
 function esc(value) {
   return String(value ?? "")
@@ -485,7 +485,13 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
   const couponCode = String(invoice?.couponCode || "").trim().toUpperCase() || orderCouponCode(order);
   const taxCalcRows = [];
   if (discount > 0) {
-    const discountKey = couponCode ? `Coupon Discount (${couponCode})` : "Discount";
+    const names = orderDiscountNames(order);
+    const discountKey =
+      couponCode && (!names.length || (names.length === 1 && names[0] === couponCode))
+        ? `Coupon Discount (${couponCode})`
+        : names.length
+          ? `Discount (${names.join(", ")})`
+          : "Discount";
     taxCalcRows.push(
       `<div class="tot-row"><span class="tot-k">${esc(discountKey)}</span><span class="tot-v">${esc(moneyNeg(discount))}</span></div>`
     );
