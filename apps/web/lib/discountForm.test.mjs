@@ -228,3 +228,23 @@ describe("automatic discounts, combinations and free shipping", () => {
     assert.equal(f.combinesWithOrder, true);
   });
 });
+
+describe("maximum discount (cap)", () => {
+  it("reads, shows, checks and saves the cap", () => {
+    const f = formFromCoupon({ code: "SAVE50", kind: "products", discountType: "percentage", discountValue: 50,
+      maxDiscount: 80, productIds: ["p1", "p2"] });
+    assert.equal(f.limitMaxDiscount, true);
+    assert.equal(f.maxDiscount, "80");
+    assert.equal(detailLines(f, NOW)[0], "50% off (up to ₹80) 2 products");
+    assert.equal(payloadFromForm(f).maxDiscount, 80);
+    assert.equal(payloadFromForm({ ...f, limitMaxDiscount: false }).maxDiscount, null);
+    assert.equal(payloadFromForm({ ...f, discountType: "fixed" }).maxDiscount, null);
+    assert.equal(validateForm({ ...f, maxDiscount: "" }), "Enter the maximum discount amount.");
+  });
+
+  it("has no cap by default", () => {
+    const f = formFromCoupon({ code: "X", kind: "order", discountValue: 10 });
+    assert.equal(f.limitMaxDiscount, false);
+    assert.equal(payloadFromForm(f).maxDiscount, null);
+  });
+});

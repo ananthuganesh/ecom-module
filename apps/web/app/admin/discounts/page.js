@@ -915,6 +915,26 @@ export default function AdminDiscountsPage() {
                   suffix={f.discountType === "percentage" ? "%" : null}
                 />
               </div>
+              {f.discountType === "percentage" ? (
+                <div className="mt-3">
+                  <Check checked={!!f.limitMaxDiscount} onChange={(v) => set({ limitMaxDiscount: v })}>
+                    Set a maximum discount amount
+                    <span className="block text-[0.75rem] text-[#616161]">
+                      The discount stops at this amount per order, whatever the cart total.
+                    </span>
+                  </Check>
+                  {f.limitMaxDiscount ? (
+                    <NumberField
+                      label="Maximum discount amount"
+                      className="ml-6 w-40"
+                      prefix="₹"
+                      step="0.01"
+                      value={f.maxDiscount}
+                      onChange={(v) => set({ maxDiscount: v })}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               {isProducts ? (
                 <div className="mt-3 space-y-2">
                   <div>

@@ -78,7 +78,8 @@ export function emptyForm(kind = "order", now = new Date()) {
     maxShippingRate: "",
     discountType: "percentage",
     discountValue: "",
-    maxDiscount: null,
+    limitMaxDiscount: false,
+    maxDiscount: "",
     appliesTo: kind === "products" ? "collections" : "products",
     productIds: [],
     collectionIds: [],
@@ -145,7 +146,8 @@ export function formFromCoupon(c) {
     maxShippingRate: c.maxShippingRate != null ? str(c.maxShippingRate) : "",
     discountType: c.discountType || "percentage",
     discountValue: str(c.discountValue),
-    maxDiscount: c.maxDiscount ?? null,
+    limitMaxDiscount: c.maxDiscount != null && Number(c.maxDiscount) > 0,
+    maxDiscount: c.maxDiscount != null && Number(c.maxDiscount) > 0 ? str(c.maxDiscount) : "",
     appliesTo: c.appliesTo || "products",
     productIds: c.productIds || [],
     collectionIds: c.collectionIds || [],
@@ -231,6 +233,9 @@ export function validateForm(f) {
   } else {
     if (!positive(f.discountValue)) return "Enter a discount value.";
     if (f.discountType === "percentage" && num(f.discountValue) > 100) return "Percentage must be 1–100.";
+    if (f.discountType === "percentage" && f.limitMaxDiscount && !positive(f.maxDiscount)) {
+      return "Enter the maximum discount amount.";
+    }
     if (f.kind === "products") {
       if (f.appliesTo === "collections" ? !f.collectionIds.length : !f.productIds.length) {
         return `Select at least one ${f.appliesTo === "collections" ? "collection" : "product"}.`;
@@ -275,7 +280,10 @@ export function payloadFromForm(f) {
     maxShippingRate: shipping && f.limitShippingRate ? num(f.maxShippingRate) : null,
     discountType: bxgy || shipping ? "percentage" : f.discountType,
     discountValue: bxgy || shipping ? 0 : num(f.discountValue),
-    maxDiscount: !bxgy && !shipping && f.discountType === "percentage" ? (f.maxDiscount ?? null) : null,
+    maxDiscount:
+      !bxgy && !shipping && f.discountType === "percentage" && f.limitMaxDiscount && positive(f.maxDiscount)
+        ? num(f.maxDiscount)
+        : null,
     appliesTo: products ? f.appliesTo : "products",
     productIds: products && f.appliesTo === "products" ? f.productIds : [],
     collectionIds: products && f.appliesTo === "collections" ? f.collectionIds : [],
@@ -347,7 +355,11 @@ function valueLine(f) {
     return buy ? `${buy}, get ${plural(num(f.getQuantity), "item")} ${off}` : "";
   }
   if (!positive(f.discountValue)) return "";
-  const amount = f.discountType === "percentage" ? `${num(f.discountValue)}% off` : `${formatRupees(f.discountValue)} off`;
+  const capped = f.discountType === "percentage" && f.limitMaxDiscount && positive(f.maxDiscount);
+  const amount =
+    f.discountType === "percentage"
+      ? `${num(f.discountValue)}% off${capped ? ` (up to ${formatRupees(f.maxDiscount)})` : ""}`
+      : `${formatRupees(f.discountValue)} off`;
   if (f.kind === "order") return `${amount} entire order`;
   const ids = f.appliesTo === "collections" ? f.collectionIds : f.productIds;
   const each = f.discountType === "fixed" && !f.oncePerOrder ? " each item in" : "";
