@@ -375,6 +375,9 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
     api_key = str(cfg["apiKey"])
     candidates = service_type_candidates()
     last_error = ""
+    # Every service type's rejection — the first (preferred) one is usually the
+    # real reason, and it used to be overwritten by the fallback's message.
+    attempts: list[dict[str, str]] = []
     data: dict[str, Any] = {}
     payload = base_payload
 
@@ -391,6 +394,7 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 data = resp.json() if resp.content else {}
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)[:500]
+                attempts.append({"serviceType": service_type, "error": last_error})
                 print(f"[DTDC] {service_type} request failed: {last_error}")
                 continue
 
@@ -431,6 +435,7 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                     or (resp.text if resp.status_code >= 400 else None)
                     or "DTDC create failed"
                 )[:500]
+                attempts.append({"serviceType": service_type, "error": last_error})
                 print(f"[DTDC] {service_type} failed: {last_error}")
                 continue
 
@@ -464,6 +469,7 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                     "createdAt": datetime.utcnow().isoformat(),
                 },
                 "dtdcError": None,
+                "dtdcAttempts": None,
                 "dtdcServiceType": service_type,
             }
             from app.services.dtdc_est_cost import apply_dtdc_est_cost
@@ -487,17 +493,26 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 print(f"[Notify] orderShipped: {exc}")
             return {**(data if isinstance(data, dict) else {}), "service_type_id": service_type}
 
+    failure = _attempts_summary(attempts) or "No applicable DTDC service types for this pincode pair"
     order.shippingStatus = "Shipping Sync Failed"
     order.transactionDetails = {
         **(order.transactionDetails or {}),
-        "dtdcError": last_error or "No applicable DTDC service types for this pincode pair",
+        "dtdcError": failure,
+        "dtdcAttempts": attempts,
         "dtdcTriedServices": candidates,
     }
     await order.save()
-    raise HTTPException(
-        status_code=502,
-        detail=last_error or "No applicable DTDC service types for this pincode pair",
-    )
+    raise HTTPException(status_code=502, detail=failure)
+
+
+def _attempts_summary(attempts: list[dict[str, str]]) -> str:
+    """One message naming each service type's reason; collapsed when they agree."""
+    errors = [a.get("error") or "" for a in attempts if a.get("error")]
+    if not errors:
+        return ""
+    if len(set(errors)) == 1:
+        return errors[0]
+    return "; ".join(f"{a['serviceType']}: {a['error']}" for a in attempts if a.get("error"))[:900]
 
 
 async def track_consignment(order: Order) -> dict:
