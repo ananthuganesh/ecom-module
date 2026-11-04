@@ -1341,6 +1341,9 @@ async def admin_orders(
         if status:
             query["status"] = status
         if scope == "shipment":
+            # Unpaid checkouts start as "Payment Pending" but are abandoned carts,
+            # not shipments — same rule as the main Orders list.
+            query.update(_exclude_incomplete_checkout_clause())
             if shippingStatus:
                 query["shippingStatus"] = {
                     "$regex": f"^{re.escape(shippingStatus.strip())}$",

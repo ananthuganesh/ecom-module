@@ -24,14 +24,14 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.deps import OptionalUser
-from app.documents import Order, PaymentTransaction
+from app.documents import Order, PaymentTransaction, Product
 from app.services import magic_checkout
 from app.services.rate_limit import rate_limit_dependency
 
@@ -97,6 +97,94 @@ def _owns_pending(order: Order, user, guest_id: str) -> bool:
     return bool(guest_id) and str(details.get("guestId") or "") == guest_id
 
 
+CartKey = tuple[tuple[str, str, str, int, float], ...]
+
+
+def _order_cart_key(order: Order) -> CartKey:
+    return tuple(
+        sorted(
+            (
+                str(line.productId),
+                line.size or "",
+                line.color or "",
+                int(line.quantity or 0),
+                round(float(line.price or 0), 2),
+            )
+            for line in order.items or []
+        )
+    )
+
+
+async def _requested_cart_key(order_items: list) -> CartKey | None:
+    """The cart as place_pending_order would store it (axes and current price).
+
+    No stock check: a pending order for this same cart already holds that stock.
+    None when any line is unusable — then a fresh order reports the real error.
+    """
+    from app.services.variants import product_variant_axes
+
+    lines = []
+    for oi in order_items or []:
+        if not isinstance(oi, dict):
+            return None
+        pid = str(oi.get("product") or "")
+        if not ObjectId.is_valid(pid):
+            return None
+        product = await Product.get(ObjectId(pid))
+        if not product or not product.pricing:
+            return None
+        try:
+            qty = int(oi.get("qty") or 1)
+        except (TypeError, ValueError):
+            return None
+        axes = product_variant_axes(product)
+        lines.append(
+            (
+                str(product.id),
+                (oi.get("size") or "") if axes.get("size") else "",
+                (oi.get("color") or "") if axes.get("color") else "",
+                qty,
+                round(float(product.pricing.sellingPrice or 0), 2),
+            )
+        )
+    return tuple(sorted(lines)) if lines else None
+
+
+async def _recent_pending_order(user, guest_id: str, cart: CartKey) -> Order | None:
+    """This shopper's newest unpaid Magic order for the same cart, if still fresh.
+
+    Covers a reload or a second "Buy now", where the page lost localOrderId and
+    would otherwise open a duplicate pending order for the same cart.
+    """
+    from app.services.order_abandon import abandoned_order_minutes
+
+    if user is not None:
+        owner: dict = {"customerId": user.id}
+    elif guest_id:
+        owner = {"customerId": None, "transactionDetails.guestId": guest_id}
+    else:
+        return None
+    since = datetime.utcnow() - timedelta(minutes=abandoned_order_minutes())
+    recent = (
+        await Order.find(
+            {
+                **owner,
+                "status": "order placed",
+                "paymentStatus": "pending",
+                "transactionDetails.checkout": magic_checkout.CHECKOUT_KEY,
+                "createdAt": {"$gte": since},
+            }
+        )
+        .sort([("createdAt", -1)])
+        .limit(5)
+        .to_list()
+    )
+    for order in recent:
+        if _owns_pending(order, user, guest_id) and _order_cart_key(order) == cart:
+            return order
+    return None
+
+
 @router.post("/start")
 async def start(
     body: dict,
@@ -106,8 +194,10 @@ async def start(
 ):
     """Create the order and its Razorpay order in one go, signed in or not.
 
-    A retry from the same browser (same guestId, or same account) reuses the
-    pending order, so reopening the popup doesn't hold the stock twice.
+    A retry from the same browser (same guestId, or same account) with the same
+    cart reuses the pending order — named by localOrderId, or found by owner when
+    the page lost it — so reopening the popup doesn't hold the stock twice or
+    leave duplicate unpaid orders. A changed cart or price gets a fresh order.
     """
     from app.routers.orders import place_pending_order
     from app.routers.payments import open_razorpay_order
@@ -117,12 +207,15 @@ async def start(
     raw_guest = body.get("guestId")
     guest_id = raw_guest.strip()[:100] if isinstance(raw_guest, str) else ""
 
+    cart = await _requested_cart_key(body.get("orderItems") or [])
     order = None
     previous = str(body.get("localOrderId") or "")
-    if ObjectId.is_valid(previous):
+    if cart and ObjectId.is_valid(previous):
         candidate = await Order.get(ObjectId(previous))
-        if candidate and _owns_pending(candidate, user, guest_id):
+        if candidate and _owns_pending(candidate, user, guest_id) and _order_cart_key(candidate) == cart:
             order = candidate
+    if order is None and cart:
+        order = await _recent_pending_order(user, guest_id, cart)
     if order is None:
         order = await place_pending_order(
             {

@@ -817,3 +817,51 @@ async def test_abandoned_webhook_keeps_samples_of_unknown_payloads():
     assert res.status_code == 200
     sample = await Setting.find_one(Setting.key == magic_checkout.ABANDONED_SAMPLE_KEY)
     assert sample.value["samples"][0]["body"] == {"something": "unexpected"}
+
+
+@pytest.mark.usefixtures("db")
+async def test_start_reuses_the_pending_order_when_the_page_lost_its_id(start_env):
+    """A reload or second "Buy now" used to open a duplicate unpaid order."""
+    await start_env({"razorpayMagic": True})
+    product = await _product()
+    body = {"orderItems": [{"product": str(product.id), "qty": 1}], "guestId": "guest_reload"}
+
+    first = (await _start(body)).json()["localOrderId"]
+    again = (await _start(body)).json()["localOrderId"]
+
+    assert again == first
+    assert await Order.find({"transactionDetails.guestId": "guest_reload"}).count() == 1
+
+
+@pytest.mark.usefixtures("db")
+async def test_start_opens_a_fresh_order_when_the_cart_or_price_changed(start_env):
+    from app.documents import Product
+
+    await start_env({"razorpayMagic": True})
+    product = await _product()
+    body = {"orderItems": [{"product": str(product.id), "qty": 1}], "guestId": "guest_change"}
+    first = (await _start(body)).json()["localOrderId"]
+
+    bigger = {**body, "orderItems": [{"product": str(product.id), "qty": 2}], "localOrderId": first}
+    second = (await _start(bigger)).json()["localOrderId"]
+    assert second != first
+    assert (await Order.get(second)).items[0].quantity == 2
+
+    fresh = await Product.get(product.id)
+    fresh.pricing.sellingPrice = 899
+    await fresh.save()
+    third = (await _start({**bigger, "localOrderId": second})).json()["localOrderId"]
+    assert third not in (first, second)
+    assert (await Order.get(third)).items[0].price == 899
+
+
+@pytest.mark.usefixtures("db")
+async def test_start_never_reuses_another_shoppers_pending_order(start_env):
+    await start_env({"razorpayMagic": True})
+    product = await _product()
+    items = [{"product": str(product.id), "qty": 1}]
+    mine = (await _start({"orderItems": items, "guestId": "guest_a"})).json()["localOrderId"]
+    theirs = (await _start({"orderItems": items, "guestId": "guest_b"})).json()["localOrderId"]
+    anonymous = (await _start({"orderItems": items})).json()["localOrderId"]
+
+    assert len({mine, theirs, anonymous}) == 3
