@@ -20,4 +20,12 @@ export const adminCouponService = {
     const response = await axiosInstance.delete(`/admin/coupons/${id}`);
     return response.data;
   },
+
+  /** Customers for the "Specific customers" picker: `{ q }` to search, `{ ids }` to resolve. */
+  customers: async ({ q = "", ids = [] } = {}) => {
+    const response = await axiosInstance.get("/admin/coupons/customers", {
+      params: { q: q || undefined, ids: ids.length ? ids.join(",") : undefined },
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  },
 };

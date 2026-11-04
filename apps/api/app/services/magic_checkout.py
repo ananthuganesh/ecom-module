@@ -193,6 +193,17 @@ async def _pending_magic_order(receipt: Any) -> Order | None:
     return order
 
 
+async def _shopper(order: Order, contact: Any = None, email: Any = None):
+    """Who is applying a code: the linked account, plus what Razorpay knows."""
+    from app.documents import User
+    from app.services.discounts import Shopper
+
+    user = None
+    if order.customerId and ObjectId.is_valid(str(order.customerId)):
+        user = await User.get(ObjectId(str(order.customerId)))
+    return Shopper.of(user, phone=contact, email=email or (order.shippingAddress or {}).get("email"))
+
+
 def _order_lines(order: Order) -> list[dict[str, Any]]:
     return [
         {"productId": str(i.productId), "price": float(i.price), "quantity": int(i.quantity)}
@@ -211,10 +222,13 @@ async def get_promotions(body: dict[str, Any]) -> dict[str, Any]:
     order = await _pending_magic_order(body.get("order_id"))
     if not order:
         return {"promotions": []}
+    shopper = await _shopper(order, body.get("contact"), body.get("email"))
     out = []
     for coupon in await discounts.shown_coupons():
         try:
-            await discounts.validate_coupon(coupon.code, items=_order_lines(order), subtotal=float(order.total or 0))
+            await discounts.validate_coupon(
+                coupon.code, items=_order_lines(order), subtotal=float(order.total or 0), shopper=shopper
+            )
         except HTTPException:
             continue
         promo = {"code": coupon.code, "summary": discounts.summary_text(coupon)}
@@ -238,12 +252,18 @@ async def apply_promotion(body: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         return False, _failure("INVALID_PROMOTION", "This code can't be applied to this order.")
     try:
         coupon, discount = await discounts.validate_coupon(
-            code, items=_order_lines(order), subtotal=float(order.total or 0)
+            code,
+            items=_order_lines(order),
+            subtotal=float(order.total or 0),
+            shopper=await _shopper(order, body.get("contact"), body.get("email")),
         )
     except HTTPException as exc:
         # 404 = unknown code; 400 = expired, used up, or cart doesn't qualify.
         detail = str(exc.detail or "This code can't be applied.")
-        unmet = exc.status_code == 400 and ("Minimum" in detail or "eligible" in detail or "Add products" in detail)
+        unmet = exc.status_code == 400 and any(
+            phrase in detail
+            for phrase in ("Minimum", "eligible", "Add products", "qualifying items", "Sign in or add")
+        )
         return False, _failure("REQUIREMENT_NOT_MET" if unmet else "INVALID_PROMOTION", detail)
 
     discount = round(min(float(discount), float(order.total or 0)), 2)
@@ -297,7 +317,9 @@ def shipping_address_from(customer: dict[str, Any], fallback_email: str = "") ->
     }
 
 
-async def _discount_for(order: Order, codes: list[str]) -> tuple[str | None, float]:
+async def _discount_for(
+    order: Order, codes: list[str], contact: Any = None, email: Any = None
+) -> tuple[str | None, float]:
     """The discount we quoted for the code Razorpay says was applied."""
     from app.services import discounts
 
@@ -310,7 +332,11 @@ async def _discount_for(order: Order, codes: list[str]) -> tuple[str | None, flo
         return code, float(quoted.get("discount") or 0)
     try:
         coupon, discount = await discounts.validate_coupon(
-            code, items=_order_lines(order), subtotal=float(order.total or 0)
+            code,
+            items=_order_lines(order),
+            subtotal=float(order.total or 0),
+            shopper=await _shopper(order, contact, email),
+            exclude_order_id=order.id,
         )
     except HTTPException:
         return code, 0.0
@@ -334,7 +360,7 @@ async def prepare_paid_order(order: Order, rz_order: dict[str, Any], paid_paise:
         for p in rz_order.get("promotions") or []
         if isinstance(p, dict) and p.get("code")
     ]
-    code, discount = await _discount_for(order, codes)
+    code, discount = await _discount_for(order, codes, address["phone"], address["email"])
     subtotal = float(order.total or 0)
     gift_fee = float(order.giftFee or 0)
     expected = paise(max(0.0, subtotal + fee + gift_fee - discount))

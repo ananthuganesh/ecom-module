@@ -324,6 +324,11 @@ async def place_pending_order(body: dict, user: User | None, request: Request) -
             str(coupon_code),
             items=cart_lines,
             subtotal=subtotal,
+            shopper=discount_svc.Shopper.of(
+                user,
+                phone=shipping_address.get("phone"),
+                email=shipping_address.get("email"),
+            ),
         )
         if not await discount_svc.reserve_coupon_usage(coupon.code):
             raise HTTPException(status_code=400, detail="Discount usage limit reached")

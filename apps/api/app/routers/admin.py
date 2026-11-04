@@ -2024,7 +2024,65 @@ _COUPON_UPDATE_FIELDS = frozenset({
     "getProductIds",
     "showOnProduct",
     "badge",
+    # Shopify-style rules
+    "appliesTo",
+    "collectionIds",
+    "oncePerOrder",
+    "minRequirement",
+    "minQuantity",
+    "eligibility",
+    "customerIds",
+    "oncePerCustomer",
+    "startsAt",
+    "tags",
+    "buyRequirement",
+    "buyAmount",
+    "buyAppliesTo",
+    "buyCollectionIds",
+    "getAppliesTo",
+    "getCollectionIds",
+    "getValueType",
+    "getAmountOff",
+    "maxUsesPerOrder",
 })
+
+_COUPON_CHOICES = {
+    "kind": {"order", "products", "bxgy"},
+    "discountType": {"percentage", "fixed"},
+    "appliesTo": {"products", "collections"},
+    "minRequirement": {"none", "amount", "quantity"},
+    "eligibility": {"all", "customers"},
+    "buyRequirement": {"quantity", "amount"},
+    "buyAppliesTo": {"products", "collections"},
+    "getAppliesTo": {"products", "collections"},
+    "getValueType": {"percentage", "amount", "free"},
+    "status": {"active", "inactive"},
+}
+
+
+def _coupon_payload(body: dict | None) -> dict:
+    """Whitelisted, checked coupon fields. Raises 400 on a rule that can't work."""
+    payload = {k: v for k, v in (body or {}).items() if k in _COUPON_UPDATE_FIELDS}
+    if "code" in payload:
+        payload["code"] = re.sub(r"\s+", "", str(payload["code"] or "")).upper()
+        if not payload["code"]:
+            raise HTTPException(status_code=400, detail="Enter a discount code")
+        if not 2 <= len(payload["code"]) <= 40:
+            raise HTTPException(status_code=400, detail="Codes are 2–40 characters, with no spaces")
+    for field, allowed in _COUPON_CHOICES.items():
+        if field in payload and payload[field] is not None and str(payload[field]) not in allowed:
+            raise HTTPException(status_code=400, detail=f"Invalid {field}")
+    return payload
+
+
+def _check_coupon(coupon: Coupon) -> None:
+    """Rules on the whole coupon (after defaults / merge), not just the sent fields."""
+    if coupon.discountType == "percentage" and float(coupon.discountValue or 0) > 100:
+        raise HTTPException(status_code=400, detail="Percentage must be 1–100")
+    if coupon.getValueType == "percentage" and float(coupon.getDiscountPercent or 0) > 100:
+        raise HTTPException(status_code=400, detail="Percentage must be 1–100")
+    if coupon.startsAt and coupon.expiryDate and coupon.expiryDate <= coupon.startsAt:
+        raise HTTPException(status_code=400, detail="End date must be after the start date")
 
 
 @router.get("/coupons")
@@ -2032,12 +2090,47 @@ async def list_coupons(_: AdminUser):
     return await _crud_list(Coupon, _)
 
 
+@router.get("/coupons/customers")
+async def coupon_customer_search(
+    _: AdminUser,
+    q: str = "",
+    ids: str = "",
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    """Customers for the 'Specific customers' picker: search by name/email/phone, or resolve ids."""
+    from app.services.customers import customer_mongo_filter
+
+    def row(u: User) -> dict:
+        return {"_id": str(u.id), "name": u.name or "", "email": u.email or "", "phone": u.phone or ""}
+
+    wanted = [ObjectId(i) for i in ids.split(",") if ObjectId.is_valid(i.strip())]
+    if wanted:
+        return [row(u) for u in await User.find({"_id": {"$in": wanted}}).to_list()]
+    needle = q.strip()
+    if not needle:
+        return []
+    pattern = {"$regex": re.escape(needle), "$options": "i"}
+    query = {
+        "$and": [
+            customer_mongo_filter(),
+            {"$or": [{"name": pattern}, {"email": pattern}, {"phone": pattern}]},
+        ]
+    }
+    return [row(u) for u in await User.find(query).limit(limit).to_list()]
+
+
 @router.post("/coupons", status_code=201)
 async def create_coupon(body: dict, _: AdminUser):
-    payload = {k: v for k, v in (body or {}).items() if k in _COUPON_UPDATE_FIELDS}
-    if "code" in payload:
-        payload["code"] = str(payload["code"]).upper().strip()
-    doc = Coupon(**payload)
+    payload = _coupon_payload(body)
+    if not payload.get("code"):
+        raise HTTPException(status_code=400, detail="Enter a discount code")
+    if await Coupon.find_one(Coupon.code == payload["code"]):
+        raise HTTPException(status_code=400, detail="A discount with this code already exists")
+    try:
+        doc = Coupon(**payload)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid discount settings") from None
+    _check_coupon(doc)
     await doc.insert()
     return doc_to_dict(doc)
 
@@ -2048,11 +2141,18 @@ async def update_coupon(item_id: str, body: dict, _: AdminUser):
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     # Never accept usedCount or unknown keys (discount abuse / mass assignment).
-    payload = {k: v for k, v in (body or {}).items() if k in _COUPON_UPDATE_FIELDS}
-    if "code" in payload:
-        payload["code"] = str(payload["code"]).upper().strip()
-    for k, v in payload.items():
-        setattr(doc, k, v)
+    payload = _coupon_payload(body)
+    if payload.get("code") and payload["code"] != doc.code:
+        if await Coupon.find_one(Coupon.code == payload["code"]):
+            raise HTTPException(status_code=400, detail="A discount with this code already exists")
+    # Validate the merged document, then save.
+    try:
+        merged = Coupon(**{**doc.model_dump(exclude={"id", "revision_id"}), **payload})
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid discount settings") from None
+    _check_coupon(merged)
+    for k in payload:
+        setattr(doc, k, getattr(merged, k))
     await doc.save()
     return doc_to_dict(doc)
 

@@ -14,6 +14,9 @@ class ValidateBody(BaseModel):
     code: str
     subtotal: float = 0
     items: list[dict] = Field(default_factory=list)
+    # Optional, for specific-customer / once-per-customer codes before sign-in.
+    phone: str | None = None
+    email: str | None = None
 
 
 def _public_coupon(coupon) -> dict:
@@ -101,6 +104,7 @@ async def product_offers(
 @router.post("/validate")
 async def validate(
     body: ValidateBody,
+    user: OptionalUser,
     _: None = Depends(rate_limit_dependency("coupon-validate", limit=40)),
 ):
     lines = await _server_priced_items(body.items)
@@ -111,6 +115,7 @@ async def validate(
         body.code,
         items=lines,
         subtotal=subtotal,
+        shopper=discount_svc.Shopper.of(user, phone=body.phone, email=body.email),
     )
     return {
         "valid": True,

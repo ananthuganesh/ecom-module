@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from beanie import Document, Indexed
@@ -428,7 +428,35 @@ class Coupon(Document):
     showOnProduct: bool = False
     badge: Optional[str] = None
 
-    @field_validator("usageLimit", mode="before")
+    # ── Shopify-style rules. Defaults keep coupons saved before these existed
+    # behaving exactly as they did. ──
+    # Amount off products: target products or collections (Category ids).
+    appliesTo: str = "products"  # products | collections
+    collectionIds: list[str] = Field(default_factory=list)
+    # Fixed amount off products: once per order (legacy) or off each eligible item.
+    oncePerOrder: bool = True
+    # Minimum purchase: none | amount (minOrderAmount) | quantity (minQuantity).
+    minRequirement: Optional[str] = None
+    minQuantity: int = 0
+    # Eligibility: all | customers (customerIds — User ids, matched by phone/email for guests).
+    eligibility: str = "all"
+    customerIds: list[str] = Field(default_factory=list)
+    oncePerCustomer: bool = False
+    # Schedule: active from startsAt (None = immediately) until expiryDate (None = no end).
+    startsAt: Optional[datetime] = None
+    tags: list[str] = Field(default_factory=list)
+    # Buy X get Y
+    buyRequirement: str = "quantity"  # quantity | amount
+    buyAmount: float = 0
+    buyAppliesTo: str = "products"  # products | collections
+    buyCollectionIds: list[str] = Field(default_factory=list)
+    getAppliesTo: str = "products"  # products | collections
+    getCollectionIds: list[str] = Field(default_factory=list)
+    getValueType: str = "percentage"  # percentage | amount | free
+    getAmountOff: float = 0
+    maxUsesPerOrder: Optional[int] = None
+
+    @field_validator("usageLimit", "maxUsesPerOrder", mode="before")
     @classmethod
     def zero_limit_is_unlimited(cls, value: Any) -> int | None:
         # The admin form shows a blank limit as "Unlimited", so 0 means the same.
@@ -437,6 +465,59 @@ class Coupon(Document):
         except (TypeError, ValueError):
             return None
         return limit if limit > 0 else None
+
+    @field_validator(
+        "productIds", "buyProductIds", "getProductIds", "collectionIds",
+        "buyCollectionIds", "getCollectionIds", "customerIds", mode="before",
+    )
+    @classmethod
+    def coerce_id_list(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(str(v) for v in value if v))
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def coerce_tags(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        out: list[str] = []
+        for v in value:
+            tag = " ".join(str(v or "").split())[:40]
+            if tag and tag.lower() not in {t.lower() for t in out}:
+                out.append(tag)
+        return out[:20]
+
+    @field_validator("discountValue", "minOrderAmount", "buyAmount", "getAmountOff", mode="before")
+    @classmethod
+    def coerce_money(cls, value: Any) -> float:
+        try:
+            return max(0.0, float(value or 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @field_validator("minQuantity", mode="before")
+    @classmethod
+    def coerce_min_quantity(cls, value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @field_validator("startsAt", "expiryDate", mode="before")
+    @classmethod
+    def naive_utc_date(cls, value: Any) -> Any:
+        """Store plain UTC (as Mongo returns it) so comparisons with utcnow() work."""
+        if value in ("", None):
+            return None
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            except ValueError:
+                return value  # let pydantic report it
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
 
     class Settings:
         name = "coupons"
