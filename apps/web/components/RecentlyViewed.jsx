@@ -5,7 +5,11 @@ import { useRecentlyViewedStore } from "@/store/useRecentlyViewedStore";
 import ProductCard from "@/components/storefront/ProductCard";
 import { productService } from "@/api";
 
-export default function RecentlyViewed({ excludeId } = {}) {
+/**
+ * `onVisibleChange(visible)` tells the parent whether this section is on the
+ * page (loading counts as visible), so it can drop a competing section.
+ */
+export default function RecentlyViewed({ excludeId, onVisibleChange } = {}) {
   const { recentlyViewed } = useRecentlyViewedStore();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -58,8 +62,12 @@ export default function RecentlyViewed({ excludeId } = {}) {
      
   }, [history.map((item) => item._id).join("|"), excludeId]);
 
-  if (!history.length) return null;
-  if (!loading && products.length === 0) return null;
+  const visible = history.length > 0 && (loading || products.length > 0);
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
+
+  if (!visible) return null;
 
   return (
     <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">

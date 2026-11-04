@@ -79,6 +79,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const addRecentlyViewed = useRecentlyViewedStore((state) => state.addProduct);
   const [product, setProduct] = useState(initialProduct);
   const [similarProducts, setSimilarProducts] = useState([]);
+  // Similar Products is dropped while Recently Viewed is showing, to keep the page short.
+  const [recentlyViewedVisible, setRecentlyViewedVisible] = useState(false);
   const [loading, setLoading] = useState(!initialProduct);
   const [selectedSize, setSelectedSize] = useState("");
   const [showSizeGuide, setShowSizeGuide] = useState(false);
@@ -1163,7 +1165,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
 
       <ProductReviews productId={product._id} />
 
-      {similarProducts.length > 0 ? (
+      {similarProducts.length > 0 && !recentlyViewedVisible ? (
         <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">
           <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
             <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
@@ -1189,7 +1191,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
           </div>
         </section>
       ) : null}
-      <RecentlyViewed excludeId={product._id} />
+      <RecentlyViewed excludeId={product._id} onVisibleChange={setRecentlyViewedVisible} />
 
       {showSizeGuide ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
