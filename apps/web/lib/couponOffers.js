@@ -45,7 +45,10 @@ export function offerLines(offer) {
   const each = !percent && kind === "products" && offer.oncePerOrder === false ? " each" : "";
   return {
     title: kind === "products" ? "On this product" : "On your order",
-    subtitle: `Get ${percent ? `${plain(offer.discountValue)}%` : rupees(offer.discountValue)} off${each}`,
+    // A percentage can be capped (and the minimum isn't shown), so say "Upto".
+    subtitle: percent
+      ? `Get Upto ${plain(offer.discountValue)}% off`
+      : `Get ${rupees(offer.discountValue)} off${each}`,
     footer,
   };
 }

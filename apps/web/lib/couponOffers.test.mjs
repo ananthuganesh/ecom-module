@@ -5,7 +5,7 @@ import { offerLines } from "./couponOffers.js";
 describe("offerLines", () => {
   it("describes a product discount without its cap", () => {
     const lines = offerLines({ kind: "products", discountType: "percentage", discountValue: 50, maxDiscount: 80 });
-    assert.deepEqual([lines.title, lines.subtitle], ["On this product", "Get 50% off"]);
+    assert.deepEqual([lines.title, lines.subtitle], ["On this product", "Get Upto 50% off"]);
   });
 
   it("does not show the minimum order", () => {
@@ -27,7 +27,7 @@ describe("offerLines for automatic and newer offers", () => {
   it("says an automatic discount applies at checkout and never shows a code", () => {
     const lines = offerLines({ automatic: true, code: null, title: "Tee week", kind: "products", discountValue: 20 });
     assert.equal(lines.footer, "Applied at checkout");
-    assert.equal(lines.subtitle, "Get 20% off");
+    assert.equal(lines.subtitle, "Get Upto 20% off");
   });
 
   it("shows the code for a code offer", () => {

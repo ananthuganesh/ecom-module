@@ -69,7 +69,7 @@ export default function ProductOffers({ productId }) {
           return (
             <div
               key={offer.code || offer.id}
-              className="relative flex w-[9.5rem] shrink-0 snap-start flex-col items-center rounded-lg border border-emerald-600/40 bg-gradient-to-b from-emerald-50 to-emerald-100/70 px-3 pt-4 pb-3 text-center"
+              className="relative flex w-[10.5rem] shrink-0 snap-start flex-col items-center rounded-lg border border-emerald-600/40 bg-gradient-to-b from-emerald-50 to-emerald-100/70 px-3 pt-4 pb-3 text-center"
             >
               {offer.badge ? (
                 <span className="absolute -top-2.5 left-1/2 max-w-[90%] -translate-x-1/2 truncate rounded-sm bg-black px-2 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap text-white uppercase">
