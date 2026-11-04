@@ -969,7 +969,7 @@ export default function AdminOrderDetailPage() {
                   More actions
                   <ChevronDown className="size-3.5 opacity-70" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[13.5rem]">
+                <DropdownMenuContent align="end" className="w-max min-w-(--anchor-width)">
                   <DropdownMenuItem
                     className="gap-2 text-[0.8125rem]"
                     disabled={isCancelled}
@@ -1235,7 +1235,10 @@ export default function AdminOrderDetailPage() {
                         setCarrier(value);
                       }}
                     >
-                      <SelectTrigger className="w-32" aria-label="Carrier">
+                      <SelectTrigger
+                        aria-label="Carrier"
+                        className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none transition-colors hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4] data-[popup-open]:bg-[#d4d4d4] dark:bg-[#e3e3e3] dark:hover:bg-[#d4d4d4] [&_svg]:text-[#303030] [&_svg]:opacity-70"
+                      >
                         <SelectValue placeholder="Carrier">
                           {(value) =>
                             carriers.find((c) => c.code === value)?.label ||
@@ -1267,13 +1270,6 @@ export default function AdminOrderDetailPage() {
                       "Mark as fulfilled"
                     )}
                   </Button>
-                  {suggested?.override &&
-                  suggested.carrier === carrier &&
-                  !carrierTouched ? (
-                    <p className="admin-card-muted basis-full">
-                      Auto-selected {suggested.label} — {suggested.reason.toLowerCase()}
-                    </p>
-                  ) : null}
                   {serviceabilityFor(carrier)?.serviceable === false ? (
                     <p className="admin-card-muted basis-full text-destructive">
                       {carriers.find((c) => c.code === carrier)?.label} does not deliver to{" "}
