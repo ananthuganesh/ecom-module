@@ -892,6 +892,10 @@ def _pickup_error(data: Any, fallback: str) -> str:
             err = err.get("message") or json.dumps(err, default=str)
         if err:
             return str(err)[:300]
+        # e.g. {"prepaid": "Client wallet balance is 279.92 which is less than 500.0"}
+        reasons = [str(v) for v in data.values() if isinstance(v, str) and v.strip()]
+        if reasons:
+            return "; ".join(reasons)[:300]
     return (str(data)[:300] if data else "") or fallback
 
 

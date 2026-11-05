@@ -834,3 +834,19 @@ async def test_track_rerequests_a_missed_pickup_and_keeps_the_scan(mock_http):
     assert node["pickup"]["id"] == "55"
     assert node["lastScan"]["remark"] == "Shipment not received from client"
     assert refreshed.shippingStatus == "Ready To Ship"
+
+
+@pytest.mark.usefixtures("db")
+async def test_wallet_refusal_reads_cleanly(mock_http):
+    mock_http(
+        lambda request: httpx.Response(
+            400, json={"prepaid": "Client wallet balance is 279.92 which is less than 500.0"}
+        )
+    )
+    order = await _paid_order(awb="1234567890", carrier="delhivery")
+    with pytest.raises(HTTPException):
+        await delhivery.request_pickup(order)
+    assert (
+        order.transactionDetails["delhivery"]["pickup"]["error"]
+        == "Client wallet balance is 279.92 which is less than 500.0"
+    )
