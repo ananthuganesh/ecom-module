@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
   RefreshCw,
-} from "lucide-react";
+} from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { adminAisensyService } from "@/api";

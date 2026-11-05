@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
 import { displayCustomerName } from "@/utils/displayCustomerName";

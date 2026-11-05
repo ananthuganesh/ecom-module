@@ -16,7 +16,7 @@ import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatAdminDateTime, parseAdminDate } from "@/utils/formatAdminDateTime";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
-import { Download, FileText, Loader2, Printer, Search } from "lucide-react";
+import { Download, FileText, Loader2, Printer, Search } from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { ShoppingBag } from "@/components/admin/LocalIcons";

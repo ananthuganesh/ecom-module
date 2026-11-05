@@ -3,7 +3,7 @@
 import { formatOrderNumber, adminOrderHref } from "@/utils/formatOrderNumber";
 import { adminOrderService } from "@/api";
 import { unwrapPage } from "@/utils/unwrapPage";
-import { Search, Package } from "lucide-react";
+import { Search, Package } from "@/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";

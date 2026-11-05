@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Save } from "lucide-react";
+import { Plus, Save } from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { adminSettingsService } from "@/api";

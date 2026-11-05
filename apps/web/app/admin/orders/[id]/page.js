@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { adminOrderService, adminErpService, adminShippingService, adminCompanyProfileService, adminTaxClassService } from "@/api";
-import { Package, ChevronUp, ChevronDown, Copy, Check, X, Archive, RotateCcw } from "lucide-react";
+import { Package, ChevronUp, ChevronDown, Copy, Check, X, Archive, RotateCcw } from "@/components/icons";
 import { ShoppingBag } from "@/components/admin/LocalIcons";
 import SafeImage from "@/components/SafeImage";
 import {
@@ -1295,7 +1295,7 @@ export default function AdminOrderDetailPage() {
                     >
                       <SelectTrigger
                         aria-label="Carrier"
-                        className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none transition-colors hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4] data-[popup-open]:bg-[#d4d4d4] dark:bg-[#e3e3e3] dark:hover:bg-[#d4d4d4] [&_svg]:text-[#303030] [&_svg]:opacity-70"
+                        className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none transition-colors hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4] data-[popup-open]:bg-[#d4d4d4] [&_svg]:text-[#303030] [&_svg]:opacity-70"
                       >
                         <SelectValue placeholder="Carrier">
                           {(value) =>

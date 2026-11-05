@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { adminStockService } from "@/api";

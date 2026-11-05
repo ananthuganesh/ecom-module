@@ -8,7 +8,7 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { ChevronDown, Loader2, SearchX } from "lucide-react";
+import { ChevronDown, Loader2, SearchX } from "@/components/icons";
 import { FilterIcon } from "@/components/icons/storeIcons";
 import ProductCard from "@/components/storefront/ProductCard";
 import Link from "next/link";

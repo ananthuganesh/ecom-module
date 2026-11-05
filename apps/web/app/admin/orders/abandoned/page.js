@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { abandonedCheckoutService } from "@/api";
-import { Search, Download } from "lucide-react";
+import { Search, Download } from "@/components/icons";
 import { toast } from "sonner";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { formatAdminDateTime } from "@/utils/formatAdminDateTime";

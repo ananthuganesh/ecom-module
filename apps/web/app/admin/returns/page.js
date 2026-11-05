@@ -6,7 +6,7 @@ import { adminReturnsService } from "@/api";
 import { adminOrderHref } from "@/utils/formatOrderNumber";
 import { userErrorMessage } from "@/lib/userMessage";
 import { toast } from "sonner";
-import { Check, IndianRupee, Loader2, PackageCheck, Search, X } from "lucide-react";
+import { Check, IndianRupee, Loader2, PackageCheck, Search, X } from "@/components/icons";
 import { formatINR } from "@/utils/formatINR";
 import { ReturnRequest } from "@/components/admin/LocalIcons";
 import {

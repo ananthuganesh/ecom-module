@@ -16,7 +16,7 @@ import {
   List,
   ListOrdered,
   Underline as UnderlineIcon,
-} from "lucide-react";
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 function looksLikeHtml(value) {

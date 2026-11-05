@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, MapPin } from "lucide-react";
+import { ChevronRight, MapPin } from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { adminCompanyProfileService } from "@/api";

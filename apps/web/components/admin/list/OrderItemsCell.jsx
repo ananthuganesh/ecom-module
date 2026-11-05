@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/components/icons";
 import SafeImage from "@/components/SafeImage";
 import {
   Popover,

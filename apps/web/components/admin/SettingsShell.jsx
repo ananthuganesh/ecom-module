@@ -3,7 +3,7 @@
 import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { X } from "@/components/icons";
 import {
   Avatar,
   AvatarFallback,
@@ -21,8 +21,8 @@ import {
   SettingsPayment,
   SettingsEmailApi,
   SettingsSeoMarketing,
+  SettingsWhatsapp,
   Truck,
-  Sparkles,
 } from "@/components/admin/LocalIcons";
 
 const SETTINGS_RETURN_KEY = "admin-settings-return";
@@ -35,7 +35,7 @@ export const SETTINGS_NAV = [
   { name: "Notifications", href: "/admin/settings/notifications", icon: SettingsBell },
   { name: "Payment", href: "/admin/settings/integrations/payment", icon: SettingsPayment },
   { name: "Email API", href: "/admin/settings/integrations/email", icon: SettingsEmailApi },
-  { name: "Whatsapp API", href: "/admin/settings/integrations/aisensy", icon: Sparkles },
+  { name: "Whatsapp API", href: "/admin/settings/integrations/aisensy", icon: SettingsWhatsapp },
   { name: "Ai Agent", href: "/admin/settings/ai-agent", icon: SettingsAiAgent },
   { name: "Policies", href: "/admin/settings/policies", icon: SettingsPolicies },
 ];

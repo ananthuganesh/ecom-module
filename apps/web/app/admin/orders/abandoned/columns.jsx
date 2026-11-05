@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/icons";
 import { toast } from "sonner";
 import { abandonedCheckoutService } from "@/api";
 import { Checkbox } from "@/components/ui/checkbox";

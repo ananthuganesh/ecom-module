@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Bell, BellOff, Copy, Check, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Bell, BellOff, Copy, Check, Trash2, ChevronUp, ChevronDown } from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { adminUserService } from "@/api";

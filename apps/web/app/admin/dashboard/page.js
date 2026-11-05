@@ -31,7 +31,7 @@ import {
   ShoppingBag,
   UserPlus,
   Wallet,
-} from "lucide-react";
+} from "@/components/icons";
 import { AdminDateRangeButton } from "@/components/admin/list";
 import { useAdminDashboardStore } from "@/store/useAdminDashboardStore";
 

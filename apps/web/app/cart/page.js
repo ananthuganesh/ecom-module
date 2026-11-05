@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag } from "@/components/icons";
 import { DeleteIcon } from "@/components/icons/storeIcons";
 import SafeImage from "@/components/SafeImage";
 import { useCartStore } from "@/store/useCartStore";

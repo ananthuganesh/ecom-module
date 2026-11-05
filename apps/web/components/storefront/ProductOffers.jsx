@@ -1,18 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Copy } from "@/components/icons";
 import { CheckIcon } from "@/components/icons/storeIcons";
 import { couponService } from "@/api";
 import { offerLines } from "@/lib/couponOffers";
 import { rememberCopiedCoupon } from "@/lib/copiedCoupon";
 
 function CopyGlyph({ className }) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden className={className}>
-      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-      <path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5" />
-    </svg>
-  );
+  return <Copy className={className} />;
 }
 
 /**

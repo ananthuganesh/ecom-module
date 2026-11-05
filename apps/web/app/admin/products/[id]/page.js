@@ -30,7 +30,7 @@ import {
   Loader2,
   Plus,
   Printer,
-} from "lucide-react";
+} from "@/components/icons";
 import SafeImage from "@/components/SafeImage";
 import SelectExistingMediaDialog from "@/components/admin/SelectExistingMediaDialog";
 import { AdminHeaderButton, AdminStatusText } from "@/components/admin/list";

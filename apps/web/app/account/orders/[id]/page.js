@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, MapPin } from "lucide-react";
+import { Download, MapPin } from "@/components/icons";
 import {
   ChevronLeftIcon,
   InfoIcon,

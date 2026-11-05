@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { adminReviewsService } from "@/api";
 import { userErrorMessage } from "@/lib/userMessage";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, Search } from "lucide-react";
+import { Eye, EyeOff, Loader2, Search } from "@/components/icons";
 import { Package } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,

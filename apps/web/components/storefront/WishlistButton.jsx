@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Heart } from "lucide-react";
+import { Heart } from "@/components/icons";
 import { useWishlistStore } from "@/store/useWishlistStore";
 
 /**

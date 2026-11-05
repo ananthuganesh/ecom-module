@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight } from "@/components/icons";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 function sparkMaxIndex(data) {
@@ -75,7 +75,7 @@ export default function KpiCard({
   sparkline,
 }) {
   return (
-    <Card className="@container/card bg-linear-to-t from-primary/5 to-card dark:bg-card">
+    <Card className="@container/card">
       <CardHeader className="gap-2">
         <div className="flex items-center gap-2">
           {Icon ? (

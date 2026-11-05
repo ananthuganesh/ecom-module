@@ -18,7 +18,7 @@ import {
   Tag,
   Truck,
   X,
-} from "lucide-react";
+} from "@/components/icons";
 import {
   adminCollectionService,
   adminCouponService,

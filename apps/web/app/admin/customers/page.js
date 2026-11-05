@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminUserService } from "@/api";
-import { Search, Trash2 } from "lucide-react";
+import { Search, Trash2 } from "@/components/icons";
 import { toast } from "sonner";
 import { Users } from "@/components/admin/LocalIcons";
 import {

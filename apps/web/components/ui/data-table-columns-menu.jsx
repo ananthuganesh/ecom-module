@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Archive, ArrowUpDown, Columns3, Eye, EyeOff } from "lucide-react";
+import { Archive, ArrowUpDown, Columns3, Eye, EyeOff } from "@/components/icons";
 import {
   Popover,
   PopoverContent,

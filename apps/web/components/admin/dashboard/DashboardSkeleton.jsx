@@ -15,7 +15,7 @@ import {
   ShoppingBag,
   UserPlus,
   Wallet,
-} from "lucide-react";
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 function Bone({ className, style }) {
@@ -24,7 +24,7 @@ function Bone({ className, style }) {
 
 function KpiCardSkeleton({ title, icon: Icon }) {
   return (
-    <Card className="@container/card bg-linear-to-t from-primary/5 to-card dark:bg-card">
+    <Card className="@container/card">
       <CardHeader className="gap-2">
         <div className="flex items-center gap-2">
           {Icon ? (

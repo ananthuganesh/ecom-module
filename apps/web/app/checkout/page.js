@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Loader2, Lock, Smartphone } from "lucide-react";
+import { ChevronDown, Loader2, Lock, Smartphone } from "@/components/icons";
 import {
   CheckIcon,
   InfoIcon

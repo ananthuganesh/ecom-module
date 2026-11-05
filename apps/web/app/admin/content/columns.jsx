@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, File as FileIcon } from "lucide-react";
+import { Loader2, File as FileIcon } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {

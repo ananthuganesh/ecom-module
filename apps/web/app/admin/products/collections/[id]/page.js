@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, ExternalLink, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, Plus, Search, Trash2, X } from "@/components/icons";
 import { adminCollectionService, adminProductService } from "@/api";
 import { userErrorMessage } from "@/lib/userMessage";
 import { bustStorefrontCatalogCache } from "@/lib/bustStorefrontCatalogCache";

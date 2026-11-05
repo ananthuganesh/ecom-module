@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Clock, MapPin, Smartphone } from "lucide-react";
+import { CalendarDays, Clock, MapPin, Smartphone } from "@/components/icons";
 import {
   CheckBurstIcon,
   ChevronLeftIcon,

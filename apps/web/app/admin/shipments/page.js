@@ -7,7 +7,7 @@ import { printPdfBlob } from "@/utils/printPdfBlob";
 import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
-import { Download, Loader2, Printer, Search } from "lucide-react";
+import { Download, Loader2, Printer, Search } from "@/components/icons";
 import { toast } from "sonner";
 import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { Truck } from "@/components/admin/LocalIcons";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/icons";
 import { CloseIcon } from "@/components/icons/storeIcons";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";

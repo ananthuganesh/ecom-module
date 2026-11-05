@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, MapPin, Plus, Trash2 } from "lucide-react";
+import { Loader2, MapPin, Plus, Trash2 } from "@/components/icons";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import { useAuthStore } from "@/store/useAuthStore";
 import { authService } from "@/api";

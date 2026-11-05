@@ -21,7 +21,7 @@ import SafeImage from "@/components/SafeImage";
 import { resolveImageUrl } from "@/utils/imageResolver";
 import { formatINR } from "@/utils/formatINR";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart } from "lucide-react";
+import { Heart } from "@/components/icons";
 
 const CartDrawer = dynamic(() => import("./CartDrawer"), { ssr: false });
 
