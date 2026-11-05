@@ -1,27 +1,34 @@
 "use client";
 
-import { AlertCircle, Loader2 } from "@/components/icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdminOrderSearch from "@/components/admin/AdminOrderSearch";
+import AdminSaveBar from "@/components/admin/AdminSaveBar";
 import { NavUser } from "@/components/nav-user";
 import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 
-export function SiteHeader() {
+/**
+ * Admin top bar. Pages with the sidebar only use it below md (the sidebar
+ * carries the logo, search and account there); settings pages always use it.
+ */
+export function SiteHeader({ className = "" }) {
   const router = useRouter();
   const userInfo = useAdminAuthStore((s) => s.userInfo);
   const logout = useAdminAuthStore((s) => s.logout);
-  const saveBar = useProductSaveBarStore();
+  const saveBarActive = useProductSaveBarStore((s) => s.active);
 
   const handleLogout = () => {
+    if (useProductSaveBarStore.getState().blockNavigation()) return;
     logout();
     router.push("/admin/login");
   };
 
   return (
-    <header className="relative z-50 flex h-14 w-full shrink-0 items-center gap-2 bg-[#0a0a0a] text-white">
+    <header
+      className={`relative z-50 flex h-14 w-full shrink-0 items-center gap-2 bg-[#0a0a0a] text-white ${className}`}
+    >
       <div className="grid w-full grid-cols-[1fr_minmax(0,40rem)_1fr] items-center gap-3 px-4 lg:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <Link
@@ -38,54 +45,10 @@ export function SiteHeader() {
               className="h-7 w-auto object-contain"
             />
           </Link>
-          <div className="hidden min-w-0 sm:block">
-            <p className="m-0 truncate text-[11px] leading-tight text-white/55">
-              Designed &amp; developed
-            </p>
-            <p className="m-0 truncate text-[11px] leading-tight text-white/55">
-              by{" "}
-              <a
-                href="https://www.bridnetwork.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white/80 underline-offset-2 hover:text-white hover:underline"
-              >
-                Brid Network LLP
-              </a>
-            </p>
-          </div>
         </div>
         <div className="min-w-0">
-          {saveBar.active ? (
-            <div className="flex h-[38px] items-center justify-between gap-3 rounded-lg bg-[#303030] px-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-white" />
-                <p className="m-0 truncate text-[13px] font-medium text-white">
-                  Unsaved
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  disabled={saveBar.saving}
-                  onClick={() => saveBar.onDiscard?.()}
-                  className="h-7 cursor-pointer rounded-lg bg-[#1a1a1a] px-2.5 text-[12px] font-medium text-white hover:bg-[#0a0a0a] disabled:opacity-50"
-                >
-                  Discard
-                </button>
-                <button
-                  type="button"
-                  disabled={saveBar.saving}
-                  onClick={() => saveBar.onSave?.()}
-                  className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 text-[12px] font-medium text-[#303030] hover:bg-[#f1f1f1] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {saveBar.saving ? (
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                  ) : null}
-                  {saveBar.saving ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </div>
+          {saveBarActive ? (
+            <AdminSaveBar />
           ) : (
             <AdminOrderSearch />
           )}

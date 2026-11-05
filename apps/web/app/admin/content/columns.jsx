@@ -28,7 +28,7 @@ function selectColumn() {
         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
         aria-label="Select all"
         onClick={(e) => e.stopPropagation()}
-        className="data-checked:border-[#303030] data-checked:bg-[#303030]"
+        className="data-checked:border-(--p-color-text) data-checked:bg-(--p-color-button-primary-bg)"
       />
     ),
     cell: ({ row }) => (
@@ -40,7 +40,7 @@ function selectColumn() {
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
-          className="data-checked:border-[#303030] data-checked:bg-[#303030]"
+          className="data-checked:border-(--p-color-text) data-checked:bg-(--p-color-button-primary-bg)"
         />
       </div>
     ),
@@ -166,7 +166,7 @@ function VisibleCell({ file, savingKey, onToggle }) {
         disabled={saving}
         onCheckedChange={(checked) => onToggle?.(file, Boolean(checked))}
         aria-label={file.visible !== false ? "Visible" : "Hidden"}
-        className="data-checked:bg-[#303030] data-unchecked:bg-[#c9c9c9]"
+        className="data-checked:bg-(--p-color-button-primary-bg) data-unchecked:bg-(--p-color-scrollbar-thumb-bg)"
       />
       {saving ? (
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />

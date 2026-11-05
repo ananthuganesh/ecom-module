@@ -1,6 +1,6 @@
 export const metadata = {
   title: {
-    absolute: "Email API | Admin",
+    absolute: "Email Marketing | Admin",
   },
 };
 

@@ -81,13 +81,13 @@ export default function ProductColorChips({
   return (
     <div className={cn("relative", className)}>
       <div
-        className="flex min-h-8 w-full flex-wrap items-center gap-1.5 rounded-lg border border-[#e3e3e3] bg-white px-2.5 py-1 shadow-none focus-within:border-[#b5b5b5]"
+        className="flex min-h-8 w-full flex-wrap items-center gap-1.5 rounded-lg border border-(--p-color-border) bg-white px-2.5 py-1 shadow-none focus-within:border-(--p-color-border-tertiary)"
         onClick={() => inputRef.current?.focus()}
       >
         {selected.map((color, index) => (
           <span
             key={`${color}-${index}`}
-            className="inline-flex h-5 max-w-full items-center gap-1 rounded-md bg-[#e3e3e3] px-1.5 text-[12px] leading-none font-[550] text-[#303030]"
+            className="inline-flex h-5 max-w-full items-center gap-1 rounded-md bg-(--p-color-button-bg-fill) px-1.5 text-[12px] leading-none font-medium text-(--p-color-text)"
           >
             <span className="truncate leading-none">{color}</span>
             <button
@@ -125,18 +125,18 @@ export default function ProductColorChips({
             }
           }}
           placeholder={selected.length ? "" : placeholder}
-          className="h-5 min-w-[7rem] flex-1 border-0 bg-transparent p-0 text-[13px] leading-5 outline-none placeholder:text-[#b5b5b5]"
+          className="h-5 min-w-[7rem] flex-1 border-0 bg-transparent p-0 text-[13px] leading-5 outline-none placeholder:text-(--p-color-text-disabled)"
           autoComplete="off"
         />
       </div>
 
       {open && (filtered.length > 0 || canCreate) ? (
-        <div className="absolute left-0 z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-[#e3e3e3] bg-white py-1 text-left shadow-md">
+        <div className="absolute left-0 z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-(--p-color-border) bg-white py-1 text-left shadow-md">
           {filtered.map((opt) => (
             <button
               key={opt}
               type="button"
-              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 text-[#303030] hover:bg-[#f1f1f1]"
+              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => commit(opt)}
             >
@@ -146,7 +146,7 @@ export default function ProductColorChips({
           {canCreate ? (
             <button
               type="button"
-              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 font-[550] text-[#303030] hover:bg-[#f1f1f1]"
+              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 font-medium text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => commit(draft)}
             >

@@ -1,17 +1,44 @@
-/* Admin shell — Shopify Polaris light frame tokens */
+/* Admin shell — Shopify Polaris (adminNext, light). Raw values live in polaris-tokens.css. */
 [data-admin-shell] {
-  --background: #f1f1f1; /* --p-color-bg */
-  --foreground: #303030; /* --p-color-text */
-  --sidebar: #ebebeb; /* --p-color-nav-bg */
-  --sidebar-foreground: #303030; /* --p-color-nav-text */
-  --sidebar-accent: #f1f1f1; /* --p-color-nav-bg-surface-hover */
-  --sidebar-accent-foreground: #303030;
-  --sidebar-border: #e3e3e3; /* --p-color-border */
-  --sidebar-primary: #303030;
-  --sidebar-primary-foreground: #ffffff;
+  /* shadcn theme variables, resolved to Polaris tokens for every admin component */
+  --background: var(--p-color-bg-fill);
+  --foreground: var(--p-color-text);
+  --card: var(--p-color-bg-surface);
+  --card-foreground: var(--p-color-text);
+  --popover: var(--p-color-bg-surface);
+  --popover-foreground: var(--p-color-text);
+  --primary: var(--p-color-button-primary-bg);
+  --primary-foreground: var(--p-color-button-primary-text);
+  --secondary: var(--p-color-button-bg-fill);
+  --secondary-foreground: var(--p-color-text);
+  --muted: var(--p-color-bg-fill);
+  --muted-foreground: var(--p-color-text-secondary);
+  --accent: var(--p-color-bg-surface-hover);
+  --accent-foreground: var(--p-color-text);
+  --destructive: var(--p-color-bg-critical-accent);
+  --border: var(--p-color-border);
+  --input: var(--p-color-input-border);
+  --ring: var(--p-color-border-focus);
+  --chart-1: var(--p-color-bg-highlight-accent);
+  --sidebar: var(--p-color-app-bg);
+  --sidebar-foreground: var(--p-color-nav-text);
+  --sidebar-accent: var(--p-color-nav-bg-surface-hover);
+  --sidebar-accent-foreground: var(--p-color-nav-text-active);
+  --sidebar-border: transparent;
+  --sidebar-primary: var(--p-color-nav-text-active);
+  --sidebar-primary-foreground: var(--p-color-app-bg);
+  --sidebar-ring: var(--p-color-border-focus);
+  /* Polaris card: 1px full outline + soft drop */
+  --admin-card-shadow: var(--p-shadow-container);
+
+  font-family: var(--p-font-family-sans);
+  font-feature-settings: var(--p-font-feature-settings);
+  font-size: var(--p-font-size-body-medium);
+  line-height: var(--p-font-line-height-body-medium);
+  letter-spacing: var(--p-font-letter-spacing-body-medium);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  background-color: #0a0a0a; /* black frame so rounded page corners read */
+  background-color: var(--p-color-app-bg); /* black frame so rounded page corners read */
   color: var(--foreground);
   overscroll-behavior: none;
 }
@@ -22,10 +49,11 @@ body:has([data-admin-frame]) {
   overflow: hidden;
 }
 
+/* Navigation sits on the dark app frame (--p-color-nav-*) */
 [data-admin-shell] [data-slot="sidebar-inner"],
 [data-admin-shell] [data-sidebar="sidebar"] {
-  background-color: #ebebeb; /* --p-color-nav-bg */
-  color: #303030;
+  background-color: var(--p-color-app-bg);
+  color: var(--p-color-nav-text);
   height: 100%;
   min-height: 100%;
 }
@@ -36,12 +64,13 @@ body:has([data-admin-frame]) {
   top: 0;
   bottom: 0;
   overflow: hidden;
+  border-color: transparent;
 }
 
 [data-admin-shell] [data-slot="sidebar-inset"] {
-  background-color: #f1f1f1;
+  background-color: var(--p-color-bg-fill);
   scrollbar-width: thin;
-  scrollbar-color: #c9c9c9 transparent;
+  scrollbar-color: var(--p-color-scrollbar-thumb-bg) transparent;
 }
 
 [data-admin-shell] [data-slot="sidebar-inset"]::-webkit-scrollbar {
@@ -49,13 +78,18 @@ body:has([data-admin-frame]) {
 }
 
 [data-admin-shell] [data-slot="sidebar-inset"]::-webkit-scrollbar-thumb {
-  background-color: #c9c9c9;
+  background-color: var(--p-color-scrollbar-thumb-bg);
   border-radius: 8px;
 }
 
 /* Side menu — Polaris nav typography */
 [data-admin-shell] [data-sidebar="content"] {
-  padding-top: 0.75rem; /* --p-space-300 */
+  padding-top: var(--p-space-300);
+}
+
+/* Search pill sits right above the menu — no extra top padding there */
+[data-admin-shell] [data-sidebar="header"] + [data-sidebar="content"] {
+  padding-top: 0;
 }
 
 [data-admin-shell] [data-sidebar="menu"] {
@@ -63,156 +97,364 @@ body:has([data-admin-frame]) {
 }
 
 [data-admin-shell] [data-sidebar="group"] {
-  padding-top: 0.25rem;
-  padding-bottom: 0.25rem;
+  padding-top: var(--p-space-100);
+  padding-bottom: var(--p-space-100);
 }
 
 [data-admin-shell] [data-sidebar="menu-button"],
 [data-admin-shell] [data-sidebar="menu-sub-button"] {
-  font-size: 0.8125rem; /* --p-font-size-325 */
-  font-weight: 450; /* --p-font-weight-regular */
-  line-height: 1.25rem; /* --p-font-line-height-500 */
-  height: 1.75rem;
-  color: #303030; /* --p-color-nav-text */
-  border-radius: 0.5rem; /* --p-border-radius-200 */
+  font-size: var(--p-font-size-325);
+  font-weight: var(--p-font-weight-medium);
+  line-height: var(--p-font-line-height-500);
+  height: 2rem; /* was 1.75rem */
+  color: var(--p-color-nav-text);
+  border-radius: var(--p-border-radius-200);
+  transition: background-color var(--p-motion-duration-100) var(--p-motion-ease);
 }
 
 [data-admin-shell] [data-sidebar="menu-button"]:hover,
 [data-admin-shell] [data-sidebar="menu-sub-button"]:hover {
-  background-color: #f1f1f1; /* --p-color-nav-bg-surface-hover */
-  color: #303030;
+  background-color: var(--p-color-nav-bg-surface-hover);
+  color: var(--p-color-nav-text-hover);
 }
 
-/* Selected — --p-color-nav-bg-surface-selected */
+/* Same 1px box on every nav item so the active border doesn't shift the label */
+[data-admin-shell] [data-sidebar="menu-button"],
+[data-admin-shell] [data-sidebar="menu-sub-button"],
+[data-admin-shell] [data-sidebar="menu-item"] a {
+  border: 1px solid transparent;
+}
+
+/* Selected — Shopify admin nav item */
+[data-admin-shell] {
+  --admin-nav-active-bg: #222222;
+  --admin-nav-active-text: #fcfcfc;
+  --admin-nav-active-shadow:
+    0 0 0 1px #ffffff05 inset,
+    0 1px 1px 0 #ffffff0f inset,
+    0 0 12px 1px #ffffff0f inset,
+    0 1px 2px 0 #0000001a,
+    0 0 0 1px #0000001a;
+}
+
 [data-admin-shell] [data-sidebar="menu-button"][data-active],
 [data-admin-shell] [data-sidebar="menu-sub-button"][data-active],
 [data-admin-shell] [data-sidebar="menu-item"] a[data-active="true"] {
-  background-color: #fafafa;
-  color: #303030;
-  font-weight: 550; /* --p-font-weight-medium */
+  position: relative;
+  background: var(--admin-nav-active-bg);
+  border-color: transparent;
+  border-radius: 12px;
+  box-shadow: var(--admin-nav-active-shadow);
+  color: var(--admin-nav-active-text);
+  font-weight: var(--p-font-weight-semibold);
+  transition: opacity 150ms cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 [data-admin-shell] [data-sidebar="menu-button"][data-active]:hover,
 [data-admin-shell] [data-sidebar="menu-sub-button"][data-active]:hover,
 [data-admin-shell] [data-sidebar="menu-item"] a[data-active="true"]:hover {
-  background-color: #fafafa;
-  color: #303030;
+  background: var(--admin-nav-active-bg);
+  color: var(--admin-nav-active-text);
 }
 
 /* Submenu secondary text */
 [data-admin-shell] [data-sidebar="menu-item"] a:not([data-active="true"]) {
-  color: #616161; /* --p-color-nav-text-secondary */
+  color: var(--p-color-nav-text-secondary);
 }
 
 [data-admin-shell] [data-sidebar="menu-item"] a:not([data-active="true"]):hover {
-  color: #303030;
-  background-color: #f1f1f1;
+  color: var(--p-color-nav-text-secondary-hover);
+  background-color: var(--p-color-nav-bg-surface-hover);
 }
 
-/* Icons — Polaris nav ~20px optical / 18–20 */
+/* Nav icons — ~20px, grey at rest, near-white when hovered / selected */
 [data-admin-shell] [data-sidebar="menu-button"] svg {
-  width: 1.25rem; /* --osui_nav-action-common-prefix-size */
-  height: 1.25rem;
-  color: #4a4a4a; /* --p-color-icon */
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--p-color-nav-icon);
 }
 
-[data-admin-shell] [data-sidebar="menu-button"][data-active] svg,
 [data-admin-shell] [data-sidebar="menu-button"]:hover svg {
-  color: #303030; /* --p-color-icon-hover / active */
+  color: var(--p-color-nav-icon-hover);
 }
 
-/* Page title — Polaris headingLg + bold */
+[data-admin-shell] [data-sidebar="menu-button"][data-active] svg {
+  color: var(--p-color-nav-icon-active);
+}
+
+/* Nav count badge (Orders): centred in the 28px row, number centred inside */
+[data-admin-shell] [data-sidebar="menu-badge"] {
+  top: calc((2rem - 1.25rem) / 2);
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Page title — Polaris display-small */
 [data-admin-shell] .admin-page-title,
 [data-admin-shell] [data-slot="sidebar-inset"] h1 {
-  font-size: 1.25rem; /* --p-font-size-500 */
-  font-weight: 650; /* --p-font-weight-bold */
-  line-height: 1.5rem; /* --p-font-line-height-600 */
-  letter-spacing: -0.00833em; /* --p-font-letter-spacing-dense */
-  color: #303030; /* --p-color-text */
+  font-size: var(--p-font-size-500);
+  font-weight: var(--p-font-weight-semibold);
+  line-height: var(--p-font-line-height-600);
+  letter-spacing: var(--p-font-letter-spacing-denser);
+  color: var(--p-color-text);
 }
 
-/* Page / control buttons — Polaris control typography + brand colors */
+/* ---------- Buttons — Polaris pill, 13/20 regular (spec §17) ---------- */
+[data-admin-shell] [data-slot="sidebar-inset"] [data-slot="button"],
+[data-admin-shell] [role="dialog"] [data-slot="button"],
+[data-admin-shell] [data-slot="sheet-content"] [data-slot="button"] {
+  font-size: var(--p-font-size-325);
+  font-weight: var(--p-font-weight-regular);
+  line-height: var(--p-font-line-height-500);
+  letter-spacing: var(--p-font-letter-spacing-body-medium);
+  border-radius: var(--p-border-radius-full);
+  gap: var(--p-space-050);
+  transition: all 400ms cubic-bezier(0.2, 0.8, 0, 1);
+}
+
+/* Primary (shadcn "default") — black with the Polaris sheen + bevel */
+[data-admin-shell] [data-slot="button"][data-variant="default"] {
+  background:
+    var(--p-color-button-gradient-bg-fill),
+    var(--p-color-button-primary-bg);
+  color: var(--p-color-button-primary-text);
+  box-shadow: var(--p-shadow-button-primary);
+  border: 0;
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="default"]:hover {
+  background:
+    var(--p-color-button-gradient-bg-fill),
+    var(--p-color-button-primary-bg-hover);
+  color: var(--p-color-button-primary-text-hover);
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="default"]:disabled {
+  background: var(--p-color-button-primary-bg-disabled);
+  color: var(--p-color-text-on-accent);
+  box-shadow: none;
+}
+
+/* Secondary / outline — white, faint hairline + barely-there drop (lighter than cards) */
 [data-admin-shell] {
-  --primary: #303030;
-  --primary-foreground: #ffffff;
-  --secondary: #e3e3e3;
-  --secondary-foreground: #303030;
-  --muted-foreground: #616161;
-  --card: #ffffff;
-  --border: #e3e3e3;
-  --input: #8a8a8a;
-  /* Polaris card: 1px full outline + soft bottom-right drop */
-  --admin-card-shadow:
-    0 0 0 1px #ebebeb,
-    0.03125rem 0.125rem 0.125rem -0.0625rem #00000008,
-    0 0.0625rem 0.0625rem 0 #00000006;
+  --admin-btn-secondary-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 1px 1px 0 rgba(0, 0, 0, 0.02);
 }
 
-[data-admin-shell] [data-slot="sidebar-inset"] [data-slot="button"] {
-  font-size: 0.8125rem; /* --p-font-size-325 */
-  font-weight: 550; /* --p-font-weight-medium */
-  border-radius: 0.5rem; /* --p-border-radius-200 */
+[data-admin-shell] [data-slot="button"][data-variant="secondary"],
+[data-admin-shell] [data-slot="button"][data-variant="outline"],
+[data-admin-shell] .admin-btn-secondary {
+  background-color: var(--p-color-bg-surface);
+  color: var(--p-color-text);
+  border-color: transparent;
+  box-shadow: var(--admin-btn-secondary-shadow);
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="secondary"]:hover,
+[data-admin-shell] [data-slot="button"][data-variant="outline"]:hover,
+[data-admin-shell] .admin-btn-secondary:hover {
+  background-color: var(--p-color-bg-surface-hover);
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="secondary"]:active,
+[data-admin-shell] [data-slot="button"][data-variant="outline"]:active,
+[data-admin-shell] .admin-btn-secondary:active,
+[data-admin-shell] .admin-btn-secondary[aria-expanded="true"],
+[data-admin-shell] .admin-btn-secondary[data-popup-open] {
+  background-color: var(--p-color-bg-surface-active);
+}
+
+/* Tertiary (shadcn "ghost") */
+[data-admin-shell] [data-slot="button"][data-variant="ghost"]:hover {
+  background-color: var(--p-color-bg-fill-transparent-hover);
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="ghost"]:active {
+  background-color: var(--p-color-bg-fill-transparent-active);
+}
+
+/* Critical */
+[data-admin-shell] [data-slot="button"][data-variant="destructive"] {
+  background-color: var(--p-color-button-bg-fill-critical);
+  color: var(--p-color-text-critical);
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="destructive"]:hover {
+  background-color: var(--p-color-button-bg-fill-critical-hover);
+}
+
+/* Plain link */
+[data-admin-shell] [data-slot="button"][data-variant="link"] {
+  color: var(--p-color-text-link);
+}
+
+[data-admin-shell] [data-slot="button"][data-variant="link"]:hover {
+  color: var(--p-color-text-link-hover);
+}
+
+[data-admin-shell] [data-slot="button"]:disabled:not([data-variant="default"]),
+[data-admin-shell] .admin-btn-secondary:disabled {
+  background-color: var(--p-color-bg-fill-disabled);
+  color: var(--p-color-text-disabled);
+  box-shadow: none;
+}
+
+/* ---------- Form controls — 12px control radius, Polaris input border ---------- */
+[data-admin-shell] [data-slot="input"],
+[data-admin-shell] [data-slot="textarea"],
+[data-admin-shell] [data-slot="select-trigger"],
+[data-admin-shell] [data-slot="input-group"],
+[data-admin-shell] [data-slot="combobox-trigger"] {
+  border-radius: var(--p-border-radius-control);
+  border-color: var(--p-color-input-border);
+  background-color: var(--p-color-input-bg-surface);
+  font-size: var(--p-font-size-input-value);
+  line-height: var(--p-font-line-height-input-value);
+  min-height: var(--p-height-field-min-block-size);
+}
+
+[data-admin-shell] [data-slot="input"]:hover,
+[data-admin-shell] [data-slot="textarea"]:hover,
+[data-admin-shell] [data-slot="select-trigger"]:hover {
+  border-color: var(--p-color-input-border-hover);
+}
+
+[data-admin-shell] [data-slot="input"]:focus-visible,
+[data-admin-shell] [data-slot="textarea"]:focus-visible,
+[data-admin-shell] [data-slot="select-trigger"]:focus-visible {
+  border-color: var(--p-color-input-border-active);
+}
+
+[data-admin-shell] [data-slot="select-trigger"].admin-btn-secondary {
+  border-color: transparent;
+  background-color: var(--p-color-bg-surface);
+}
+
+[data-admin-shell] [data-slot="checkbox"] {
+  border-radius: var(--p-border-radius-checkbox);
+}
+
+[data-admin-shell] [data-slot="checkbox"][data-state="checked"],
+[data-admin-shell] [data-slot="checkbox"][data-checked] {
+  background-color: var(--p-color-choice-bg-checked);
+  border-color: var(--p-color-choice-bg-checked);
+}
+
+[data-admin-shell] [data-slot="switch"] {
+  background-color: var(--p-color-switch-bg);
+}
+
+[data-admin-shell] [data-slot="switch"][data-state="checked"],
+[data-admin-shell] [data-slot="switch"][data-checked] {
+  background-color: var(--p-color-switch-bg-checked);
+}
+
+/* ---------- Overlays ---------- */
+[data-admin-shell] [data-slot="popover-content"],
+[data-admin-shell] [data-slot="dropdown-menu-content"],
+[data-admin-shell] [data-slot="select-content"],
+[data-admin-shell] [data-slot="combobox-content"] {
+  border-radius: var(--p-border-radius-popover);
+}
+
+[data-admin-shell] [data-slot="dropdown-menu-item"],
+[data-admin-shell] [data-slot="select-item"],
+[data-admin-shell] [data-slot="combobox-item"] {
+  border-radius: var(--p-border-radius-option-item);
+}
+
+[data-admin-shell] [data-slot="dialog-content"],
+[data-admin-shell] [data-slot="alert-dialog-content"] {
+  border-radius: var(--p-border-radius-dialog);
+}
+
+[data-admin-shell] [data-slot="badge"] {
+  border-radius: var(--p-border-radius-tag);
+  font-size: var(--p-font-size-body-small);
+  line-height: var(--p-font-line-height-body-small);
+  padding-inline: var(--p-space-badge-padding-inline);
 }
 
 /* Index table / cards — Polaris surface / border / shadow */
+/* Cards and list surfaces — Shopify admin card */
 [data-admin-shell] [data-slot="card"],
+[data-admin-shell] [data-slot="data-table-surface"],
 [data-admin-shell] .admin-surface {
+  background-color: var(--p-color-bg-surface);
+  border: none;
+  border-radius: var(--p-border-radius-container);
+  corner-shape: var(--p-border-radius-corner-shape);
+  overflow: clip;
   box-shadow: var(--admin-card-shadow);
+  position: relative;
 }
 
-[data-admin-shell] [data-slot="data-table-surface"] {
-  box-shadow:
-    0.03125rem 0.125rem 0.125rem -0.0625rem #00000008,
-    0 0.0625rem 0.0625rem 0 #00000006;
+/* Hairline edge as an overlay: never clipped by a parent, never covered by row fills */
+[data-admin-shell] [data-slot="card"]::after,
+[data-admin-shell] [data-slot="data-table-surface"]::after,
+[data-admin-shell] .admin-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  corner-shape: inherit;
+  box-shadow: var(--p-shadow-container-edge);
+  pointer-events: none;
+  z-index: 40;
+}
+
+[data-admin-shell] [data-slot="card"] [data-slot="data-table-surface"]::after {
+  display: none;
 }
 
 /* Nested tables (Dashboard Recent Orders / Best Selling) — hairline only */
 [data-admin-shell] [data-slot="card"] [data-slot="data-table-surface"] {
   box-shadow: none;
-  border: 0.5px solid #ebebeb;
+  border: 0.5px solid var(--p-color-border-secondary);
+  border-radius: var(--p-border-radius-300);
 }
 
 [data-admin-shell] [data-slot="data-table-surface"],
 [data-admin-shell] .admin-surface {
-  background-color: #ffffff; /* --p-color-bg-surface */
-  border: 0.5px solid #ebebeb; /* --p-color-border-secondary */
-  border-radius: 0.75rem; /* --p-border-radius-container */
-  overflow: hidden;
   font-size: 0.8125rem; /* --p-font-size-325 */
-  font-weight: 450; /* --p-font-weight-regular */
+  font-weight: var(--p-font-weight-regular); /* --p-font-weight-regular */
   line-height: 1.25rem; /* --p-font-line-height-500 */
-  color: #303030; /* --p-color-text */
+  color: var(--p-color-text); /* --p-color-text */
 }
 
 /* Section heading — Polaris s-heading in level-1 section */
 [data-admin-shell] .admin-surface [data-slot="card-title"],
 [data-admin-shell] .admin-card-heading {
   font-size: 0.875rem; /* --p-font-size-350 */
-  font-weight: 650; /* --p-font-weight-bold */
+  font-weight: var(--p-font-weight-semibold); /* --p-font-weight-bold */
   line-height: 1.25rem;
   letter-spacing: 0;
-  color: #303030;
+  color: var(--p-color-text);
 }
 
 [data-admin-shell] .admin-card-link {
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #005bd3; /* --p-color-text-link */
+  color: var(--p-color-text-link); /* --p-color-text-link */
 }
 
 [data-admin-shell] .admin-card-muted {
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #616161; /* --p-color-text-secondary */
+  color: var(--p-color-text-secondary); /* --p-color-text-secondary */
 }
 
 [data-admin-shell] .admin-card-label {
   font-size: 0.8125rem;
-  font-weight: 550; /* --p-font-weight-medium */
+  font-weight: var(--p-font-weight-medium); /* --p-font-weight-medium */
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
 }
 
 /* Order details — Polaris fulfillment / line items */
@@ -231,9 +473,9 @@ body:has([data-admin-frame]) {
 
 [data-admin-shell] .admin-panel-box {
   overflow: hidden;
-  border: 0.0625rem solid #ebebeb; /* --p-color-border-secondary */
+  border: 0.0625rem solid var(--p-color-border-secondary); /* --p-color-border-secondary */
   border-radius: 0.5rem; /* --p-border-radius-200 */
-  background: #fff;
+  background: var(--p-color-bg-surface);
 }
 
 [data-admin-shell] .admin-shipping-method {
@@ -248,15 +490,15 @@ body:has([data-admin-frame]) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #4a4a4a; /* --p-color-icon */
+  color: var(--p-color-icon-secondary); /* --p-color-icon */
   padding-top: 0.125rem;
 }
 
 [data-admin-shell] .admin-shipping-method-label {
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
   padding-block: 0.125rem;
 }
 
@@ -274,7 +516,7 @@ body:has([data-admin-frame]) {
 }
 
 [data-admin-shell] .admin-line-item + .admin-line-item {
-  border-top: 0.0625rem solid #ebebeb;
+  border-top: 0.0625rem solid var(--p-color-border-secondary);
 }
 
 [data-admin-shell] .admin-line-item-thumb {
@@ -283,15 +525,15 @@ body:has([data-admin-frame]) {
   height: 2.5rem;
   overflow: hidden;
   border-radius: 0.5rem; /* --p-border-radius-200 */
-  background: #f7f7f7;
-  border: 0.0625rem solid #ebebeb;
+  background: var(--p-color-bg-surface-hover);
+  border: 0.0625rem solid var(--p-color-border-secondary);
 }
 
 [data-admin-shell] .admin-line-item-name {
   font-size: 0.8125rem;
-  font-weight: 650; /* --p-font-weight-bold / heading */
+  font-weight: var(--p-font-weight-semibold); /* --p-font-weight-bold / heading */
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
   word-break: break-word;
 }
 
@@ -307,9 +549,9 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-line-item-meta {
   margin-top: 0.125rem;
   font-size: 0.75rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1rem;
-  color: #616161;
+  color: var(--p-color-text-secondary);
 }
 
 [data-admin-shell] .admin-line-item-price-row {
@@ -318,9 +560,9 @@ body:has([data-admin-frame]) {
   justify-content: flex-end;
   gap: 0.375rem; /* --p-space-150 */
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -335,17 +577,17 @@ body:has([data-admin-frame]) {
   border-radius: 0.5rem; /* --p-border-radius-tag */
   background: #0000000f; /* --p-color-bg-fill-transparent-secondary */
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
   font-variant-numeric: tabular-nums;
 }
 
 [data-admin-shell] .admin-line-item-total {
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
   text-align: end;
   font-variant-numeric: tabular-nums;
   padding-inline-start: 1.25rem; /* --p-space-500 */
@@ -356,7 +598,7 @@ body:has([data-admin-frame]) {
   display: flex;
   justify-content: flex-end;
   padding: 0.75rem;
-  border-top: 0.0625rem solid #ebebeb;
+  border-top: 0.0625rem solid var(--p-color-border-secondary);
 }
 /* Polaris-style order Timeline — day headers, dots, title + time row */
 [data-admin-shell] .admin-timeline {
@@ -386,10 +628,10 @@ body:has([data-admin-frame]) {
   z-index: 1;
   padding: 0.5rem 0 0.625rem calc(var(--timeline-rail-width) + var(--timeline-gap));
   font-size: 0.75rem;
-  font-weight: 550;
+  font-weight: var(--p-font-weight-medium);
   line-height: 1rem;
   letter-spacing: 0.01em;
-  color: #616161;
+  color: var(--p-color-text-secondary);
 }
 
 /* Keep track continuous through day labels */
@@ -400,7 +642,7 @@ body:has([data-admin-frame]) {
   bottom: 0;
   left: calc(var(--timeline-rail-width) / 2 - var(--timeline-line-width) / 2);
   width: var(--timeline-line-width);
-  background: #e3e3e3;
+  background: var(--p-color-button-bg-fill);
   pointer-events: none;
   z-index: 0;
 }
@@ -441,7 +683,7 @@ body:has([data-admin-frame]) {
   left: 50%;
   width: var(--timeline-line-width);
   transform: translateX(-50%);
-  background: #e3e3e3;
+  background: var(--p-color-button-bg-fill);
   pointer-events: none;
   z-index: 0;
 }
@@ -469,39 +711,39 @@ body:has([data-admin-frame]) {
   width: var(--timeline-dot-size);
   height: var(--timeline-dot-size);
   border-radius: 999px;
-  background: #4a4a4a;
-  border: 0.125rem solid #fff;
+  background: var(--p-color-icon-secondary);
+  border: 0.125rem solid var(--p-color-bg-surface);
   box-shadow: none;
   flex-shrink: 0;
   display: block;
 }
 
 [data-admin-shell] .admin-timeline-dot--success {
-  background: #0c5132;
+  background: var(--p-color-text-success-secondary);
 }
 
 [data-admin-shell] .admin-timeline-dot--critical {
-  background: #8e1f0b;
+  background: var(--p-color-text-critical-secondary);
 }
 
 [data-admin-shell] .admin-timeline-dot--info {
-  background: #00527c;
+  background: var(--p-color-text-info-secondary);
 }
 
 [data-admin-shell] .admin-timeline-dot--latest {
-  background: #303030;
+  background: var(--p-color-button-primary-bg);
 }
 
 [data-admin-shell] .admin-timeline-dot--latest.admin-timeline-dot--success {
-  background: #0c5132;
+  background: var(--p-color-text-success-secondary);
 }
 
 [data-admin-shell] .admin-timeline-dot--latest.admin-timeline-dot--critical {
-  background: #8e1f0b;
+  background: var(--p-color-text-critical-secondary);
 }
 
 [data-admin-shell] .admin-timeline-dot--latest.admin-timeline-dot--info {
-  background: #00527c;
+  background: var(--p-color-text-info-secondary);
 }
 
 [data-admin-shell] .admin-timeline-body {
@@ -528,22 +770,22 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-timeline-title {
   margin: 0;
   font-size: 0.8125rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1.25rem;
-  color: #303030;
+  color: var(--p-color-text);
   letter-spacing: 0;
 }
 
 [data-admin-shell] .admin-timeline-item--latest .admin-timeline-title {
-  font-weight: 550;
+  font-weight: var(--p-font-weight-medium);
 }
 
 [data-admin-shell] .admin-timeline-meta {
   margin: 0.125rem 0 0;
   font-size: 0.75rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1rem;
-  color: #616161;
+  color: var(--p-color-text-secondary);
 }
 
 [data-admin-shell] .admin-timeline-time {
@@ -551,17 +793,17 @@ body:has([data-admin-frame]) {
   flex: 0 0 auto;
   padding-top: 0.0625rem;
   font-size: 0.75rem;
-  font-weight: 450;
+  font-weight: var(--p-font-weight-regular);
   line-height: 1rem;
-  color: #8a8a8a;
+  color: var(--p-color-text-tertiary);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 /* Filter / search bar attached to table top */
 [data-admin-shell] [data-slot="data-table-toolbar"] {
-  background-color: #ffffff;
-  border-bottom: 0.5px solid #ebebeb; /* --p-color-border-secondary */
+  background-color: var(--p-color-bg-surface);
+  border-bottom: 0.5px solid var(--p-color-border-secondary); /* --p-color-border-secondary */
   padding: 0.375rem 0.75rem;
   gap: 0.25rem;
   min-height: 2.25rem;
@@ -573,8 +815,8 @@ body:has([data-admin-frame]) {
 [data-admin-shell] [data-slot="data-table-toolbar"] [data-slot="input"] {
   height: 2rem;
   font-size: 0.8125rem;
-  font-weight: 450;
-  color: #303030;
+  font-weight: var(--p-font-weight-regular);
+  color: var(--p-color-text);
   border: 0 !important;
   border-radius: 0;
   background-color: transparent !important;
@@ -590,9 +832,9 @@ body:has([data-admin-frame]) {
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table"] {
   font-size: 0.8125rem; /* --p-font-size-325 */
-  font-weight: 450; /* --p-font-weight-regular */
+  font-weight: var(--p-font-weight-regular); /* --p-font-weight-regular */
   line-height: 1.25rem; /* --p-font-line-height-500 */
-  color: #303030; /* --p-color-text */
+  color: var(--p-color-text); /* --p-color-text */
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -604,12 +846,12 @@ body:has([data-admin-frame]) {
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-header"] {
-  background-color: #f6f6f6;
+  background-color: var(--p-color-bg-surface-hover);
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-header"] [data-slot="table-row"] {
   border-bottom: 0;
-  background-color: #f6f6f6;
+  background-color: var(--p-color-bg-surface-hover);
   height: 2.25rem; /* header row height */
   min-height: 2.25rem;
 }
@@ -619,42 +861,42 @@ body:has([data-admin-frame]) {
   min-height: 2.25rem;
   padding: 0.375rem 0.75rem !important; /* --pc-table-padding / --pc-table-edge-padding */
   font-size: 0.75rem !important; /* --p-font-size-300 */
-  font-weight: 550 !important; /* --p-font-weight-medium */
+  font-weight: var(--p-font-weight-medium) !important; /* --p-font-weight-medium */
   line-height: 1rem !important; /* --p-font-line-height-400 */
   letter-spacing: 0;
-  color: #616161 !important; /* --p-color-text-secondary */
-  background-color: #f6f6f6 !important;
-  border-bottom: 0.5px solid #ebebeb;
+  color: var(--p-color-text-secondary) !important; /* --p-color-text-secondary */
+  background-color: var(--p-color-bg-surface-hover) !important;
+  border-bottom: 0.5px solid var(--p-color-border-secondary);
   vertical-align: middle;
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-header"] [data-slot="table-head"]:hover {
-  background-color: #f6f6f6 !important;
-  color: #303030 !important; /* --p-color-text on hover */
+  background-color: var(--p-color-bg-surface-hover) !important;
+  color: var(--p-color-text) !important; /* --p-color-text on hover */
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"] {
   border-bottom: 0;
-  background-color: #ffffff;
+  background-color: var(--p-color-bg-surface);
   min-height: 2.25rem; /* body row height — matches header */
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"]:hover {
-  background-color: #f7f7f7; /* --p-color-bg-surface-hover */
+  background-color: var(--p-color-bg-surface-hover); /* --p-color-bg-surface-hover */
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"][data-state="selected"],
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"]:has([data-state="checked"]) {
-  background-color: #f1f1f1; /* --p-color-bg-surface-selected */
+  background-color: var(--p-color-bg-fill); /* --p-color-bg-surface-selected */
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-cell"] {
   padding: 0.375rem 0.75rem; /* --pc-table-padding / --pc-table-edge-padding */
   font-size: 0.8125rem; /* --p-font-size-325 */
-  font-weight: 450; /* --p-font-weight-regular */
+  font-weight: var(--p-font-weight-regular); /* --p-font-weight-regular */
   line-height: 1.25rem;
-  color: #303030;
-  border-bottom: 0.5px solid #ebebeb;
+  color: var(--p-color-text);
+  border-bottom: 0.5px solid var(--p-color-border-secondary);
   vertical-align: middle;
 }
 
@@ -664,47 +906,47 @@ body:has([data-admin-frame]) {
 
 /* Sticky left columns (checkbox + Order) — opaque so scroll content doesn't bleed */
 [data-admin-shell] [data-slot="data-table-surface"] [data-sticky="left"] {
-  background-color: #ffffff;
+  background-color: var(--p-color-bg-surface);
   border-right: 0 !important;
   box-shadow: none !important;
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-header"] [data-sticky="left"] {
-  background-color: #f6f6f6 !important;
+  background-color: var(--p-color-bg-surface-hover) !important;
 }
 
 /* Same-color fill past the sticky edge so scrolled cells can't flash a hairline */
 [data-admin-shell] [data-slot="data-table-surface"] [data-sticky-edge] {
-  box-shadow: 2px 0 0 0 #ffffff !important;
+  box-shadow: 2px 0 0 0 var(--p-color-bg-surface) !important;
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-header"] [data-sticky-edge] {
-  box-shadow: 2px 0 0 0 #f6f6f6 !important;
+  box-shadow: 2px 0 0 0 var(--p-color-bg-surface-hover) !important;
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"]:hover [data-sticky="left"] {
-  background-color: #f7f7f7;
+  background-color: var(--p-color-bg-surface-hover);
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"]:hover [data-sticky-edge] {
-  box-shadow: 2px 0 0 0 #f7f7f7 !important;
+  box-shadow: 2px 0 0 0 var(--p-color-bg-surface-hover) !important;
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"][data-state="selected"] [data-sticky="left"],
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"]:has([data-state="checked"]) [data-sticky="left"] {
-  background-color: #f1f1f1;
+  background-color: var(--p-color-bg-fill);
 }
 
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"][data-state="selected"] [data-sticky-edge],
 [data-admin-shell] [data-slot="data-table-surface"] [data-slot="table-body"] [data-slot="table-row"]:has([data-state="checked"]) [data-sticky-edge] {
-  box-shadow: 2px 0 0 0 #f1f1f1 !important;
+  box-shadow: 2px 0 0 0 var(--p-color-bg-fill) !important;
 }
 
 /* Generic admin tables (non-DataTable) */
 [data-admin-shell] [data-slot="sidebar-inset"] [data-slot="table-container"] {
-  border: 0.5px solid #ebebeb;
+  border: 0.5px solid var(--p-color-border-secondary);
   border-radius: 0.75rem;
-  background-color: #ffffff;
+  background-color: var(--p-color-bg-surface);
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -724,8 +966,8 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"] {
   height: 2rem;
   min-height: 2rem;
-  background-color: #fff !important;
-  border: 0.0625rem solid #e3e3e3 !important; /* light grey — match prior select look */
+  background-color: var(--p-color-bg-surface) !important;
+  border: 0.0625rem solid var(--p-color-border) !important; /* light grey — match prior select look */
   border-radius: 0.5rem;
   box-shadow: none !important;
   outline: none !important;
@@ -743,8 +985,8 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-product-form [data-slot="textarea"]:hover,
 [data-admin-shell] .admin-product-form [data-slot="select-trigger"]:hover,
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"]:hover {
-  border-color: #ccc !important;
-  background-color: #fff !important;
+  border-color: var(--p-color-border-hover) !important;
+  background-color: var(--p-color-bg-surface) !important;
 }
 
 [data-admin-shell] .admin-product-form [data-slot="input"]:focus,
@@ -759,8 +1001,8 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"]:focus-visible,
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"][data-popup-open],
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"][aria-expanded="true"] {
-  border-color: #b5b5b5 !important;
-  background-color: #fff !important;
+  border-color: var(--p-color-border-tertiary) !important;
+  background-color: var(--p-color-bg-surface) !important;
   box-shadow: none !important;
   outline: none !important;
   --tw-ring-shadow: 0 0 #0000 !important;
@@ -772,10 +1014,10 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-product-form [data-slot="select-trigger"][aria-disabled="true"],
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"]:disabled,
 [data-admin-shell] .admin-product-form button[data-slot="select-trigger"][data-disabled] {
-  border-color: #e3e3e3 !important;
-  background-color: #fff !important;
+  border-color: var(--p-color-border) !important;
+  background-color: var(--p-color-bg-surface) !important;
   opacity: 1 !important;
-  color: #b5b5b5;
+  color: var(--p-color-text-disabled);
 }
 
 [data-admin-shell] .admin-product-form [data-slot="select-trigger"],
@@ -793,8 +1035,8 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-rte .ProseMirror h2,
 [data-admin-shell] .admin-rte .ProseMirror h3 {
   margin: 0 0 0.5rem;
-  font-weight: 650;
-  color: #303030;
+  font-weight: var(--p-font-weight-semibold);
+  color: var(--p-color-text);
 }
 
 [data-admin-shell] .admin-rte .ProseMirror h1 {
@@ -819,12 +1061,12 @@ body:has([data-admin-frame]) {
 }
 
 [data-admin-shell] .admin-rte .ProseMirror a {
-  color: #005bd3;
+  color: var(--p-color-text-link);
   text-decoration: underline;
 }
 
 [data-admin-shell] .admin-rte .ProseMirror p.is-editor-empty:first-child::before {
-  color: #b5b5b5;
+  color: var(--p-color-text-disabled);
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -884,18 +1126,18 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-product-form [data-slot="field-label"],
 [data-admin-shell] .admin-product-form .admin-card-label {
   font-size: 0.8125rem; /* --p-font-size-325 */
-  font-weight: 550; /* --p-font-weight-medium */
+  font-weight: var(--p-font-weight-medium); /* --p-font-weight-medium */
   line-height: 1.25rem; /* --p-font-line-height-500 */
   letter-spacing: 0;
-  color: #303030; /* --p-color-text */
+  color: var(--p-color-text); /* --p-color-text */
 }
 
 [data-admin-shell] .admin-product-form .admin-rte .ProseMirror {
   font-size: 0.8125rem; /* --p-font-size-325 (desktop) */
-  font-weight: 450; /* --p-font-weight-regular */
+  font-weight: var(--p-font-weight-regular); /* --p-font-weight-regular */
   line-height: 1.25rem; /* --p-font-line-height-500 */
   letter-spacing: -0.00833em; /* --p-font-letter-spacing-dense */
-  color: #303030;
+  color: var(--p-color-text);
   text-wrap: pretty;
 }
 
@@ -903,7 +1145,7 @@ body:has([data-admin-frame]) {
   border-radius: 0.5rem; /* --p-border-radius-control */
   border-width: 0.0625rem;
   border-style: dashed;
-  border-color: #c9cccf;
+  border-color: var(--p-color-border-hover);
   min-height: 7.5rem; /* room for Upload new + Select existing */
 }
 
@@ -916,7 +1158,7 @@ body:has([data-admin-frame]) {
 [data-admin-shell] .admin-shimmer {
   position: relative;
   overflow: hidden;
-  background-color: #e3e3e3;
+  background-color: var(--p-color-button-bg-fill);
 }
 
 [data-admin-shell] .admin-shimmer::after {
@@ -926,4 +1168,308 @@ body:has([data-admin-frame]) {
   transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
   animation: admin-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Sidebar search — pill in the active nav item's style; opens the search window */
+[data-admin-shell] .admin-nav-search {
+  --admin-nav-search-ease: cubic-bezier(0.2, 0.8, 0, 1);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--p-space-200);
+  width: 100%;
+  height: 2rem;
+  margin-block-end: var(--p-space-100);
+  padding-inline: 9px var(--p-space-200); /* icon lines up with the nav icons below */
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--admin-nav-active-bg);
+  box-shadow: var(--admin-nav-active-shadow);
+  color: #a6a6a6;
+  font-family: inherit;
+  font-size: var(--p-font-size-body-medium, 0.8125rem);
+  line-height: var(--p-font-line-height-body-medium, 1.25rem);
+  letter-spacing: var(--p-font-letter-spacing-body-medium);
+  font-weight: var(--p-font-weight-regular, 400);
+  text-align: start;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  transition:
+    color var(--p-motion-duration-100) var(--p-motion-ease),
+    translate var(--p-motion-duration-400) var(--admin-nav-search-ease),
+    filter var(--p-motion-duration-400) var(--admin-nav-search-ease),
+    opacity var(--p-motion-duration-400) var(--admin-nav-search-ease);
+
+  @starting-style {
+    translate: -0.25rem 0;
+    filter: blur(0.125rem);
+    opacity: 0;
+  }
+}
+
+[data-admin-shell] .admin-nav-search:hover,
+[data-admin-shell] .admin-nav-search[data-popup-open] {
+  color: var(--admin-nav-active-text);
+}
+
+[data-admin-shell] .admin-nav-search:focus-visible {
+  box-shadow: var(--admin-nav-active-shadow), 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+[data-admin-shell] .admin-nav-search-icon {
+  flex: 0 0 auto;
+  width: 1.125rem;
+  height: 1.125rem;
+  pointer-events: none;
+}
+
+[data-admin-shell] .admin-nav-search-shortcut {
+  display: flex;
+  flex-shrink: 0;
+  margin-inline: auto var(--p-space-100);
+  font-family: inherit;
+  font-size: inherit;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Search window (portalled to <body>, so it carries data-admin-shell itself) */
+.admin-search-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+  transition: opacity 150ms ease-out;
+}
+
+.admin-search-backdrop[data-starting-style],
+.admin-search-backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.admin-search-dialog {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: 70vh;
+  overflow: hidden;
+  border-radius: var(--p-border-radius-dialog, 24px);
+  corner-shape: var(--p-border-radius-corner-shape);
+  background: var(--p-color-bg-surface, #fff);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 24px 64px rgba(0, 0, 0, 0.16);
+  color: var(--p-color-text);
+  font-family: var(--p-font-family-sans, inherit);
+  outline: none;
+  translate: -50% 0;
+  transition:
+    opacity 200ms cubic-bezier(0.2, 0.8, 0, 1),
+    scale 200ms cubic-bezier(0.2, 0.8, 0, 1);
+}
+
+.admin-search-dialog[data-starting-style],
+.admin-search-dialog[data-ending-style] {
+  opacity: 0;
+  scale: 0.97;
+}
+
+.admin-search-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--p-space-300);
+  padding: var(--p-space-400, 1rem) var(--p-space-500);
+  border-bottom: 1px solid var(--p-color-border-secondary, #ebebeb);
+}
+
+.admin-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  color: var(--p-color-text);
+  font: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.5rem;
+  letter-spacing: var(--p-font-letter-spacing-body-medium);
+}
+
+.admin-search-input::placeholder {
+  color: var(--p-color-text-secondary);
+}
+
+.admin-search-esc {
+  flex-shrink: 0;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 6px;
+  background: var(--p-color-bg-surface-secondary, #f7f7f7);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  color: var(--p-color-text-secondary);
+  font-family: inherit;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+}
+
+.admin-search-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--p-space-200);
+  scroll-padding-block: var(--p-space-200);
+}
+
+.admin-search-group [cmdk-group-heading] {
+  padding: var(--p-space-200) var(--p-space-300) var(--p-space-100);
+  color: var(--p-color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: var(--p-font-weight-medium, 500);
+}
+
+.admin-search-item {
+  display: flex;
+  align-items: center;
+  gap: var(--p-space-300);
+  padding: var(--p-space-200) var(--p-space-300);
+  border-radius: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-search-item[data-selected="true"] {
+  background: var(--p-color-bg-surface-hover, #f7f7f7);
+}
+
+.admin-search-item-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  background: var(--p-color-bg-surface-secondary, #f7f7f7);
+  color: var(--p-color-icon-secondary);
+}
+
+@media (prefers-reduced-motion) {
+  [data-admin-shell] .admin-nav-search,
+  .admin-search-dialog,
+  .admin-search-backdrop {
+    transition: none;
+  }
+}
+
+/* Sidebar footer — signed-in staff row under Settings */
+[data-admin-shell] .admin-nav-footer {
+  padding: var(--p-space-200);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-admin-shell] .admin-nav-user {
+  display: flex;
+  align-items: center;
+  gap: var(--p-space-200);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--p-space-150) var(--p-space-200);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--p-motion-duration-100) var(--p-motion-ease);
+}
+
+[data-admin-shell] .admin-nav-user:hover {
+  background-color: var(--p-color-nav-bg-surface-hover);
+}
+
+[data-admin-shell] .admin-nav-user[data-popup-open] {
+  background: var(--admin-nav-active-bg);
+  box-shadow: var(--admin-nav-active-shadow);
+}
+
+[data-admin-shell] .admin-nav-user:focus-visible {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+/* Save bar nudge when a navigation is refused */
+@keyframes admin-save-bar-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
+.admin-save-bar-shake {
+  animation: admin-save-bar-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@media (prefers-reduced-motion) {
+  .admin-save-bar-shake {
+    animation: none;
+    outline: 2px solid rgba(255, 255, 255, 0.6);
+  }
+}
+
+/* Sidebar menus: main ⇄ settings slide past each other */
+[data-admin-shell] .admin-nav-panels {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-admin-shell] .admin-nav-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  transition:
+    translate 320ms cubic-bezier(0.2, 0.8, 0, 1),
+    opacity 220ms ease-out;
+}
+
+[data-admin-shell] .admin-nav-panel[data-panel="main"]:not([data-current]) {
+  translate: -30% 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-admin-shell] .admin-nav-panel[data-panel="settings"]:not([data-current]) {
+  translate: 100% 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* "← Settings" header row */
+[data-admin-shell] [data-sidebar="menu-button"].admin-nav-back {
+  margin-bottom: var(--p-space-200);
+  color: var(--p-color-nav-text-active);
+  font-weight: var(--p-font-weight-semibold);
+}
+
+@media (prefers-reduced-motion) {
+  [data-admin-shell] .admin-nav-panel {
+    transition: none;
+  }
+}
+
+/* Sidebar menu text — white everywhere (main menu, sub-items, settings menu), at rest and on hover */
+[data-admin-shell] [data-sidebar="menu-button"],
+[data-admin-shell] [data-sidebar="menu-button"]:hover,
+[data-admin-shell] [data-sidebar="menu-sub-button"],
+[data-admin-shell] [data-sidebar="menu-sub-button"]:hover,
+[data-admin-shell] [data-sidebar="menu-item"] a:not([data-active="true"]),
+[data-admin-shell] [data-sidebar="menu-item"] a:not([data-active="true"]):hover {
+  color: #ffffff;
 }

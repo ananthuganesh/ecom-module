@@ -383,7 +383,7 @@ export default function AdminProductsPage() {
                   <button
                     type="button"
                     onClick={() => setRowSelection({})}
-                    className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                    className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                   >
                     Clear
                   </button>
@@ -405,7 +405,7 @@ export default function AdminProductsPage() {
                           variant="secondary"
                           size="lg"
                           disabled={bulkLoading}
-                          className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4]"
+                          className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-(--p-color-button-bg-fill) px-3 text-[0.8125rem] font-medium leading-5 text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active) aria-expanded:bg-(--p-color-button-bg-fill-hover)"
                         />
                       }
                     >

@@ -40,7 +40,7 @@ const EMPTY_FORM = {
 };
 
 const ACTIVE_PILL =
-  "bg-[#95FFB9] text-[#004D41] hover:bg-[#95FFB9] [&_svg]:text-[#004D41] [&_svg]:opacity-100";
+  "bg-(--p-color-badge-bg-fill-success) text-(--p-color-badge-text-success) hover:bg-(--p-color-badge-bg-fill-success) [&_svg]:text-(--p-color-badge-text-success) [&_svg]:opacity-100";
 
 /** Admin product rows → the summary shape the collection API returns. */
 function toMember(product) {
@@ -285,13 +285,13 @@ export default function AdminCollectionEditPage() {
           <div className="flex min-w-0 items-center gap-2">
             <Link
               href="/admin/products/collections"
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-[#4a4a4a] hover:bg-black/[0.06]"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-(--p-color-icon-secondary) hover:bg-black/[0.06]"
               aria-label="Back to collections"
             >
               <ArrowLeft className="size-4" />
             </Link>
-            <Package active className="size-[18px] shrink-0 text-[#303030]" />
-            <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+            <Package active className="size-[18px] shrink-0 text-(--p-color-text)" />
+            <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
               {isNew ? form.name || "Create collection" : form.name || "Untitled collection"}
             </h2>
             {!isNew ? (
@@ -396,7 +396,7 @@ export default function AdminCollectionEditPage() {
                           <button
                             type="button"
                             onClick={() => setRowSelection({})}
-                            className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                            className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                           >
                             Clear
                           </button>
@@ -494,7 +494,7 @@ export default function AdminCollectionEditPage() {
               value={pickerQuery}
               onChange={(e) => setPickerQuery(e.target.value)}
               placeholder="Search products"
-              className="h-9 rounded-lg border-[#c9cccf] bg-white pl-9"
+              className="h-9 rounded-lg border-(--p-color-border-hover) bg-white pl-9"
               autoFocus
             />
           </div>

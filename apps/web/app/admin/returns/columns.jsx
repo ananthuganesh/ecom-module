@@ -97,7 +97,7 @@ function numberColumn({ widthClass, size, sticky } = {}) {
     accessorFn: (row) => row.number || "",
     header: "Return",
     cell: ({ row }) => (
-      <span className="block truncate font-mono text-[13px] font-[550] text-foreground">
+      <span className="block truncate font-mono text-[13px] font-medium text-foreground">
         {row.original.number}
       </span>
     ),
@@ -117,7 +117,7 @@ function orderColumn({ widthClass, size } = {}) {
         <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           <Link
             href={adminOrderHref({ _id: orderId, orderNumber })}
-            className="block truncate text-[13px] text-[#005bd3] hover:underline"
+            className="block truncate text-[13px] text-(--p-color-text-link) hover:underline"
           >
             {formatOrderNumber({ orderNumber }) || orderNumber || "—"}
           </Link>

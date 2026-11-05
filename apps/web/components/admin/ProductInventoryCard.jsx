@@ -36,10 +36,10 @@ export default function ProductInventoryCard({ form, setForm }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
 
-        <div className="overflow-hidden rounded-xl border border-[#e3e3e3]">
+        <div className="overflow-hidden rounded-xl border border-(--p-color-border)">
           <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="border-b border-[#ebebeb] bg-[#fafafa] text-[12px] font-medium text-[#616161]">
+              <tr className="border-b border-(--p-color-border-secondary) bg-(--p-color-bg-surface-secondary) text-[12px] font-medium text-(--p-color-text-secondary)">
                 <th className="px-3 py-2 font-medium">Locations</th>
                 <th className="w-28 px-3 py-2 text-right font-medium">
                   Available
@@ -48,12 +48,12 @@ export default function ProductInventoryCard({ form, setForm }) {
             </thead>
             <tbody>
               <tr>
-                <td className="px-3 py-2.5 text-[13px] text-[#303030]">
+                <td className="px-3 py-2.5 text-[13px] text-(--p-color-text)">
                   Main Warehouse
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   {multiVariant ? (
-                    <span className="text-[13px] text-[#303030]">
+                    <span className="text-[13px] text-(--p-color-text)">
                       {available}
                     </span>
                   ) : (
@@ -66,7 +66,7 @@ export default function ProductInventoryCard({ form, setForm }) {
                           : primary.quantity
                       }
                       onChange={(e) => setAvailable(e.target.value)}
-                      className="ml-auto h-8 w-[4.5rem] border-[#e3e3e3] bg-white text-right"
+                      className="ml-auto h-8 w-[4.5rem] border-(--p-color-border) bg-white text-right"
                     />
                   )}
                 </td>

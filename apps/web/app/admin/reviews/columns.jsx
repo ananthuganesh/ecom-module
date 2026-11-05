@@ -79,7 +79,7 @@ function productColumn({ widthClass, size, sticky } = {}) {
             href={`/product/${productSlug || productId}#reviews`}
             target="_blank"
             rel="noreferrer"
-            className="block truncate text-[13px] font-[550] text-[#005bd3] hover:underline"
+            className="block truncate text-[13px] font-medium text-(--p-color-text-link) hover:underline"
           >
             {productName || "Deleted product"}
           </a>
@@ -111,7 +111,7 @@ function reviewColumn({ widthClass, size } = {}) {
       const { title, body } = row.original;
       return (
         <span className="block truncate text-[13px] text-foreground" title={body || title || ""}>
-          {title ? <span className="font-[550]">{title}</span> : null}
+          {title ? <span className="font-medium">{title}</span> : null}
           {title && body ? " — " : ""}
           <span className="text-muted-foreground">{body || (title ? "" : "No written review")}</span>
         </span>

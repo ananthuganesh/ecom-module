@@ -54,8 +54,8 @@ function TrendLine({ change, comparedTo }) {
           isZero
             ? "inline-flex items-center font-medium text-muted-foreground"
             : up
-              ? "inline-flex items-center font-medium text-[#0c5132]"
-              : "inline-flex items-center font-medium text-[#8e1f0b]"
+              ? "inline-flex items-center font-medium text-(--p-color-text-success-secondary)"
+              : "inline-flex items-center font-medium text-(--p-color-text-critical-secondary)"
         }
       >
         <Icon className="size-3.5" />

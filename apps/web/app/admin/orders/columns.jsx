@@ -465,7 +465,7 @@ function tagColumn({ widthClass = "w-[120px]", size = 120 } = {}) {
     cell: ({ row }) => {
       const tag = attributionTag(row.original);
       return (
-        <span className="inline-flex h-6 max-w-full items-center truncate rounded-[0.5rem] bg-black/[0.06] px-2 text-[0.75rem] font-[550] leading-4 text-[#616161]">
+        <span className="inline-flex h-6 max-w-full items-center truncate rounded-[0.5rem] bg-black/[0.06] px-2 text-[0.75rem] font-medium leading-4 text-(--p-color-text-secondary)">
           {tag}
         </span>
       );

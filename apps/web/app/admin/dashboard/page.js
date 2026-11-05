@@ -34,6 +34,27 @@ import {
 } from "@/components/icons";
 import { AdminDateRangeButton } from "@/components/admin/list";
 import { useAdminDashboardStore } from "@/store/useAdminDashboardStore";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
+import { greeting } from "@/lib/greeting";
+
+/** "Good morning, Name" from the viewer's own clock; re-checked so it turns over at noon / 5 pm. */
+function HomeGreeting() {
+  const profile = useAdminAuthStore((s) => s.userInfo);
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    const update = () => setText(greeting(profile));
+    update();
+    const timer = setInterval(update, 60_000);
+    return () => clearInterval(timer);
+  }, [profile]);
+
+  return (
+    <h2 className="min-h-8 text-(length:--p-font-size-display-medium) leading-(--p-font-line-height-display-medium) font-semibold tracking-(--p-font-letter-spacing-display-medium) text-(--p-color-text)">
+      {text}
+    </h2>
+  );
+}
 
 const RANGE_OPTIONS = [
   { value: "7days", api: "7d", label: "Last 7 days" },
@@ -285,9 +306,7 @@ export default function AdminDashboardPage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 md:gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
-          Dashboard
-        </h2>
+        <HomeGreeting />
         <AdminDateRangeButton
           value={dateFilter}
           onChange={(next) => {

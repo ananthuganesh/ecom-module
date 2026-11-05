@@ -90,7 +90,7 @@ import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 import { PRODUCT_CARD_BADGE_OPTIONS } from "@/utils/urbanProductAdapter";
 
 const productSelectTriggerClass =
-  "h-8 w-full border-[#e3e3e3] bg-white shadow-none ring-0 focus-visible:border-[#b5b5b5] focus-visible:ring-0";
+  "h-8 w-full border-(--p-color-border) bg-white shadow-none ring-0 focus-visible:border-(--p-color-border-tertiary) focus-visible:ring-0";
 
 
 function SortableMediaTile({
@@ -123,9 +123,9 @@ function SortableMediaTile({
       {...attributes}
       {...listeners}
       className={cn(
-        "admin-media-tile group relative shrink-0 overflow-hidden border bg-[#fafafa]",
+        "admin-media-tile group relative shrink-0 overflow-hidden border bg-(--p-color-bg-surface-secondary)",
         featured ? "admin-media-tile--featured" : "admin-media-tile--thumb",
-        active ? "border-[#303030]" : "border-[#e3e3e3]",
+        active ? "border-(--p-color-text)" : "border-(--p-color-border)",
         isDragging && "admin-media-tile--dragging opacity-90 shadow-md"
       )}
     >
@@ -146,7 +146,7 @@ function SortableMediaTile({
             onCheckedChange={(checked) => {
               onToggleSelect(src, Boolean(checked));
             }}
-            className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-[#303030] data-checked:bg-[#303030]"
+            className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-(--p-color-text) data-checked:bg-(--p-color-button-primary-bg)"
           />
         </span>
       </span>
@@ -699,8 +699,8 @@ export default function AdminProductDetailPage() {
       <main className="admin-product-form mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 bg-background md:gap-6">
         <header className="flex shrink-0 flex-col gap-3 bg-transparent py-0 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2">
-            <Package active className="size-[18px] shrink-0 text-[#303030]" />
-            <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+            <Package active className="size-[18px] shrink-0 text-(--p-color-text)" />
+            <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
               {isNew
                 ? form.productName || "Add product"
                 : form.productName || "Untitled product"}
@@ -808,7 +808,7 @@ export default function AdminProductDetailPage() {
                 size="icon-lg"
                 title="Previous product"
                 disabled={!neighbors.previous}
-                className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+                className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
                 onClick={() => {
                   if (!neighbors.previous || !confirmLeave()) return;
                   router.push(
@@ -824,7 +824,7 @@ export default function AdminProductDetailPage() {
                 size="icon-lg"
                 title="Next product"
                 disabled={!neighbors.next}
-                className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+                className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
                 onClick={() => {
                   if (!neighbors.next || !confirmLeave()) return;
                   router.push(
@@ -888,7 +888,7 @@ export default function AdminProductDetailPage() {
                       <button
                         type="button"
                         disabled={uploadingMedia}
-                        className="m-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-[#c9cccf] bg-white px-3 text-[13px] font-medium text-[#303030] hover:bg-[#f7f7f7] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="m-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-(--p-color-border-hover) bg-white px-3 text-[13px] font-medium text-(--p-color-text) hover:bg-(--p-color-bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
                         onClick={() => openImageFilePicker(null)}
                       >
                         {uploadingMedia ? (
@@ -898,7 +898,7 @@ export default function AdminProductDetailPage() {
                       </button>
                       <button
                         type="button"
-                        className="text-[13px] font-medium text-[#005bd3] hover:underline disabled:opacity-50"
+                        className="text-[13px] font-medium text-(--p-color-text-link) hover:underline disabled:opacity-50"
                         disabled={uploadingMedia}
                         onClick={() => {
                           setMediaPickerVariantIndex(null);
@@ -908,7 +908,7 @@ export default function AdminProductDetailPage() {
                         Select existing
                       </button>
                     </div>
-                    <p className="text-[12px] text-[#616161]">
+                    <p className="text-[12px] text-(--p-color-text-secondary)">
                       JPG, PNG, WEBP, or GIF — up to 25 MB
                     </p>
                   </div>
@@ -916,7 +916,7 @@ export default function AdminProductDetailPage() {
                   <div className="space-y-3">
                     {selectedMediaList.length > 0 ? (
                       <div className="flex items-center justify-between gap-3">
-                        <label className="inline-flex items-center gap-2 text-[13px] font-medium text-[#303030]">
+                        <label className="inline-flex items-center gap-2 text-[13px] font-medium text-(--p-color-text)">
                           <Checkbox
                             checked={
                               uniqueMedia.length > 0 &&
@@ -929,14 +929,14 @@ export default function AdminProductDetailPage() {
                                 setSelectedMedia(new Set());
                               }
                             }}
-                            className="data-checked:border-[#303030] data-checked:bg-[#303030]"
+                            className="data-checked:border-(--p-color-text) data-checked:bg-(--p-color-button-primary-bg)"
                           />
                           {selectedMediaList.length} file
                           {selectedMediaList.length === 1 ? "" : "s"} selected
                         </label>
                         <button
                           type="button"
-                          className="text-[13px] font-medium text-[#c70a24] hover:underline"
+                          className="text-[13px] font-medium text-(--p-color-text-critical-accent) hover:underline"
                           onClick={() => {
                             const remove = new Set(selectedMediaList);
                             setForm((prev) => ({
@@ -983,7 +983,7 @@ export default function AdminProductDetailPage() {
                         <PopoverTrigger
                           type="button"
                           disabled={uploadingMedia}
-                          className="admin-media-tile admin-media-tile--add relative inline-flex shrink-0 items-center justify-center border border-dashed border-[#c9cccf] bg-[#fafafa] text-[#303030] hover:bg-[#f3f3f3] disabled:opacity-60"
+                          className="admin-media-tile admin-media-tile--add relative inline-flex shrink-0 items-center justify-center border border-dashed border-(--p-color-border-hover) bg-(--p-color-bg-surface-secondary) text-(--p-color-text) hover:bg-(--p-color-bg-fill) disabled:opacity-60"
                           aria-label={uploadingMedia ? "Uploading media" : "Add media"}
                         >
                           {uploadingMedia ? (
@@ -998,7 +998,7 @@ export default function AdminProductDetailPage() {
                         >
                           <button
                             type="button"
-                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
                             onClick={() => {
                               setAddMediaOpen(false);
                               openImageFilePicker(null);
@@ -1008,7 +1008,7 @@ export default function AdminProductDetailPage() {
                           </button>
                           <button
                             type="button"
-                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
                             onClick={() => {
                               setAddMediaOpen(false);
                               setMediaPickerVariantIndex(null);
@@ -1035,7 +1035,7 @@ export default function AdminProductDetailPage() {
                   <Field>
                     <FieldLabel>MRP</FieldLabel>
                     <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                         ₹
                       </span>
                       <Input
@@ -1054,7 +1054,7 @@ export default function AdminProductDetailPage() {
                   <Field>
                     <FieldLabel>Selling Price</FieldLabel>
                     <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                         ₹
                       </span>
                       <Input
@@ -1073,7 +1073,7 @@ export default function AdminProductDetailPage() {
                   <Field>
                     <FieldLabel>Cost</FieldLabel>
                     <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                         ₹
                       </span>
                       <Input

@@ -1,4 +1,5 @@
 import AdminShell from "@/components/admin/AdminShell";
+import "./polaris-tokens.css";
 import "./admin.css";
 
 export const metadata = {

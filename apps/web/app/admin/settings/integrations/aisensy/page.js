@@ -254,8 +254,8 @@ export default function AisensySettingsPage() {
   return (
     <div className="w-full">
       <div className="mb-6">
-        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
-          Whatsapp API
+        <h1 className="admin-page-title text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
+          Whatsapp Marketing
         </h1>
       </div>
 
@@ -296,7 +296,7 @@ export default function AisensySettingsPage() {
               type="button"
               onClick={handleSync}
               disabled={syncing || syncingCatalog || !settings.projectConfigured}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[13px] font-medium hover:bg-muted disabled:opacity-50"
+              className="admin-btn-secondary inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] font-medium disabled:opacity-50"
               title={
                 settings.projectConfigured
                   ? "Sync customers"
@@ -310,7 +310,7 @@ export default function AisensySettingsPage() {
               type="button"
               onClick={handleSyncCatalog}
               disabled={syncingCatalog || syncing || !settings.projectConfigured}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[13px] font-medium hover:bg-muted disabled:opacity-50"
+              className="admin-btn-secondary inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] font-medium disabled:opacity-50"
               title={
                 settings.projectConfigured
                   ? "Push active products (per variant) to AiSensy catalogue"

@@ -1,14 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { adminOrderService } from "@/api";
+import AdminSearchDialog from "@/components/admin/AdminSearchDialog";
+import { NavUser } from "@/components/nav-user";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
+import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
+import { ArrowLeft } from "@/components/icons";
+import {
+  isSettingsItemActive,
+  settingsNavFor,
+  settingsReturnPath,
+} from "@/components/admin/settingsNav";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
@@ -28,6 +41,28 @@ import {
   Sparkles,
 } from "./LocalIcons";
 
+/** Signed-in staff member + logout, pinned under Settings. */
+function SidebarUser() {
+  const router = useRouter();
+  const userInfo = useAdminAuthStore((s) => s.userInfo);
+  const logout = useAdminAuthStore((s) => s.logout);
+  return (
+    <NavUser
+      placement="sidebar"
+      user={{
+        name: userInfo?.name || "Admin",
+        email: userInfo?.email || "",
+        avatar: "",
+      }}
+      onLogout={() => {
+        if (useProductSaveBarStore.getState().blockNavigation()) return;
+        logout();
+        router.push("/admin/login");
+      }}
+    />
+  );
+}
+
 /** L-shaped curved connector; tip centered with submenu text. */
 function SubmenuArrow({ className = "" }) {
   return (
@@ -36,7 +71,7 @@ function SubmenuArrow({ className = "" }) {
       height="16"
       viewBox="0 0 16 16"
       fill="none"
-      className={`text-black/30 ${className}`}
+      className={`text-white/30 ${className}`}
       aria-hidden
     >
       <path
@@ -164,7 +199,7 @@ function isMenuFamilyActive(item, pathname, searchParams) {
 }
 
 const menuItems = [
-  { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+  { name: "Home", href: "/admin/dashboard", icon: LayoutDashboard },
   {
     name: "Orders",
     href: "/admin/orders",
@@ -232,6 +267,52 @@ const settingsItem = {
   icon: Settings,
 };
 
+/** Settings menu: back row + the settings pages, in the main menu's style. */
+function SettingsPanel({ pathname }) {
+  const userInfo = useAdminAuthStore((s) => s.userInfo);
+  const nav = settingsNavFor(userInfo);
+  const [backHref, setBackHref] = useState("/admin/dashboard");
+
+  // Return to wherever settings was opened from (read on entry).
+  useEffect(() => {
+    if (pathname.startsWith("/admin/settings")) setBackHref(settingsReturnPath());
+  }, [pathname]);
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              render={<Link href={backHref} />}
+              className="admin-nav-back"
+              tooltip="Back"
+            >
+              <ArrowLeft className="size-[18px] shrink-0" aria-hidden />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {nav.map((item) => {
+            const active = isSettingsItemActive(item, pathname);
+            return (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  render={<Link href={item.href} />}
+                  isActive={active}
+                  tooltip={item.name}
+                >
+                  <item.icon active={active} className="size-[18px] shrink-0" aria-hidden />
+                  <span>{item.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export default function AdminSidebar(props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -239,6 +320,8 @@ export default function AdminSidebar(props) {
   const [unfulfilledCount, setUnfulfilledCount] = useState(0);
 
   const isActiveHref = (href) => hrefIsActive(href, pathname, searchParams);
+  // Settings swaps the main menu for its own (slides in from the right).
+  const inSettings = pathname.startsWith("/admin/settings");
 
   const refreshOrderCounts = useCallback(async () => {
     try {
@@ -279,7 +362,30 @@ export default function AdminSidebar(props) {
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarContent>
+      <SidebarHeader className="px-2 pt-3 pb-0">
+        <Link
+          href="/admin/dashboard"
+          className="mb-2 inline-flex h-9 shrink-0 items-center self-start px-2"
+          aria-label="Urban Aana Admin"
+        >
+          <Image
+            src="/urban/logo-dark.png"
+            alt="Urban Aana"
+            width={110}
+            height={32}
+            priority
+            className="h-7 w-auto object-contain"
+          />
+        </Link>
+        <AdminSearchDialog />
+      </SidebarHeader>
+      <SidebarContent className="admin-nav-panels">
+        <div
+          className="admin-nav-panel"
+          data-panel="main"
+          data-current={!inSettings || undefined}
+          inert={inSettings}
+        >
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -337,7 +443,7 @@ export default function AdminSidebar(props) {
                       <span>{item.name}</span>
                     </SidebarMenuButton>
                     {item.name === "Orders" && unfulfilledCount > 0 ? (
-                      <SidebarMenuBadge className="right-2 top-1.5 h-[1.25rem] min-w-[1.25rem] rounded-md bg-[#e3e3e3] px-1.5 text-[12px] font-[550] leading-none tabular-nums text-[#303030] peer-hover/menu-button:bg-[#d4d4d4] peer-hover/menu-button:text-[#303030] peer-data-active/menu-button:bg-[#e3e3e3] peer-data-active/menu-button:text-[#303030]">
+                      <SidebarMenuBadge className="right-2 top-1.5 h-[1.25rem] min-w-[1.25rem] rounded-md bg-(--p-color-nav-bg-fill) px-1.5 text-[12px] font-medium leading-none tabular-nums text-(--p-color-nav-text-active) peer-hover/menu-button:bg-(--p-color-nav-bg-fill-hover)">
                         {unfulfilledCount > 99 ? "99+" : unfulfilledCount}
                       </SidebarMenuBadge>
                     ) : null}
@@ -346,7 +452,7 @@ export default function AdminSidebar(props) {
                       <div className="relative space-y-0.5 pb-0.5">
                         {lineHeightPx > 0 && (
                           <div
-                            className="pointer-events-none absolute top-0 z-10 bg-black/10"
+                            className="pointer-events-none absolute top-0 z-10 bg-white/10"
                             style={{
                               left: "21.25px",
                               width: "1px",
@@ -362,10 +468,10 @@ export default function AdminSidebar(props) {
                               key={sub.name}
                               href={sub.href}
                               data-active={isSubActive ? "true" : undefined}
-                              className={`group relative flex h-7 items-center rounded-lg border-l-2 border-transparent py-0 pl-[38px] pr-3 text-[0.8125rem] transition-colors ${
+                              className={`group relative flex h-8 items-center rounded-lg border-l-2 border-transparent py-0 pl-[38px] pr-3 text-[0.8125rem] transition-colors ${
                                 isSubActive
-                                  ? "bg-[#fafafa] font-[550] text-[#303030]"
-                                  : "font-[450] text-[#616161] hover:bg-[#f1f1f1] hover:text-[#303030]"
+                                  ? "bg-(--p-color-nav-bg-surface-selected) font-semibold text-(--p-color-nav-text-active)"
+                                  : "font-medium text-(--p-color-nav-text-secondary) hover:bg-(--p-color-nav-bg-surface-hover) hover:text-(--p-color-nav-text-secondary-hover)"
                               }`}
                             >
                               <div
@@ -411,7 +517,20 @@ export default function AdminSidebar(props) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        </div>
+
+        <div
+          className="admin-nav-panel"
+          data-panel="settings"
+          data-current={inSettings || undefined}
+          inert={!inSettings}
+        >
+          <SettingsPanel pathname={pathname} />
+        </div>
       </SidebarContent>
+      <SidebarFooter className="admin-nav-footer">
+        <SidebarUser />
+      </SidebarFooter>
     </Sidebar>
   );
 }

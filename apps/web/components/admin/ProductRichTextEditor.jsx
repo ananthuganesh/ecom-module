@@ -45,8 +45,8 @@ function ToolbarButton({ active, disabled, onClick, label, children }) {
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[#303030] hover:bg-[#f1f1f1] disabled:opacity-40",
-        active && "bg-[#e3e3e3]"
+        "inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-(--p-color-text) hover:bg-(--p-color-bg-fill) disabled:opacity-40",
+        active && "bg-(--p-color-button-bg-fill)"
       )}
     >
       {children}
@@ -82,7 +82,7 @@ export default function ProductRichTextEditor({
     editorProps: {
       attributes: {
         class:
-          "admin-rte-content min-h-[9rem] px-3 py-2 text-[13px] leading-5 text-[#303030] outline-none focus:outline-none",
+          "admin-rte-content min-h-[9rem] px-3 py-2 text-[13px] leading-5 text-(--p-color-text) outline-none focus:outline-none",
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -104,13 +104,13 @@ export default function ProductRichTextEditor({
 
   if (!editor) {
     return (
-      <div className="min-h-[11rem] rounded-lg border border-[#e3e3e3] bg-white" />
+      <div className="min-h-[11rem] rounded-lg border border-(--p-color-border) bg-white" />
     );
   }
 
   return (
-    <div className="admin-rte overflow-hidden rounded-lg border border-[#e3e3e3] bg-white">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-[#e3e3e3] bg-[#fafafa] px-1.5 py-1">
+    <div className="admin-rte overflow-hidden rounded-lg border border-(--p-color-border) bg-white">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-(--p-color-border) bg-(--p-color-bg-surface-secondary) px-1.5 py-1">
         <ToolbarButton
           label="Bold"
           active={editor.isActive("bold")}
@@ -133,7 +133,7 @@ export default function ProductRichTextEditor({
           <UnderlineIcon className="h-3.5 w-3.5" />
         </ToolbarButton>
 
-        <span className="mx-1 h-4 w-px bg-[#e3e3e3]" />
+        <span className="mx-1 h-4 w-px bg-(--p-color-button-bg-fill)" />
 
         <ToolbarButton
           label="Align left"
@@ -157,7 +157,7 @@ export default function ProductRichTextEditor({
           <AlignRight className="h-3.5 w-3.5" />
         </ToolbarButton>
 
-        <span className="mx-1 h-4 w-px bg-[#e3e3e3]" />
+        <span className="mx-1 h-4 w-px bg-(--p-color-button-bg-fill)" />
 
         <ToolbarButton
           label="Bulleted list"

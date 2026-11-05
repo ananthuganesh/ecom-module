@@ -74,9 +74,9 @@ function ContactCopyLine({ value, display }) {
       </span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {copied ? (
-          <Check className="size-3 text-[#047b5d]" aria-hidden />
+          <Check className="size-3 text-(--p-color-text-success-accent)" aria-hidden />
         ) : (
-          <Copy className="size-3 text-[#8a8a8a]" aria-hidden />
+          <Copy className="size-3 text-(--p-color-text-tertiary)" aria-hidden />
         )}
       </span>
     </button>
@@ -143,7 +143,7 @@ function customerOrderColumns() {
         <Link
           href={adminOrderHref(row.original)}
           onClick={(e) => e.stopPropagation()}
-          className="block truncate text-[13px] font-medium text-[#005bd3] hover:underline"
+          className="block truncate text-[13px] font-medium text-(--p-color-text-link) hover:underline"
         >
           {formatOrderNumber(row.original) || "Order"}
         </Link>
@@ -382,8 +382,8 @@ export default function AdminCustomerDetailPage() {
     <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto bg-background md:gap-6">
       <header className="sticky top-0 z-20 flex shrink-0 flex-col gap-3 bg-transparent py-0 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <Users active className="size-[18px] shrink-0 text-[#303030]" />
-          <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+          <Users active className="size-[18px] shrink-0 text-(--p-color-text)" />
+          <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
             {name}
           </h2>
           <AdminStatusText
@@ -407,7 +407,7 @@ export default function AdminCustomerDetailPage() {
               size="icon-lg"
               title="Previous customer"
               disabled={!neighbors.previous}
-              className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+              className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
               onClick={() => {
                 if (!neighbors.previous) return;
                 router.push(
@@ -423,7 +423,7 @@ export default function AdminCustomerDetailPage() {
               size="icon-lg"
               title="Next customer"
               disabled={!neighbors.next}
-              className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+              className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
               onClick={() => {
                 if (!neighbors.next) return;
                 router.push(
@@ -516,20 +516,20 @@ export default function AdminCustomerDetailPage() {
                   <span className="admin-card-muted">Total orders</span>
                   <Link
                     href={ordersHref}
-                    className="text-[15px] font-[650] tabular-nums leading-5 tracking-[-0.01em] text-[#303030] hover:underline"
+                    className="text-[15px] font-semibold tabular-nums leading-5 tracking-[-0.01em] text-(--p-color-text) hover:underline"
                   >
                     {ordersCount}
                   </Link>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="admin-card-muted">Total spent</span>
-                  <span className="text-[15px] font-[650] tabular-nums leading-5 tracking-[-0.01em] text-[#303030]">
+                  <span className="text-[15px] font-semibold tabular-nums leading-5 tracking-[-0.01em] text-(--p-color-text)">
                     {formatINR(amountSpent)}
                   </span>
                 </div>
               </div>
 
-              <div className="space-y-2 border-t border-[#ebebeb] pt-3">
+              <div className="space-y-2 border-t border-(--p-color-border-secondary) pt-3">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="admin-card-muted">Last order</span>
                   {lastOrder ? (

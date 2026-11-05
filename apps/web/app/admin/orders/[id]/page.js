@@ -270,7 +270,7 @@ function CopyableValue({ value, uppercase = false }) {
     >
       <span className="admin-card-muted break-all">{text}</span>
       {copied ? (
-        <Check className="size-3 text-emerald-600 shrink-0" />
+        <Check className="size-3 text-(--p-color-text-success-accent) shrink-0" />
       ) : (
         <Copy className="size-3 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0" />
       )}
@@ -311,9 +311,9 @@ function ContactCopyLine({ value, display }) {
       </span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {copied ? (
-          <Check className="size-3 text-[#047b5d]" aria-hidden />
+          <Check className="size-3 text-(--p-color-text-success-accent)" aria-hidden />
         ) : (
-          <Copy className="size-3 text-[#8a8a8a]" aria-hidden />
+          <Copy className="size-3 text-(--p-color-text-tertiary)" aria-hidden />
         )}
       </span>
     </button>
@@ -881,7 +881,7 @@ export default function AdminOrderDetailPage() {
       {/* Action Header */}
       <header className="flex shrink-0 items-center justify-between gap-3 bg-transparent py-0">
         <div className="flex min-w-0 items-center gap-2">
-          <ShoppingBag active className="size-[18px] shrink-0 text-[#303030]" />
+          <ShoppingBag active className="size-[18px] shrink-0 text-(--p-color-text)" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[16px] leading-5 font-medium text-foreground truncate m-0">
@@ -939,7 +939,7 @@ export default function AdminOrderDetailPage() {
                 >
                   {isPrintingInvoice ? (
                     <>
-                      <Spinner className="size-3.5 text-[#303030]" />
+                      <Spinner className="size-3.5 text-(--p-color-text)" />
                       Preparing…
                     </>
                   ) : (
@@ -955,7 +955,7 @@ export default function AdminOrderDetailPage() {
                 >
                   {isPrintingLabel ? (
                     <>
-                      <Spinner className="size-3.5 text-[#303030]" />
+                      <Spinner className="size-3.5 text-(--p-color-text)" />
                       Preparing…
                     </>
                   ) : (
@@ -971,7 +971,7 @@ export default function AdminOrderDetailPage() {
                 >
                   {updating ? (
                     <>
-                      <Spinner className="size-3.5 text-[#303030]" />
+                      <Spinner className="size-3.5 text-(--p-color-text)" />
                       Refunding…
                     </>
                   ) : (
@@ -989,7 +989,7 @@ export default function AdminOrderDetailPage() {
                       variant="secondary"
                       size="lg"
                       disabled={updating}
-                      className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4]"
+                      className="admin-btn-secondary h-8 min-h-8 gap-1.5 rounded-lg border-transparent px-3 text-[0.8125rem] font-medium leading-5 text-(--p-color-text) hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active) aria-expanded:bg-(--p-color-button-bg-fill-hover)"
                     />
                   }
                 >
@@ -1002,7 +1002,7 @@ export default function AdminOrderDetailPage() {
                     disabled={isCancelled}
                     onClick={handleCancelOrder}
                   >
-                    <X className="size-3.5 text-[#616161]" />
+                    <X className="size-3.5 text-(--p-color-text-secondary)" />
                     Cancel order
                   </DropdownMenuItem>
                   {canRefund ? (
@@ -1010,7 +1010,7 @@ export default function AdminOrderDetailPage() {
                       className="gap-2 text-[0.8125rem]"
                       onClick={handleRefundOrder}
                     >
-                      <RotateCcw className="size-3.5 text-[#616161]" />
+                      <RotateCcw className="size-3.5 text-(--p-color-text-secondary)" />
                       Refund via Razorpay
                     </DropdownMenuItem>
                   ) : null}
@@ -1018,7 +1018,7 @@ export default function AdminOrderDetailPage() {
                     className="gap-2 text-[0.8125rem]"
                     onClick={handleArchiveOrder}
                   >
-                    <Archive className="size-3.5 text-[#616161]" />
+                    <Archive className="size-3.5 text-(--p-color-text-secondary)" />
                     {order.archived ? "Unarchive" : "Archive"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -1033,7 +1033,7 @@ export default function AdminOrderDetailPage() {
               size="icon-lg"
               title="Previous order"
               disabled={!neighbors.previous}
-              className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+              className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
               onClick={() => {
                 if (!neighbors.previous) return;
                 router.push(`/admin/orders/${encodeURIComponent(neighbors.previous.key)}`);
@@ -1047,7 +1047,7 @@ export default function AdminOrderDetailPage() {
               size="icon-lg"
               title="Next order"
               disabled={!neighbors.next}
-              className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+              className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
               onClick={() => {
                 if (!neighbors.next) return;
                 router.push(`/admin/orders/${encodeURIComponent(neighbors.next.key)}`);
@@ -1295,7 +1295,7 @@ export default function AdminOrderDetailPage() {
                     >
                       <SelectTrigger
                         aria-label="Carrier"
-                        className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none transition-colors hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4] data-[popup-open]:bg-[#d4d4d4] [&_svg]:text-[#303030] [&_svg]:opacity-70"
+                        className="admin-btn-secondary h-8 min-h-8 gap-1.5 rounded-lg border-transparent px-3 text-[0.8125rem] font-medium leading-5 text-(--p-color-text) transition-colors [&_svg]:text-(--p-color-text) [&_svg]:opacity-70"
                       >
                         <SelectValue placeholder="Carrier">
                           {(value) =>
@@ -1520,7 +1520,7 @@ export default function AdminOrderDetailPage() {
 
             <div className="space-y-3">
                {orderDiscountAmount(order) > 0 && (
-                  <div className="flex items-center justify-between gap-3 text-[0.8125rem] font-[450]">
+                  <div className="flex items-center justify-between gap-3 text-[0.8125rem] font-normal">
                     <span className="flex min-w-0 flex-wrap items-center gap-2 text-foreground">
                       {orderDiscountNames(order).length > 1 || !orderCouponCode(order)
                         ? orderDiscountNames(order).length
@@ -1530,7 +1530,7 @@ export default function AdminOrderDetailPage() {
                       {orderDiscountNames(order).map((name) => (
                         <span
                           key={name}
-                          className={`truncate rounded-[0.375rem] bg-black/[0.06] px-1.5 py-0.5 text-[0.75rem] font-[550] text-[#616161] ${
+                          className={`truncate rounded-[0.375rem] bg-black/[0.06] px-1.5 py-0.5 text-[0.75rem] font-medium text-(--p-color-text-secondary) ${
                             name === orderCouponCode(order) ? "font-mono" : ""
                           }`}
                         >
@@ -1542,13 +1542,13 @@ export default function AdminOrderDetailPage() {
                   </div>
                )}
                {order.isGift && (
-                  <div className="flex items-center justify-between text-[0.8125rem] font-[450]">
+                  <div className="flex items-center justify-between text-[0.8125rem] font-normal">
                     <span className="text-foreground">Gift Wrap Fee</span>
                     <span className="text-muted-foreground">{formatINR(order.giftFee || 39, { signed: true })}</span>
                   </div>
                )}
                {order.deliveryAmount > 0 && (
-                  <div className="flex items-center justify-between text-[0.8125rem] font-[450]">
+                  <div className="flex items-center justify-between text-[0.8125rem] font-normal">
                     <span className="text-foreground">Delivery Fee</span>
                     <span className="text-muted-foreground">{formatINR(order.deliveryAmount)}</span>
                   </div>
@@ -1584,7 +1584,7 @@ export default function AdminOrderDetailPage() {
                   >
                     {invoiceLoading ? (
                       <>
-                        <Spinner className="size-3.5 text-[#303030]" />
+                        <Spinner className="size-3.5 text-(--p-color-text)" />
                         Creating…
                       </>
                     ) : (

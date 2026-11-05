@@ -105,17 +105,17 @@ export function AdminListLayout({
                           {Icon ? (
                             <Icon
                               active
-                              className="size-5 shrink-0 text-[#4a4a4a]"
+                              className="size-5 shrink-0 text-(--p-color-icon-secondary)"
                               aria-hidden
                             />
                           ) : null}
-                          <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+                          <h1 className="admin-page-title text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
                             {title}
                           </h1>
                         </div>
                       ) : null}
                       {description ? (
-                        <p className="mt-1 max-w-[42rem] text-[13px] leading-5 text-[#616161]">
+                        <p className="mt-1 max-w-[42rem] text-[13px] leading-5 text-(--p-color-text-secondary)">
                           {description}
                         </p>
                       ) : null}
@@ -171,12 +171,12 @@ export function AdminHeaderButton({
       size="lg"
       variant={isPrimary ? "default" : isOutline ? "outline" : "secondary"}
       className={cn(
-        "h-8 min-h-8 gap-1.5 rounded-lg px-3 text-[0.8125rem] font-[550] leading-5 shadow-none",
+        "h-8 min-h-8 gap-1.5 rounded-lg px-3 text-[0.8125rem] font-medium leading-5 shadow-none",
         isPrimary
-          ? "bg-[#303030] text-white hover:bg-[#1a1a1a]"
+          ? "bg-(--p-color-button-primary-bg) text-white hover:bg-(--p-color-button-primary-bg-hover)"
           : isOutline
-            ? "border-[#c9cccf] bg-transparent text-[#303030] hover:bg-[#f7f7f7] active:bg-[#f1f1f1]"
-            : "border-transparent bg-[#e3e3e3] text-[#303030] hover:bg-[#d4d4d4] active:bg-[#ccc]"
+            ? "admin-btn-secondary text-(--p-color-text)"
+            : "admin-btn-secondary text-(--p-color-text)"
       )}
     >
       {children}
@@ -203,10 +203,10 @@ export function AdminHeaderSplitButton({
         variant={btnVariant}
         size="lg"
         className={cn(
-          "h-8 min-h-8 gap-1.5 rounded-r-none px-3 text-[0.8125rem] font-[550] leading-5 shadow-none",
+          "h-8 min-h-8 gap-1.5 rounded-r-none px-3 text-[0.8125rem] font-medium leading-5 shadow-none",
           isPrimary
-            ? "border-r border-r-white/15 bg-[#303030] text-white hover:bg-[#1a1a1a]"
-            : "border-transparent bg-[#e3e3e3] text-[#303030] hover:bg-[#d4d4d4]"
+            ? "border-r border-r-white/15 bg-(--p-color-button-primary-bg) text-white hover:bg-(--p-color-button-primary-bg-hover)"
+            : "border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) hover:bg-(--p-color-button-bg-fill-hover)"
         )}
       >
         {children}
@@ -223,8 +223,8 @@ export function AdminHeaderSplitButton({
               className={cn(
                 "h-8 w-8 rounded-l-none shadow-none",
                 isPrimary
-                  ? "bg-[#303030] text-white hover:bg-[#1a1a1a]"
-                  : "border-transparent bg-[#e3e3e3] text-[#303030] hover:bg-[#d4d4d4]"
+                  ? "bg-(--p-color-button-primary-bg) text-white hover:bg-(--p-color-button-primary-bg-hover)"
+                  : "border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) hover:bg-(--p-color-button-bg-fill-hover)"
               )}
             />
           }
@@ -272,9 +272,9 @@ export function AdminViewMenu({ value = "all", options = [], onChange }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 text-[0.8125rem] font-[550] text-[#303030] outline-none hover:bg-black/5">
+      <DropdownMenuTrigger className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 text-[0.8125rem] font-medium text-(--p-color-text) outline-none hover:bg-black/5">
         {current.label}
-        <span className="inline-flex flex-col leading-none text-[#8a8a8a]" aria-hidden>
+        <span className="inline-flex flex-col leading-none text-(--p-color-text-tertiary)" aria-hidden>
           <ChevronDown className="size-3 rotate-180" />
           <ChevronDown className="size-3 -mt-1" />
         </span>
@@ -355,8 +355,6 @@ export function AdminDateRangeButton({
       ? formatRangeLabel(fromKey, toKey || fromKey)
       : current?.label || list[0]?.label || "Date";
   const hasAll = list.some((p) => p.value === "all");
-  const isFiltered =
-    preset === "custom" || Boolean(fromKey) || (hasAll ? preset !== "all" : Boolean(preset));
 
   const emit = (next) => {
     if (typeof value === "string" && next.preset && next.preset !== "custom" && !next.from) {
@@ -398,8 +396,7 @@ export function AdminDateRangeButton({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         className={cn(
-          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[13px] font-medium outline-none hover:bg-muted",
-          isFiltered && "border-foreground/20 bg-muted/60",
+          "admin-btn-secondary inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium outline-none",
           className
         )}
       >
@@ -495,48 +492,48 @@ export function AdminDateRangeButton({
 }
 
 const STATUS_TONE_STYLES = {
-  success: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  info: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  purple: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  review: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  neutral: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  danger: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  warning: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  caution: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
+  success: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  info: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  purple: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  review: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  neutral: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  danger: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  warning: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  caution: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
 };
 
 /** Solid Polaris-style fills — use for fulfillment badges only. */
 const STATUS_TONE_SOLID_STYLES = {
-  success: "bg-[#cdfee1] text-[#0c5132] hover:bg-[#cdfee1]",
-  info: "bg-[#e0f0ff] text-[#00527c] hover:bg-[#e0f0ff]",
-  purple: "bg-[#f1e8ff] text-[#4c2e9d] hover:bg-[#f1e8ff]",
-  review: "bg-[#ffef9d] text-[#4f4700] hover:bg-[#ffef9d]",
-  neutral: "bg-[#e3e3e3] text-[#303030] hover:bg-[#e3e3e3]",
-  danger: "bg-[#fee2e1] text-[#8e1f0b] hover:bg-[#fee2e1]",
-  warning: "bg-[#ffd6a4] text-[#5e4200] hover:bg-[#ffd6a4]",
-  caution: "bg-[#ffeb78] text-[#4f4700] hover:bg-[#ffeb78]",
+  success: "bg-(--p-color-badge-bg-fill-success) text-(--p-color-text-success-secondary) hover:bg-(--p-color-badge-bg-fill-success)",
+  info: "bg-(--p-color-bg-fill-info) text-(--p-color-text-info-secondary) hover:bg-(--p-color-bg-fill-info)",
+  purple: "bg-(--p-color-bg-fill-ai) text-(--p-color-badge-text-ai) hover:bg-(--p-color-bg-fill-ai)",
+  review: "bg-(--p-color-badge-bg-fill-caution) text-(--p-color-badge-text-caution) hover:bg-(--p-color-badge-bg-fill-caution)",
+  neutral: "bg-(--p-color-button-bg-fill) text-(--p-color-text) hover:bg-(--p-color-button-bg-fill)",
+  danger: "bg-(--p-color-badge-bg-fill-critical) text-(--p-color-text-critical-secondary) hover:bg-(--p-color-badge-bg-fill-critical)",
+  warning: "bg-(--p-color-badge-bg-fill-warning) text-(--p-color-badge-text-caution) hover:bg-(--p-color-badge-bg-fill-warning)",
+  caution: "bg-(--p-color-badge-bg-fill-caution) text-(--p-color-badge-text-caution) hover:bg-(--p-color-badge-bg-fill-caution)",
 };
 
 const STATUS_TONE_ICON_COLORS = {
-  success: "text-[#047b5d]",
-  info: "text-[#0094d5]",
-  purple: "text-[#8051ff]",
-  review: "text-[#b28400]",
-  neutral: "text-[#8a8a8a]",
-  danger: "text-[#e22c38]",
-  warning: "text-[#b28400]",
-  caution: "text-[#4f4700]",
+  success: "text-(--p-color-text-success-accent)",
+  info: "text-(--p-color-text-info-accent)",
+  purple: "text-(--p-color-text-ai-accent)",
+  review: "text-(--p-color-text-caution-accent)",
+  neutral: "text-(--p-color-text-tertiary)",
+  danger: "text-(--p-color-text-critical-accent)",
+  warning: "text-(--p-color-text-caution-accent)",
+  caution: "text-(--p-color-badge-text-caution)",
 };
 
 const STATUS_TONE_DOT_COLORS = {
-  success: "bg-[#4a4a4a]",
-  info: "bg-[#0094d5]",
-  purple: "bg-[#8051ff]",
-  review: "bg-[#b28400]",
-  neutral: "bg-[#8a8a8a]",
-  danger: "bg-[#e22c38]",
-  warning: "bg-[#b28400]",
-  caution: "bg-[#998a00]",
+  success: "bg-(--p-color-icon-secondary)",
+  info: "bg-(--p-color-bg-info-accent)",
+  purple: "bg-(--p-color-bg-ai-accent)",
+  review: "bg-(--p-color-text-caution-accent)",
+  neutral: "bg-(--p-color-icon-secondary)",
+  danger: "bg-(--p-color-bg-critical-accent)",
+  warning: "bg-(--p-color-text-caution-accent)",
+  caution: "bg-[oklch(0.7_0.16_82)]", /* darker yellow than the #ffdd34 accent, which vanished on the yellow fill */
 };
 
 const STATUS_TONE_ICONS = {
@@ -551,9 +548,9 @@ const STATUS_TONE_ICONS = {
 };
 
 const STATUS_SIZE_STYLES = {
-  default: "h-6 gap-1.5 rounded-[0.5rem] px-2 py-0.5 pl-1.5 text-[0.75rem] font-[550] leading-4",
+  default: "h-6 gap-1.5 rounded-[0.5rem] px-2 py-0.5 pl-1.5 text-[0.75rem] font-medium leading-4",
   large:
-    "h-7 gap-1.5 rounded-[0.5rem] px-2.5 py-0.5 pl-2 text-[0.8125rem] font-[550] leading-5",
+    "h-7 gap-1.5 rounded-[0.5rem] px-2.5 py-0.5 pl-2 text-[0.8125rem] font-medium leading-5",
 };
 
 /** Order-unfulfilled glyph (Hugeicons open package). */
@@ -622,7 +619,7 @@ export function AdminDataTable({ headers, children, empty, toolbar, fitContent =
       {toolbar ? (
         <div
           data-slot="data-table-toolbar"
-          className="flex w-full shrink-0 items-center gap-2 border-b border-[#ebebeb] bg-white px-3 py-2"
+          className="flex w-full shrink-0 items-center gap-2 border-b border-(--p-color-border-secondary) bg-white px-3 py-2"
         >
           {toolbar}
         </div>

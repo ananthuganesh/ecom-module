@@ -1,0 +1,582 @@
+/*
+ * Shopify Admin (Polaris "adminNext", light) design tokens.
+ * Source: admin.shopify.com computed :root custom properties, 5 Nov 2026.
+ * Scoped to the admin shell so the storefront never picks them up.
+ * Use these via var(--p-*) in admin.css or Tailwind `text-(--p-color-text)`.
+ */
+[data-admin-shell] {
+  /* ---------- Typography ---------- */
+  --p-font-family-sans: var(--font-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --p-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --p-font-feature-settings: "calt" on, "ss03" on, "cv09" on, "cv02" on, "cv03" on, "cv04" on;
+
+  --p-font-size-275: 0.6875rem;
+  --p-font-size-300: 0.75rem;
+  --p-font-size-325: 0.8125rem;
+  --p-font-size-350: 0.875rem;
+  --p-font-size-400: 1rem;
+  --p-font-size-450: 1.125rem;
+  --p-font-size-500: 1.25rem;
+  --p-font-size-550: 1.375rem;
+  --p-font-size-600: 1.5rem;
+  --p-font-size-750: 1.875rem;
+  --p-font-size-800: 2rem;
+  --p-font-size-900: 2.25rem;
+  --p-font-size-1000: 2.5rem;
+  --p-font-size-display-large: 1.8125rem;
+  --p-font-size-display-medium: 1.625rem;
+  --p-font-size-display-small: 1.375rem;
+  --p-font-size-heading-large: 0.9375rem;
+  --p-font-size-heading-medium: 0.8125rem;
+  --p-font-size-heading-small: 0.75rem;
+  --p-font-size-body-large: 0.9375rem;
+  --p-font-size-body-medium: 0.8125rem;
+  --p-font-size-body-small: 0.75rem;
+  --p-font-size-body-x-small: 0.6875rem;
+  --p-font-size-button-label: 0.75rem;
+  --p-font-size-details-text: 0.75rem;
+  --p-font-size-input-label: 0.8125rem;
+  --p-font-size-input-label-small: 0.75rem;
+  --p-font-size-input-value: 0.8125rem;
+
+  --p-font-weight-regular: 400;
+  --p-font-weight-medium: 500;
+  --p-font-weight-semibold: 600;
+  --p-font-weight-bold: 600;
+  --p-font-weight-display-large: 500;
+  --p-font-weight-display-medium: 500;
+  --p-font-weight-display-small: 500;
+  --p-font-weight-heading-large: 500;
+  --p-font-weight-heading-medium: 500;
+  --p-font-weight-heading-small: 500;
+  --p-font-weight-button-label: 500;
+  --p-font-weight-details-text: 400;
+  --p-font-weight-input-label: 500;
+  --p-font-weight-input-label-small: 400;
+
+  --p-font-line-height-300: 0.75rem;
+  --p-font-line-height-400: 1rem;
+  --p-font-line-height-500: 1.25rem;
+  --p-font-line-height-600: 1.5rem;
+  --p-font-line-height-700: 1.75rem;
+  --p-font-line-height-800: 2rem;
+  --p-font-line-height-1000: 2.5rem;
+  --p-font-line-height-1200: 3rem;
+  --p-font-line-height-display-large: 2.25rem;
+  --p-font-line-height-display-medium: 2rem;
+  --p-font-line-height-display-small: 1.75rem;
+  --p-font-line-height-heading-large: 1.375rem;
+  --p-font-line-height-heading-medium: 1.25rem;
+  --p-font-line-height-heading-small: 1.125rem;
+  --p-font-line-height-body-large: 1.375rem;
+  --p-font-line-height-body-medium: 1.25rem;
+  --p-font-line-height-body-small: 1.125rem;
+  --p-font-line-height-body-x-small: 0.875rem;
+  --p-font-line-height-button-label: 1rem;
+  --p-font-line-height-details-text: 1rem;
+  --p-font-line-height-input-label: 1.25rem;
+  --p-font-line-height-input-label-small: 1rem;
+  --p-font-line-height-input-value: 1.25rem;
+
+  --p-font-letter-spacing-densest: -0.02em;
+  --p-font-letter-spacing-denser: -0.01em;
+  --p-font-letter-spacing-dense: -0.005em;
+  --p-font-letter-spacing-display-large: -0.02em;
+  --p-font-letter-spacing-display-medium: -0.02em;
+  --p-font-letter-spacing-display-small: -0.02em;
+  --p-font-letter-spacing-heading-large: -0.01em;
+  --p-font-letter-spacing-heading-medium: -0.01em;
+  --p-font-letter-spacing-heading-small: -0.005em;
+  --p-font-letter-spacing-body-large: 0rem;
+  --p-font-letter-spacing-body-medium: -0.01em;
+  --p-font-letter-spacing-body-small: -0.005em;
+  --p-font-letter-spacing-body-x-small: 0rem;
+
+  /* ---------- Spacing ---------- */
+  --p-space-0: 0rem;
+  --p-space-025: 0.0625rem;
+  --p-space-050: 0.125rem;
+  --p-space-100: 0.25rem;
+  --p-space-150: 0.375rem;
+  --p-space-200: 0.5rem;
+  --p-space-300: 0.75rem;
+  --p-space-400: 1rem;
+  --p-space-500: 1.25rem;
+  --p-space-600: 1.5rem;
+  --p-space-800: 2rem;
+  --p-space-1000: 2.5rem;
+  --p-space-1200: 3rem;
+  --p-space-1600: 4rem;
+  --p-space-2000: 5rem;
+  --p-space-2400: 6rem;
+  --p-space-2800: 7rem;
+  --p-space-3200: 8rem;
+  --p-space-card-padding: 1rem;
+  --p-space-card-gap: 1rem;
+  --p-space-button-group-gap: 0.5rem;
+  --p-space-table-cell-padding: 0.375rem;
+  --p-space-badge-padding-inline: 0.375rem;
+  --p-space-badge-padding-inline-large: 0.5rem;
+  --p-space-badge-icon-padding-inline-start: 0.25rem;
+  --p-space-badge-icon-padding-inline-start-large: 0.25rem;
+  --p-space-choice-margin: 0.0625rem;
+  --p-space-choice-size: 0.875rem;
+
+  /* ---------- Sizing ---------- */
+  --p-width-0: 0rem;
+  --p-width-100: 0.25rem;
+  --p-width-200: 0.5rem;
+  --p-width-300: 0.75rem;
+  --p-width-400: 1rem;
+  --p-width-500: 1.25rem;
+  --p-width-600: 1.5rem;
+  --p-width-700: 1.75rem;
+  --p-width-800: 2rem;
+  --p-width-900: 2.25rem;
+  --p-width-1000: 2.5rem;
+  --p-width-1200: 3rem;
+  --p-width-1600: 4rem;
+  --p-width-2000: 5rem;
+  --p-width-2400: 6rem;
+  --p-width-2800: 7rem;
+  --p-width-3200: 8rem;
+  --p-height-field-min-block-size: 1.875rem;
+
+  /* ---------- Border radius ---------- */
+  --p-border-radius-0: 0rem;
+  --p-border-radius-050: 0.125rem;
+  --p-border-radius-100: 0.25rem;
+  --p-border-radius-150: 0.375rem;
+  --p-border-radius-200: 0.5rem;
+  --p-border-radius-300: 0.75rem;
+  --p-border-radius-400: 1rem;
+  --p-border-radius-500: 1.25rem;
+  --p-border-radius-750: 1.875rem;
+  --p-border-radius-full: 624.9375rem;
+  --p-border-radius-action: 624.9375rem;
+  --p-border-radius-avatar: clamp(0.375rem, round(30%, 0.125rem), 0.75rem);
+  --p-border-radius-banner-inner: 1rem;
+  --p-border-radius-checkbox: 0.25rem;
+  --p-border-radius-checkbox-checked: calc(0.25rem + 0.0625rem);
+  --p-border-radius-container: 1.25rem;
+  --p-border-radius-content-highlight: 0.125rem;
+  --p-border-radius-control: 0.75rem;
+  --p-border-radius-control-inner: 0.5rem;
+  --p-border-radius-corner-shape: superellipse(1.333);
+  --p-border-radius-dialog: 1.5rem;
+  --p-border-radius-element: 0.625rem;
+  --p-border-radius-focus: 0.25rem;
+  --p-border-radius-media: clamp(0.375rem, round(25%, 0.125rem), 0.75rem);
+  --p-border-radius-media-compact: 0.25rem;
+  --p-border-radius-option-item: 0.75rem;
+  --p-border-radius-popover: 1rem;
+  --p-border-radius-preview: 624.9375rem;
+  --p-border-radius-tag: 0.5rem;
+  --p-border-radius-tag-inner: 0.375rem;
+  --p-border-radius-tag-seam: 0.125rem;
+
+  /* ---------- Border width ---------- */
+  --p-border-width-0: 0rem;
+  --p-border-width-0165: 0.04125rem;
+  --p-border-width-025: 0.0625rem;
+  --p-border-width-050: 0.125rem;
+  --p-border-width-100: 0.25rem;
+
+  /* ---------- Background: base & surface ---------- */
+  --p-color-app-bg: #0a0a0a;
+  --p-color-bg: #ffffff;
+  --p-color-bg-inverse: #0a0a0a;
+  --p-color-bg-surface: #ffffff;
+  --p-color-bg-surface-hover: #f7f7f7;
+  --p-color-bg-surface-active: #f2f2f2;
+  --p-color-bg-surface-selected: #f2f2f2;
+  --p-color-bg-surface-selected-hover: #ebebeb;
+  --p-color-bg-surface-disabled: #00000008;
+  --p-color-bg-surface-overlay: #ffffff;
+  --p-color-bg-surface-transparent: #00000000;
+  --p-color-bg-surface-inverse: #1b1b1b;
+  --p-color-bg-surface-secondary: #f7f7f7;
+  --p-color-bg-surface-secondary-hover: #f2f2f2;
+  --p-color-bg-surface-secondary-active: #ebebeb;
+  --p-color-bg-surface-secondary-selected: #ebebeb;
+  --p-color-bg-surface-tertiary: #f2f2f2;
+  --p-color-bg-surface-tertiary-hover: #ebebeb;
+  --p-color-bg-surface-tertiary-active: #dddddd;
+  --p-color-bg-surface-brand: #f7f7f7;
+  --p-color-bg-surface-brand-hover: #f2f2f2;
+  --p-color-bg-surface-brand-active: #ebebeb;
+  --p-color-bg-surface-brand-selected: #ebebeb;
+
+  /* ---------- Background: fill ---------- */
+  --p-color-bg-fill: #f2f2f2;
+  --p-color-bg-fill-hover: #ebebeb;
+  --p-color-bg-fill-active: #dddddd;
+  --p-color-bg-fill-selected: #dddddd;
+  --p-color-bg-fill-disabled: #00000008;
+  --p-color-bg-fill-secondary: #ebebeb;
+  --p-color-bg-fill-secondary-hover: #dddddd;
+  --p-color-bg-fill-secondary-active: #d0d0d0;
+  --p-color-bg-fill-secondary-selected: #d0d0d0;
+  --p-color-bg-fill-tertiary: #dddddd;
+  --p-color-bg-fill-tertiary-hover: #d0d0d0;
+  --p-color-bg-fill-tertiary-active: #c0c0c0;
+  --p-color-bg-fill-inverse: #1b1b1b;
+  --p-color-bg-fill-inverse-hover: #4a4a4a;
+  --p-color-bg-fill-inverse-active: #606060;
+  --p-color-bg-fill-transparent: #0000000d;
+  --p-color-bg-fill-transparent-hover: #00000014;
+  --p-color-bg-fill-transparent-active: #00000021;
+  --p-color-bg-fill-transparent-selected: #00000021;
+  --p-color-bg-fill-transparent-secondary: #00000014;
+  --p-color-bg-fill-transparent-secondary-hover: #00000021;
+  --p-color-bg-fill-transparent-secondary-active: #0000002e;
+  --p-color-bg-fill-brand: #f7f7f7;
+  --p-color-bg-fill-brand-hover: #f2f2f2;
+  --p-color-bg-fill-brand-active: #ebebeb;
+  --p-color-bg-fill-brand-selected: #ebebeb;
+  --p-color-bg-fill-brand-disabled: #00000008;
+
+  /* ---------- Background: accent ---------- */
+  --p-color-bg-accent: #101010;
+  --p-color-bg-accent-hover: #0a0a0a;
+  --p-color-bg-accent-active: #0a0a0a;
+  --p-color-bg-accent-selected: #101010;
+  --p-color-bg-accent-disabled: #00000021;
+  --p-color-bg-ai-accent: oklch(0.5776 0.2351 287.07);
+  --p-color-bg-ai-accent-hover: oklch(0.5169 0.2701 285.54);
+  --p-color-bg-ai-accent-active: oklch(0.4593 0.2566 282.65);
+  --p-color-bg-ai-accent-selected: oklch(0.5776 0.2351 287.07);
+  --p-color-bg-brand-accent: #101010;
+  --p-color-bg-brand-accent-hover: #0a0a0a;
+  --p-color-bg-brand-accent-active: #0a0a0a;
+  --p-color-bg-brand-accent-selected: #101010;
+  --p-color-bg-brand-accent-disabled: #00000021;
+  --p-color-bg-caution-accent: #ffdd34;
+  --p-color-bg-caution-accent-hover: oklch(0.8849 0.2086 94.82);
+  --p-color-bg-caution-accent-active: oklch(0.7777 0.1833 90.68);
+  --p-color-bg-caution-accent-selected: #ffdd34;
+  --p-color-bg-critical-accent: oklch(0.5656 0.2454 28.92);
+  --p-color-bg-critical-accent-hover: oklch(0.5462 0.2365 28.88);
+  --p-color-bg-critical-accent-active: oklch(0.4913 0.2122 28.82);
+  --p-color-bg-critical-accent-selected: oklch(0.5656 0.2454 28.92);
+  --p-color-bg-critical-accent-disabled: #00000021;
+  --p-color-bg-highlight-accent: oklch(0.5238 0.2625 262.78);
+  --p-color-bg-highlight-accent-hover: oklch(0.484 0.2413 262.8);
+  --p-color-bg-highlight-accent-active: oklch(0.4441 0.2201 262.81);
+  --p-color-bg-highlight-accent-selected: oklch(0.5238 0.2625 262.78);
+  --p-color-bg-info-accent: #5bc9eb;
+  --p-color-bg-info-accent-hover: #3dbce5;
+  --p-color-bg-info-accent-active: oklch(0.7045 0.1543 225.11);
+  --p-color-bg-info-accent-selected: #5bc9eb;
+  --p-color-bg-success-accent: #8ae156;
+  --p-color-bg-success-accent-hover: #75d63b;
+  --p-color-bg-success-accent-active: oklch(0.7477 0.2647 137.07);
+  --p-color-bg-success-accent-selected: #8ae156;
+  --p-color-bg-warning-accent: #ff8a3e;
+  --p-color-bg-warning-accent-hover: oklch(0.7194 0.2136 47.51);
+  --p-color-bg-warning-accent-active: oklch(0.6819 0.2132 45.87);
+  --p-color-bg-warning-accent-selected: #ff8a3e;
+
+  /* ---------- Background: status fill & surface ---------- */
+  --p-color-bg-fill-ai: oklch(0.9376 0.0337 299.07);
+  --p-color-bg-fill-ai-hover: oklch(0.876 0.0571 297.82);
+  --p-color-bg-fill-ai-active: oklch(0.8178 0.0945 296.9);
+  --p-color-bg-fill-ai-secondary: oklch(0.876 0.0571 297.82);
+  --p-color-bg-fill-ai-secondary-hover: oklch(0.8178 0.0945 296.9);
+  --p-color-bg-fill-ai-secondary-active: oklch(0.7596 0.1465 296.5);
+  --p-color-bg-fill-caution: oklch(0.9662 0.0722 97.61);
+  --p-color-bg-fill-caution-hover: oklch(0.9468 0.1191 98.52);
+  --p-color-bg-fill-caution-active: oklch(0.9325 0.1496 98.46);
+  --p-color-bg-fill-caution-secondary: oklch(0.9167 0.1785 98);
+  --p-color-bg-fill-critical: oklch(0.947 0.03 20.5);
+  --p-color-bg-fill-critical-hover: oklch(0.897 0.0609 23.88);
+  --p-color-bg-fill-critical-active: oklch(0.8382 0.0956 22.58);
+  --p-color-bg-fill-critical-selected: oklch(0.8382 0.0956 22.58);
+  --p-color-bg-fill-critical-secondary: oklch(0.897 0.0609 23.88);
+  --p-color-bg-fill-highlight: oklch(0.9478 0.0271 264.46);
+  --p-color-bg-fill-highlight-hover: oklch(0.8903 0.0516 265.59);
+  --p-color-bg-fill-highlight-active: oklch(0.8121 0.0983 264.88);
+  --p-color-bg-fill-highlight-secondary: oklch(0.8903 0.0516 265.59);
+  --p-color-bg-fill-info: oklch(0.95 0.0448 212.63);
+  --p-color-bg-fill-info-hover: #b2e9f6;
+  --p-color-bg-fill-info-active: oklch(0.8821 0.0848 215.71);
+  --p-color-bg-fill-info-secondary: oklch(0.8637 0.1018 216.95);
+  --p-color-bg-fill-success: oklch(0.9672 0.0599 131.73);
+  --p-color-bg-fill-success-hover: oklch(0.9241 0.1033 132.55);
+  --p-color-bg-fill-success-active: oklch(0.9147 0.1488 133.17);
+  --p-color-bg-fill-success-secondary: oklch(0.9053 0.1942 133.49);
+  --p-color-bg-fill-warning: oklch(0.9557 0.035 67.45);
+  --p-color-bg-fill-warning-hover: oklch(0.9316 0.0545 67.18);
+  --p-color-bg-fill-warning-active: oklch(0.8907 0.0887 65.7);
+  --p-color-bg-fill-warning-secondary: oklch(0.8497 0.1229 65.04);
+  --p-color-bg-surface-ai: oklch(0.9376 0.0337 299.07);
+  --p-color-bg-surface-ai-hover: oklch(0.876 0.0571 297.82);
+  --p-color-bg-surface-ai-active: oklch(0.8178 0.0945 296.9);
+  --p-color-bg-surface-caution: oklch(0.9662 0.0722 97.61);
+  --p-color-bg-surface-caution-hover: oklch(0.9468 0.1191 98.52);
+  --p-color-bg-surface-caution-active: oklch(0.9325 0.1496 98.46);
+  --p-color-bg-surface-critical: oklch(0.947 0.03 20.5);
+  --p-color-bg-surface-critical-hover: oklch(0.897 0.0609 23.88);
+  --p-color-bg-surface-critical-active: oklch(0.8382 0.0956 22.58);
+  --p-color-bg-surface-highlight: oklch(0.9478 0.0271 264.46);
+  --p-color-bg-surface-highlight-hover: oklch(0.8903 0.0516 265.59);
+  --p-color-bg-surface-highlight-active: oklch(0.8121 0.0983 264.88);
+  --p-color-bg-surface-info: oklch(0.95 0.0448 212.63);
+  --p-color-bg-surface-info-hover: #b2e9f6;
+  --p-color-bg-surface-info-active: oklch(0.8821 0.0848 215.71);
+  --p-color-bg-surface-success: oklch(0.9672 0.0599 131.73);
+  --p-color-bg-surface-success-hover: oklch(0.9241 0.1033 132.55);
+  --p-color-bg-surface-success-active: oklch(0.9147 0.1488 133.17);
+  --p-color-bg-surface-warning: oklch(0.9557 0.035 67.45);
+  --p-color-bg-surface-warning-hover: oklch(0.9316 0.0545 67.18);
+  --p-color-bg-surface-warning-active: oklch(0.8907 0.0887 65.7);
+
+  /* ---------- Text ---------- */
+  --p-color-text: #101010;
+  --p-color-text-secondary: rgba(74, 74, 74, 1);
+  --p-color-text-tertiary: rgba(96, 96, 96, 1);
+  --p-color-text-disabled: #a6a6a6;
+  --p-color-text-accent: rgba(112, 112, 112, 1);
+  --p-color-text-inverse: #fcfcfc;
+  --p-color-text-inverse-secondary: #a6a6a6;
+  --p-color-text-on-accent: #ffffff;
+  --p-color-text-on-accent-hover: #dddddd;
+  --p-color-text-on-accent-active: #dddddd;
+  --p-color-text-on-accent-disabled: #ffffff;
+  --p-color-text-link: oklch(0.484 0.2413 262.8);
+  --p-color-text-link-hover: oklch(0.4441 0.2201 262.81);
+  --p-color-text-link-active: rgba(13, 63, 170, 1);
+  --p-color-text-link-inverse: oklch(0.734 0.1449 264.63);
+  --p-color-text-brand: #101010;
+  --p-color-text-brand-hover: #101010;
+  --p-color-text-brand-on-accent: #ffffff;
+  --p-color-text-brand-on-bg-fill: #101010;
+  --p-color-text-brand-on-bg-fill-disabled: #a6a6a6;
+  --p-color-text-ai: oklch(0.2658 0.1635 279.85);
+  --p-color-text-ai-secondary: #29028d;
+  --p-color-text-ai-accent: oklch(0.4593 0.2566 282.65);
+  --p-color-text-caution: oklch(0.2708 0.0638 90.28);
+  --p-color-text-caution-secondary: #574100;
+  --p-color-text-caution-accent: oklch(0.5224 0.1233 85.87);
+  --p-color-text-critical: oklch(0.2121 0.0942 30.9);
+  --p-color-text-critical-secondary: rgba(126, 16, 12, 1);
+  --p-color-text-critical-accent: oklch(0.5462 0.2365 28.88);
+  --p-color-text-critical-on-accent: #ffffff;
+  --p-color-text-highlight: oklch(0.2983 0.1584 261.98);
+  --p-color-text-highlight-secondary: oklch(0.3492 0.1911 262.51);
+  --p-color-text-highlight-accent: oklch(0.484 0.2413 262.8);
+  --p-color-text-info: oklch(0.2715 0.0576 221.37);
+  --p-color-text-info-secondary: rgba(1, 89, 111, 1);
+  --p-color-text-info-accent: oklch(0.5409 0.1141 222.74);
+  --p-color-text-success: oklch(0.2334 0.0796 134.14);
+  --p-color-text-success-secondary: #214b03;
+  --p-color-text-success-accent: oklch(0.5277 0.1763 136.72);
+  --p-color-text-warning: oklch(0.2475 0.0726 51.49);
+  --p-color-text-warning-secondary: #6f2e01;
+  --p-color-text-warning-accent: oklch(0.5171 0.1665 45.18);
+
+  /* ---------- Icon ---------- */
+  --p-color-icon: #101010;
+  --p-color-icon-hover: #0a0a0a;
+  --p-color-icon-active: #0a0a0a;
+  --p-color-icon-brand: #0a0a0a;
+  --p-color-icon-disabled: #a6a6a6;
+  --p-color-icon-inverse: #fcfcfc;
+  --p-color-icon-accent: rgba(112, 112, 112, 1);
+  --p-color-icon-secondary: #606060;
+  --p-color-icon-secondary-hover: #4a4a4a;
+  --p-color-icon-secondary-active: #303030;
+  --p-color-icon-tertiary: rgba(112, 112, 112, 1);
+  --p-color-icon-caution: oklch(0.3272 0.0771 87.79);
+  --p-color-icon-critical: #4d0502;
+  --p-color-icon-critical-accent: oklch(0.5849 0.2543 28.97);
+  --p-color-icon-highlight: oklch(0.2983 0.1584 261.98);
+  --p-color-icon-info: oklch(0.3508 0.0747 222.15);
+  --p-color-icon-success: oklch(0.3007 0.1034 135.37);
+  --p-color-icon-warning: oklch(0.3168 0.0962 48.79);
+
+  /* ---------- Border ---------- */
+  --p-color-border: rgba(221, 221, 221, 1);
+  --p-color-border-hover: rgba(208, 208, 208, 1);
+  --p-color-border-secondary: rgba(242, 242, 242, 1);
+  --p-color-border-tertiary: rgba(192, 192, 192, 1);
+  --p-color-border-disabled: rgba(247, 247, 247, 1);
+  --p-color-border-focus: oklch(0.6289 0.2036 263.44);
+  --p-color-border-brand: #d0d0d0;
+  --p-color-border-inverse: #606060;
+  --p-color-border-caution: oklch(0.9468 0.1191 98.52);
+  --p-color-border-critical: oklch(0.5849 0.2543 28.97);
+  --p-color-border-critical-secondary: oklch(0.7794 0.1304 21.97);
+  --p-color-border-highlight: oklch(0.6289 0.2036 263.44);
+  --p-color-border-info: oklch(0.8637 0.1018 216.95);
+  --p-color-border-success: oklch(0.9147 0.1488 133.17);
+  --p-color-border-warning: oklch(0.9316 0.0545 67.18);
+
+  /* ---------- Button ---------- */
+  --p-color-button-bg-fill: #ebebeb;
+  --p-color-button-bg-fill-hover: #dddddd;
+  --p-color-button-bg-fill-active: #d0d0d0;
+  --p-color-button-bg-fill-critical: oklch(0.947 0.03 20.5);
+  --p-color-button-bg-fill-critical-hover: oklch(0.897 0.0609 23.88);
+  --p-color-button-bg-fill-critical-active: oklch(0.8382 0.0956 22.58);
+  --p-color-button-gradient-bg-fill:
+    radial-gradient(50% 50% at 50% 0%, #ffffff33 0%, #ffffff00 100%),
+    radial-gradient(49.59% 37.11% at 50.41% 101.56%, #ffffff26 0%, #ffffff00 66.46%);
+  --p-color-button-group-divider: #0000001c;
+  --p-color-button-primary-bg: #101010;
+  --p-color-button-primary-bg-hover: #0a0a0a;
+  --p-color-button-primary-bg-active: #0a0a0a;
+  --p-color-button-primary-bg-disabled: #00000021;
+  --p-color-button-primary-bg-critical: oklch(0.5656 0.2454 28.92);
+  --p-color-button-primary-bg-critical-hover: oklch(0.5462 0.2365 28.88);
+  --p-color-button-primary-bg-critical-active: oklch(0.4913 0.2122 28.82);
+  --p-color-button-primary-text: #ffffff;
+  --p-color-button-primary-text-hover: #dddddd;
+  --p-color-page-button-bg-fill: #ffffff;
+  --p-color-page-button-bg-fill-hover: #f7f7f7;
+
+  /* ---------- Form controls ---------- */
+  --p-color-choice-bg-checked: #101010;
+  --p-color-choice-bg-checked-hover: #0a0a0a;
+  --p-color-switch-bg: #dddddd;
+  --p-color-switch-bg-hover: #d0d0d0;
+  --p-color-switch-bg-checked: #101010;
+  --p-color-switch-thumb-bg: #ffffff;
+  --p-color-input-bg-surface: #ffffff;
+  --p-color-input-bg-surface-hover: #f7f7f7;
+  --p-color-input-border: rgba(140, 140, 140, 1);
+  --p-color-input-border-hover: #606060;
+  --p-color-input-border-active: oklch(0.6289 0.2036 263.44);
+
+  /* ---------- Navigation (sits on --p-color-app-bg) ---------- */
+  --p-color-nav-bg: rgba(0, 0, 0, 0);
+  --p-color-nav-bg-fill: rgba(255, 255, 255, 0.19);
+  --p-color-nav-bg-fill-hover: rgba(255, 255, 255, 0.29);
+  --p-color-nav-bg-surface: rgba(0, 0, 0, 0);
+  --p-color-nav-bg-surface-hover: rgba(255, 255, 255, 0.06);
+  --p-color-nav-bg-surface-active: rgba(255, 255, 255, 0.11);
+  --p-color-nav-bg-surface-selected: rgba(255, 255, 255, 0.11);
+  --p-color-nav-icon: rgba(140, 140, 140, 1);
+  --p-color-nav-icon-hover: rgba(208, 208, 208, 1);
+  --p-color-nav-icon-active: rgba(247, 247, 247, 1);
+  --p-color-nav-text: rgba(208, 208, 208, 1);
+  --p-color-nav-text-hover: rgba(247, 247, 247, 1);
+  --p-color-nav-text-active: rgba(247, 247, 247, 1);
+  --p-color-nav-text-secondary: rgba(140, 140, 140, 1);
+  --p-color-nav-text-secondary-hover: rgba(208, 208, 208, 1);
+  --p-color-nav-text-secondary-active: rgba(247, 247, 247, 1);
+
+  /* ---------- Badge ---------- */
+  --p-color-badge-bg-fill-caution: oklch(0.9167 0.1785 98);
+  --p-color-badge-bg-fill-critical: oklch(0.897 0.0609 23.88);
+  --p-color-badge-bg-fill-info: oklch(0.8637 0.1018 216.95);
+  --p-color-badge-bg-fill-success: oklch(0.9053 0.1942 133.49);
+  --p-color-badge-bg-fill-warning: oklch(0.8497 0.1229 65.04);
+  --p-color-badge-text-ai: oklch(0.2658 0.1635 279.85);
+  --p-color-badge-text-caution: #574100;
+  --p-color-badge-text-critical: rgba(126, 16, 12, 1);
+  --p-color-badge-text-info: rgba(1, 89, 111, 1);
+  --p-color-badge-text-success: #214b03;
+  --p-color-badge-text-warning: #6f2e01;
+
+  /* ---------- Avatar ---------- */
+  --p-color-avatar-bg-fill: #a6a6a6;
+  --p-color-avatar-text-on-bg-fill: #101010;
+  --p-color-avatar-one-bg-fill: oklch(0.6465 0.2575 341.25);
+  --p-color-avatar-two-bg-fill: oklch(0.7477 0.2647 137.07);
+  --p-color-avatar-three-bg-fill: oklch(0.7045 0.1543 225.11);
+  --p-color-avatar-four-bg-fill: oklch(0.5238 0.2625 262.78);
+  --p-color-avatar-five-bg-fill: oklch(0.5849 0.2543 28.97);
+  --p-color-avatar-six-bg-fill: oklch(0.8849 0.2086 94.82);
+  --p-color-avatar-seven-bg-fill: oklch(0.5169 0.2701 285.54);
+
+  /* ---------- Misc ---------- */
+  --p-color-backdrop-bg: #000000b5;
+  --p-color-page-header-bg: #ffffff;
+  --p-color-page-header-divider: #00000012;
+  --p-color-scrollbar-thumb-bg: #a6a6a6;
+  --p-color-scrollbar-thumb-bg-hover: #8c8c8c;
+  --p-color-details-text-critical: oklch(0.5462 0.2365 28.88);
+
+  /* ---------- Shadows ----------
+   * Primary button: measured (spec §17.4). Container: Shopify admin card's three
+   * faint long drops, softened (gentle 1px drop instead of a hard 2px blur edge). */
+  --p-shadow-button-primary:
+    0 1px 0.5px -0.5px rgba(0, 0, 0, 0.13),
+    0 1px 2px -0.5px rgba(0, 0, 0, 0.13),
+    0 4px 6px -2px rgba(0, 0, 0, 0.13),
+    0 2px 3px -1.5px rgba(0, 0, 0, 0.13),
+    inset 0 0 4px 1px #101010,
+    inset 0 0 4px 2px rgba(255, 255, 255, 0.1),
+    inset 0 0 12px -6px rgba(255, 255, 255, 0.75);
+  --p-shadow-container:
+    0 1px 2px 0 rgba(0, 0, 0, 0.025),
+    0 2px 12px 0 rgba(0, 0, 0, 0.012),
+    0 4px 16px 0 rgba(0, 0, 0, 0.012),
+    0 4px 48px 0 rgba(0, 0, 0, 0.012);
+  /* Card edge: drawn inside the card (see admin.css) so clipping parents can't cut it */
+  --p-shadow-container-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+
+  /* ---------- Z-index ---------- */
+  --p-z-index-0: auto;
+  --p-z-index-1: 100;
+  --p-z-index-2: 400;
+  --p-z-index-3: 510;
+  --p-z-index-4: 512;
+  --p-z-index-5: 513;
+  --p-z-index-6: 514;
+  --p-z-index-7: 515;
+  --p-z-index-8: 516;
+  --p-z-index-9: 517;
+  --p-z-index-10: 518;
+  --p-z-index-11: 519;
+  --p-z-index-12: 520;
+
+  /* ---------- Motion ---------- */
+  --p-motion-duration-0: 0ms;
+  --p-motion-duration-50: 50ms;
+  --p-motion-duration-100: 100ms;
+  --p-motion-duration-150: 150ms;
+  --p-motion-duration-200: 200ms;
+  --p-motion-duration-250: 250ms;
+  --p-motion-duration-300: 300ms;
+  --p-motion-duration-350: 350ms;
+  --p-motion-duration-400: 400ms;
+  --p-motion-duration-450: 450ms;
+  --p-motion-duration-500: 500ms;
+  --p-motion-duration-5000: 5000ms;
+  --p-motion-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --p-motion-ease-in: cubic-bezier(0.42, 0, 1, 1);
+  --p-motion-ease-out: cubic-bezier(0.19, 0.91, 0.38, 1);
+  --p-motion-ease-in-out: cubic-bezier(0.42, 0, 0.58, 1);
+  --p-motion-linear: cubic-bezier(0, 0, 1, 1);
+}
+
+/*
+ * Success (green) — retuned. The extracted Polaris success set is a saturated
+ * lime (badge fill oklch(.9053 .1942 133.49)) that fights the neutral greys.
+ * Same roles, one calmer emerald scale (hue ~160), with readable text on fills.
+ */
+[data-admin-shell] {
+  --p-color-bg-success-accent: oklch(0.62 0.13 158);
+  --p-color-bg-success-accent-hover: oklch(0.56 0.13 158);
+  --p-color-bg-success-accent-active: oklch(0.5 0.12 158);
+  --p-color-bg-success-accent-selected: oklch(0.62 0.13 158);
+
+  --p-color-bg-fill-success: oklch(0.965 0.03 160);
+  --p-color-bg-fill-success-hover: oklch(0.935 0.05 160);
+  --p-color-bg-fill-success-active: oklch(0.905 0.065 160);
+  --p-color-bg-fill-success-secondary: oklch(0.93 0.06 160);
+  --p-color-bg-surface-success: oklch(0.965 0.03 160);
+  --p-color-bg-surface-success-hover: oklch(0.935 0.05 160);
+  --p-color-bg-surface-success-active: oklch(0.905 0.065 160);
+
+  --p-color-text-success: oklch(0.32 0.07 160);
+  --p-color-text-success-secondary: oklch(0.4 0.09 160);
+  --p-color-text-success-accent: oklch(0.55 0.13 158);
+  --p-color-icon-success: oklch(0.4 0.09 160);
+  --p-color-border-success: oklch(0.86 0.07 160);
+
+  --p-color-badge-bg-fill-success: oklch(0.93 0.06 160);
+  --p-color-badge-text-success: oklch(0.38 0.09 160);
+}

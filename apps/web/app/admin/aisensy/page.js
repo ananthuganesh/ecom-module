@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 
-/** Canonical Whatsapp API settings live under Settings → Whatsapp API. */
+/** Canonical Whatsapp Marketing settings live under Settings → Whatsapp Marketing. */
 export default function AiSensyRedirectPage() {
   const router = useRouter();
 

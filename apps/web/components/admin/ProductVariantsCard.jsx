@@ -121,11 +121,11 @@ function OptionEditorPanel({
   onDone,
 }) {
   return (
-    <div className="rounded-[0.75rem] border border-[#e3e3e3] bg-white p-3">
+    <div className="rounded-[0.75rem] border border-(--p-color-border) bg-white p-3">
       <div className="flex items-start gap-2">
         <button
           type="button"
-          className="mt-[1.85rem] inline-flex shrink-0 cursor-grab text-[#8a8a8a]"
+          className="mt-[1.85rem] inline-flex shrink-0 cursor-grab text-(--p-color-text-tertiary)"
           aria-label="Drag to reorder option"
           tabIndex={-1}
         >
@@ -135,11 +135,11 @@ function OptionEditorPanel({
         <div className="min-w-0 flex-1 space-y-3">
           <div>
             <div className="mb-1 flex items-center justify-between gap-2">
-              <label className="text-[13px] font-medium text-[#303030]">
+              <label className="text-[13px] font-medium text-(--p-color-text)">
                 Option name
               </label>
               <span
-                className="inline-flex text-[#8a8a8a]"
+                className="inline-flex text-(--p-color-text-tertiary)"
                 title="Option metafield"
                 aria-hidden
               >
@@ -152,13 +152,13 @@ function OptionEditorPanel({
               placeholder="Size"
               aria-invalid={optionNameError ? "true" : undefined}
               className={cn(
-                "h-9 border-[#c9cccf] bg-white text-[13px] shadow-none",
+                "h-9 border-(--p-color-border-hover) bg-white text-[13px] shadow-none",
                 optionNameError &&
-                  "border-[#e22c38] bg-[#fff4f4] text-[#303030] focus-visible:border-[#e22c38] focus-visible:ring-[#e22c38]/30"
+                  "border-(--p-color-border-critical) bg-(--p-color-bg-surface-critical) text-(--p-color-text) focus-visible:border-(--p-color-border-critical) focus-visible:ring-(--p-color-border-critical)/30"
               )}
             />
             {optionNameError ? (
-              <p className="mt-1.5 flex items-start gap-1 text-[13px] text-[#c70a24]">
+              <p className="mt-1.5 flex items-start gap-1 text-[13px] text-(--p-color-text-critical-accent)">
                 <span aria-hidden>⚠</span>
                 <span>Option name is required.</span>
               </p>
@@ -166,7 +166,7 @@ function OptionEditorPanel({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-[#303030]">
+            <label className="mb-1.5 block text-[13px] font-medium text-(--p-color-text)">
               Option values
             </label>
             <div className="space-y-2">
@@ -189,7 +189,7 @@ function OptionEditorPanel({
                     placeholder={
                       showAddPlaceholder ? "Add another value" : undefined
                     }
-                    className="h-9 w-full border-[#c9cccf] bg-white text-[13px] shadow-none"
+                    className="h-9 w-full border-(--p-color-border-hover) bg-white text-[13px] shadow-none"
                   />
                 );
               })}
@@ -201,7 +201,7 @@ function OptionEditorPanel({
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 border-[#e3e3e3] bg-white px-3 text-[13px] font-medium text-[#c70a24] hover:bg-[#fff4f4] hover:text-[#8e0b21]"
+              className="h-8 border-(--p-color-border) bg-white px-3 text-[13px] font-medium text-(--p-color-text-critical-accent) hover:bg-(--p-color-bg-surface-critical) hover:text-(--p-color-badge-text-critical)"
               onClick={onDelete}
             >
               Delete
@@ -209,7 +209,7 @@ function OptionEditorPanel({
             <Button
               type="button"
               size="sm"
-              className="h-8 bg-[#1a1a1a] px-3 text-[13px] font-medium text-white hover:bg-[#000]"
+              className="h-8 bg-(--p-color-button-primary-bg-hover) px-3 text-[13px] font-medium text-white hover:bg-[#000]"
               onClick={onDone}
             >
               Done
@@ -443,9 +443,9 @@ export default function ProductVariantsCard({
           <button
             type="button"
             onClick={startOptions}
-            className="flex w-full items-center gap-2 rounded-lg border border-transparent px-1 py-2 text-left text-[13px] font-medium text-[#616161] hover:bg-[#f7f7f7]"
+            className="flex w-full items-center gap-2 rounded-lg border border-transparent px-1 py-2 text-left text-[13px] font-medium text-(--p-color-text-secondary) hover:bg-(--p-color-bg-surface-hover)"
           >
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#8a8a8a] text-[#303030]">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-(--p-color-input-border) text-(--p-color-text)">
               <Plus className="h-3 w-3" />
             </span>
             Add options like size or colour
@@ -509,7 +509,7 @@ export default function ProductVariantsCard({
                         setSecondOptionName("Material");
                         setSecondInputs([""]);
                       }}
-                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#005bd3] hover:underline"
+                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add another option
@@ -527,14 +527,14 @@ export default function ProductVariantsCard({
                     setSizeInputs(sizes.length ? [...sizes, ""] : [""]);
                     setOptionName(trim(optionName) || "Size");
                   }}
-                  className="flex w-full items-center gap-2 rounded-xl border border-[#e3e3e3] bg-[#fafafa] px-3 py-2.5 text-left hover:bg-[#f3f3f3]"
+                  className="flex w-full items-center gap-2 rounded-xl border border-(--p-color-border) bg-(--p-color-bg-surface-secondary) px-3 py-2.5 text-left hover:bg-(--p-color-bg-fill)"
                 >
-                  <GripVertical className="h-4 w-4 shrink-0 text-[#8a8a8a]" />
+                  <GripVertical className="h-4 w-4 shrink-0 text-(--p-color-text-tertiary)" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-[550] text-[#303030]">
+                    <p className="text-[13px] font-medium text-(--p-color-text)">
                       {trim(optionName) || "Size"}
                     </p>
-                    <p className="truncate text-[12px] text-[#616161]">
+                    <p className="truncate text-[12px] text-(--p-color-text-secondary)">
                       {sizes.join(", ") || "No values"}
                     </p>
                   </div>
@@ -551,14 +551,14 @@ export default function ProductVariantsCard({
                       );
                       setSecondOptionName(customName);
                     }}
-                    className="flex w-full items-center gap-2 rounded-xl border border-[#e3e3e3] bg-[#fafafa] px-3 py-2.5 text-left hover:bg-[#f3f3f3]"
+                    className="flex w-full items-center gap-2 rounded-xl border border-(--p-color-border) bg-(--p-color-bg-surface-secondary) px-3 py-2.5 text-left hover:bg-(--p-color-bg-fill)"
                   >
-                    <GripVertical className="h-4 w-4 shrink-0 text-[#8a8a8a]" />
+                    <GripVertical className="h-4 w-4 shrink-0 text-(--p-color-text-tertiary)" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-[550] text-[#303030]">
+                      <p className="text-[13px] font-medium text-(--p-color-text)">
                         {customName}
                       </p>
-                      <p className="truncate text-[12px] text-[#616161]">
+                      <p className="truncate text-[12px] text-(--p-color-text-secondary)">
                         {customValues.join(", ")}
                       </p>
                     </div>
@@ -573,7 +573,7 @@ export default function ProductVariantsCard({
                         setSecondOptionName("Material");
                         setSecondInputs([""]);
                       }}
-                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#005bd3] hover:underline"
+                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add another option
@@ -588,7 +588,7 @@ export default function ProductVariantsCard({
                 <div className="flex items-center justify-end gap-1">
                   <button
                     type="button"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
                     aria-label="Search variants"
                     title="Search"
                   >
@@ -596,10 +596,10 @@ export default function ProductVariantsCard({
                   </button>
                 </div>
 
-                <div className="overflow-x-auto rounded-lg border border-[#e3e3e3]">
+                <div className="overflow-x-auto rounded-lg border border-(--p-color-border)">
                   <table className="w-full min-w-[36rem] border-collapse text-left">
                     <thead>
-                      <tr className="border-b border-[#ebebeb] bg-[#fafafa] text-[12px] font-medium text-[#616161]">
+                      <tr className="border-b border-(--p-color-border-secondary) bg-(--p-color-bg-surface-secondary) text-[12px] font-medium text-(--p-color-text-secondary)">
                         <th className="w-10 px-3 py-2">
                           <Checkbox
                             checked={
@@ -621,7 +621,7 @@ export default function ProductVariantsCard({
                         return (
                           <tr
                             key={`${variantLabel(v)}-${i}`}
-                            className="border-b border-[#ebebeb] last:border-0"
+                            className="border-b border-(--p-color-border-secondary) last:border-0"
                           >
                             <td className="px-3 py-2 align-middle">
                               <Checkbox
@@ -647,8 +647,8 @@ export default function ProductVariantsCard({
                                       type="button"
                                       disabled={uploadingMedia}
                                       className={cn(
-                                        "relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#ccc] bg-[#fafafa]",
-                                        thumb && "border-solid border-[#e3e3e3]",
+                                        "relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-dashed border-(--p-color-border-hover) bg-(--p-color-bg-surface-secondary)",
+                                        thumb && "border-solid border-(--p-color-border)",
                                         uploadingMedia && "opacity-70"
                                       )}
                                       title={
@@ -667,7 +667,7 @@ export default function ProductVariantsCard({
                                       }
                                     >
                                       {uploadingMedia && thumbMenuFor === i ? (
-                                        <Loader2 className="h-4 w-4 animate-spin text-[#005bd3]" />
+                                        <Loader2 className="h-4 w-4 animate-spin text-(--p-color-text-link)" />
                                       ) : thumb ? (
                                         <SafeImage
                                           src={thumb}
@@ -676,9 +676,9 @@ export default function ProductVariantsCard({
                                           className="object-cover"
                                         />
                                       ) : uploadingMedia ? (
-                                        <Loader2 className="h-4 w-4 animate-spin text-[#005bd3]" />
+                                        <Loader2 className="h-4 w-4 animate-spin text-(--p-color-text-link)" />
                                       ) : (
-                                        <ImagePlus className="h-4 w-4 text-[#005bd3]" />
+                                        <ImagePlus className="h-4 w-4 text-(--p-color-text-link)" />
                                       )}
                                     </PopoverTrigger>
                                     <PopoverContent
@@ -687,7 +687,7 @@ export default function ProductVariantsCard({
                                     >
                                       <button
                                         type="button"
-                                        className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                                        className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
                                         onClick={() => {
                                           setThumbMenuFor(null);
                                           onUploadImage?.(i);
@@ -697,7 +697,7 @@ export default function ProductVariantsCard({
                                       </button>
                                       <button
                                         type="button"
-                                        className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                                        className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
                                         onClick={() => {
                                           setThumbMenuFor(null);
                                           onSelectExistingImage?.(i);
@@ -710,7 +710,7 @@ export default function ProductVariantsCard({
                                   {thumb ? (
                                     <button
                                       type="button"
-                                      className="absolute -top-1.5 -right-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-[#303030] text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100 group-focus-within/thumb:opacity-100 hover:bg-[#c70a24]"
+                                      className="absolute -top-1.5 -right-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-(--p-color-button-primary-bg) text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100 group-focus-within/thumb:opacity-100 hover:bg-(--p-color-bg-critical-accent)"
                                       title="Remove image"
                                       aria-label={`Remove image for ${variantLabel(v)}`}
                                       onClick={(e) => {
@@ -733,17 +733,17 @@ export default function ProductVariantsCard({
                                 </div>
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="truncate text-[13px] font-medium text-[#303030]">
+                                    <span className="truncate text-[13px] font-medium text-(--p-color-text)">
                                       {variantLabel(v)}
                                     </span>
                                     {thumb ? null : (
-                                      <span className="rounded bg-[#e0f0ff] px-1.5 py-0.5 text-[11px] font-medium text-[#005bd3]">
+                                      <span className="rounded bg-(--p-color-bg-fill-info) px-1.5 py-0.5 text-[11px] font-medium text-(--p-color-text-link)">
                                         New
                                       </span>
                                     )}
                                   </div>
                                   {trim(v.sku) ? (
-                                    <p className="truncate text-[11px] text-[#8a8a8a]">
+                                    <p className="truncate text-[11px] text-(--p-color-text-tertiary)">
                                       {v.sku}
                                     </p>
                                   ) : null}
@@ -752,7 +752,7 @@ export default function ProductVariantsCard({
                             </td>
                             <td className="px-2 py-2 align-middle">
                               <div className="relative">
-                                <span className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-[12px] text-[#616161]">
+                                <span className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-[12px] text-(--p-color-text-secondary)">
                                   ₹
                                 </span>
                                 <Input
@@ -768,7 +768,7 @@ export default function ProductVariantsCard({
                                   onFocus={() => focusPricing?.("sellingPrice")}
                                   onBlur={() => blurPricing?.("sellingPrice")}
                                   placeholder="0.00"
-                                  className="h-8 border-[#e3e3e3] bg-white pl-5"
+                                  className="h-8 border-(--p-color-border) bg-white pl-5"
                                 />
                               </div>
                             </td>
@@ -796,7 +796,7 @@ export default function ProductVariantsCard({
                                     ),
                                   }));
                                 }}
-                                className="h-8 border-[#e3e3e3] bg-white"
+                                className="h-8 border-(--p-color-border) bg-white"
                               />
                             </td>
                             <td className="px-2 py-2 align-middle">
@@ -817,12 +817,12 @@ export default function ProductVariantsCard({
                   </table>
                 </div>
 
-                <p className="text-[12px] text-[#616161]">
+                <p className="text-[12px] text-(--p-color-text-secondary)">
                   Total inventory: {totalAvailable} available
                 </p>
               </>
             ) : editorOpen || editingSecond ? null : (
-              <p className="text-[12px] text-[#8a8a8a]">
+              <p className="text-[12px] text-(--p-color-text-tertiary)">
                 Add option values to create variants.
               </p>
             )}

@@ -1,6 +1,6 @@
 export const metadata = {
   title: {
-    absolute: "Dashboard | Admin",
+    absolute: "Home | Admin",
   },
 };
 

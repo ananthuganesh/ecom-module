@@ -53,7 +53,7 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
           <Field>
             <FieldLabel>Sale price</FieldLabel>
             <div className="relative">
-              <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+              <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                 ₹
               </span>
               <Input
@@ -92,15 +92,15 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
         {salePrice > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] leading-5">
             {notLower ? (
-              <p className="font-medium text-[#8e1f0b]">
+              <p className="font-medium text-(--p-color-text-critical-secondary)">
                 Sale price must be below the regular price ({inr(regular)}), or it won’t start.
               </p>
             ) : badEnd ? (
-              <p className="font-medium text-[#8e1f0b]">The end must be after the start.</p>
+              <p className="font-medium text-(--p-color-text-critical-secondary)">The end must be after the start.</p>
             ) : (
-              <p className="text-[#616161]">
+              <p className="text-(--p-color-text-secondary)">
                 Shows as{" "}
-                <span className="font-semibold text-[#303030]">
+                <span className="font-semibold text-(--p-color-text)">
                   {inr(salePrice)}
                   {offMrp ? ` · ${offMrp}% off` : ""}
                 </span>
@@ -113,13 +113,13 @@ export default function ProductSaleCard({ form, updateForm, savedSale }) {
             <button
               type="button"
               onClick={() => updateForm({ sale: { ...EMPTY_SALE } })}
-              className="text-[12px] font-[550] text-[#005bd3] hover:underline"
+              className="text-[12px] font-medium text-(--p-color-text-link) hover:underline"
             >
               Remove sale
             </button>
           </div>
         ) : (
-          <p className="text-[12px] leading-5 text-[#616161]">
+          <p className="text-[12px] leading-5 text-(--p-color-text-secondary)">
             Set a sale price and dates. It goes live on time, shows a “Sale” badge and
             countdown, and the price returns to {regular ? inr(regular) : "the regular price"} on
             its own.

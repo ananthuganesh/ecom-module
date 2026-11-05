@@ -5,7 +5,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Analytics01Icon,
   ArrowTurnBackwardIcon,
-  BotIcon,
   CreditCardIcon,
   DeliveryTruck01Icon,
   Film02Icon,
@@ -66,7 +65,6 @@ export const SettingsStore = navIcon(Store01Icon, "SettingsStore");
 export const SettingsUsers = navIcon(UserSettings01Icon, "SettingsUsers");
 export const SettingsBell = navIcon(Notification01Icon, "SettingsBell");
 export const SettingsPolicies = navIcon(PolicyIcon, "SettingsPolicies");
-export const SettingsAiAgent = navIcon(BotIcon, "SettingsAiAgent");
 export const SettingsPayment = navIcon(CreditCardIcon, "SettingsPayment");
 export const SettingsEmailApi = navIcon(MailSend01Icon, "SettingsEmailApi");
 export const SettingsSeoMarketing = navIcon(SeoIcon, "SettingsSeoMarketing");

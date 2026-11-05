@@ -137,9 +137,9 @@ function CheckoutCopyCell({ label, recoveryUrl, checkoutId }) {
       </span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {copied ? (
-          <Check className="size-3 text-[#047b5d]" aria-hidden />
+          <Check className="size-3 text-(--p-color-text-success-accent)" aria-hidden />
         ) : (
-          <Copy className="size-3 text-[#8a8a8a]" aria-hidden />
+          <Copy className="size-3 text-(--p-color-text-tertiary)" aria-hidden />
         )}
       </span>
     </button>

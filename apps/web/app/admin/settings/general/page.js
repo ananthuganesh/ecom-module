@@ -111,7 +111,7 @@ function ImageField({ label, hint, preview, dark, wide, onPick, onClear }) {
           <button
             type="button"
             onClick={onClear}
-            className="text-[12px] font-[550] text-[#005bd3] hover:underline"
+            className="text-[12px] font-medium text-(--p-color-text-link) hover:underline"
           >
             Remove
           </button>
@@ -121,9 +121,9 @@ function ImageField({ label, hint, preview, dark, wide, onPick, onClear }) {
         type="button"
         onClick={() => inputRef.current?.click()}
         className={cn(
-          "relative flex w-full items-center justify-center overflow-hidden rounded-[6px] border border-dashed border-[#c9cccf]",
+          "relative flex w-full items-center justify-center overflow-hidden rounded-[6px] border border-dashed border-(--p-color-border-hover)",
           wide ? "h-36" : "h-28",
-          dark ? "bg-[#1a1a1a] hover:bg-[#222]" : "bg-[#fafafa] hover:bg-[#f7f7f7]"
+          dark ? "bg-(--p-color-button-primary-bg-hover) hover:bg-[#222]" : "bg-(--p-color-bg-surface-secondary) hover:bg-(--p-color-bg-surface-hover)"
         )}
       >
         {preview ? (
@@ -317,7 +317,7 @@ export default function GeneralSettingsPage() {
   return (
     <div className="w-full">
       <div className="mb-6">
-        <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
+        <h1 className="admin-page-title text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
           General
         </h1>
       </div>
@@ -327,39 +327,39 @@ export default function GeneralSettingsPage() {
           <h2 className="admin-card-heading">
             Store contact details
           </h2>
-          <div className="mt-4 overflow-hidden rounded-lg border border-[#ebebeb]">
+          <div className="mt-4 overflow-hidden rounded-lg border border-(--p-color-border-secondary)">
             <button
               type="button"
               onClick={() => setOpenSheet("contact")}
-              className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#f7f7f7]"
+              className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-(--p-color-bg-surface-hover)"
             >
-              <SettingsStore className="mt-0.5 size-5 shrink-0 text-[#4a4a4a]" aria-hidden />
+              <SettingsStore className="mt-0.5 size-5 shrink-0 text-(--p-color-icon-secondary)" aria-hidden />
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-[550] leading-5 text-[#303030]">
+                <span className="block text-[13px] font-medium leading-5 text-(--p-color-text)">
                   {storeName}
                 </span>
-                <span className="mt-0.5 block text-[13px] font-[450] leading-5 text-[#616161]">
+                <span className="mt-0.5 block text-[13px] font-normal leading-5 text-(--p-color-text-secondary)">
                   {contactLine}
                 </span>
               </span>
-              <ChevronRight className="mt-1 size-4 shrink-0 text-[#8a8a8a]" aria-hidden />
+              <ChevronRight className="mt-1 size-4 shrink-0 text-(--p-color-text-tertiary)" aria-hidden />
             </button>
-            <div className="border-t border-[#ebebeb]" />
+            <div className="border-t border-(--p-color-border-secondary)" />
             <button
               type="button"
               onClick={() => setOpenSheet("address")}
-              className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#f7f7f7]"
+              className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-(--p-color-bg-surface-hover)"
             >
-              <MapPin className="mt-0.5 size-5 shrink-0 text-[#4a4a4a]" aria-hidden />
+              <MapPin className="mt-0.5 size-5 shrink-0 text-(--p-color-icon-secondary)" aria-hidden />
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-[550] leading-5 text-[#303030]">
+                <span className="block text-[13px] font-medium leading-5 text-(--p-color-text)">
                   Store address
                 </span>
-                <span className="mt-0.5 block text-[13px] font-[450] leading-5 text-[#616161]">
+                <span className="mt-0.5 block text-[13px] font-normal leading-5 text-(--p-color-text-secondary)">
                   {addressLine || "Add your store address"}
                 </span>
               </span>
-              <ChevronRight className="mt-1 size-4 shrink-0 text-[#8a8a8a]" aria-hidden />
+              <ChevronRight className="mt-1 size-4 shrink-0 text-(--p-color-text-tertiary)" aria-hidden />
             </button>
           </div>
         </section>

@@ -163,28 +163,28 @@ export default function SelectExistingMediaDialog({
         showCloseButton
       >
         <DialogHeader>
-          <DialogTitle className="text-[16px] font-medium text-[#303030]">
+          <DialogTitle className="text-[16px] font-medium text-(--p-color-text)">
             Select existing media
           </DialogTitle>
         </DialogHeader>
 
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-[#8a8a8a]" />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-(--p-color-text-tertiary)" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search files"
-            className="h-8 border-[#e3e3e3] bg-white pl-8"
+            className="h-8 border-(--p-color-border) bg-white pl-8"
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[#e3e3e3]">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-(--p-color-border)">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-[#616161]">
+            <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-(--p-color-text-secondary)">
               <Spinner className="size-4" /> Loading media…
             </div>
           ) : visible.length === 0 ? (
-            <div className="px-4 py-16 text-center text-[13px] text-[#616161]">
+            <div className="px-4 py-16 text-center text-[13px] text-(--p-color-text-secondary)">
               {emptyMessage}
             </div>
           ) : (
@@ -201,12 +201,12 @@ export default function SelectExistingMediaDialog({
                     disabled={alreadyOnProduct}
                     onClick={() => toggle(file.url)}
                     className={cn(
-                      "relative aspect-square overflow-hidden rounded-lg border bg-[#fafafa] text-left",
+                      "relative aspect-square overflow-hidden rounded-lg border bg-(--p-color-bg-surface-secondary) text-left",
                       alreadyOnProduct
-                        ? "cursor-not-allowed border-[#e3e3e3] opacity-45"
+                        ? "cursor-not-allowed border-(--p-color-border) opacity-45"
                         : active
-                          ? "border-[#005bd3] ring-2 ring-[#005bd3]/30"
-                          : "border-[#e3e3e3] hover:border-[#b5b5b5]"
+                          ? "border-(--p-color-border-focus) ring-2 ring-(--p-color-border-focus)/30"
+                          : "border-(--p-color-border) hover:border-(--p-color-border-tertiary)"
                     )}
                     title={
                       alreadyOnProduct
@@ -225,7 +225,7 @@ export default function SelectExistingMediaDialog({
                         Added
                       </span>
                     ) : active ? (
-                      <span className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#005bd3] text-[11px] font-bold text-white">
+                      <span className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-(--p-color-bg-highlight-accent) text-[11px] font-bold text-white">
                         ✓
                       </span>
                     ) : null}
@@ -237,7 +237,7 @@ export default function SelectExistingMediaDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
-          <p className="text-[12px] text-[#616161]">
+          <p className="text-[12px] text-(--p-color-text-secondary)">
             {selected.size
               ? `${selected.size} selected`
               : `${selectableCount} image${selectableCount === 1 ? "" : "s"} available`}
@@ -255,7 +255,7 @@ export default function SelectExistingMediaDialog({
             <Button
               type="button"
               size="sm"
-              className="h-8 bg-[#1a1a1a] text-white hover:bg-[#000]"
+              className="h-8 bg-(--p-color-button-primary-bg-hover) text-white hover:bg-[#000]"
               disabled={!selected.size}
               onClick={handleDone}
             >

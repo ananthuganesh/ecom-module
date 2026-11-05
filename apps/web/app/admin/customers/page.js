@@ -199,7 +199,7 @@ export default function AdminCustomersPage() {
                   <button
                     type="button"
                     onClick={() => setRowSelection({})}
-                    className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                    className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                   >
                     Clear
                   </button>

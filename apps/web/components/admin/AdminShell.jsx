@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { authService } from "@/api";
 import AdminSidebar from "@/components/admin/Sidebar";
+import AdminSaveBar, { useSaveBarNavigationGuard } from "@/components/admin/AdminSaveBar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
@@ -37,6 +38,7 @@ export default function AdminShell({ children }) {
 
   const isAdminLoginPage = pathname === "/admin/login";
   const isSettingsPage = pathname.startsWith("/admin/settings");
+  useSaveBarNavigationGuard();
   const hasStaffSession = canAccessAdmin(userInfo);
 
   useEffect(() => {
@@ -139,40 +141,29 @@ export default function AdminShell({ children }) {
         data-admin-frame
         open
         onOpenChange={() => {}}
-        className="flex h-svh max-h-svh flex-col overflow-hidden bg-[#0a0a0a]"
+        className="flex h-svh max-h-svh flex-col overflow-hidden bg-(--p-color-app-bg)"
         style={{
-          "--sidebar-width": "15rem", /* --pg-navigation-width */
+          "--sidebar-width": "13.5rem", /* was 15rem (--pg-navigation-width) */
           "--header-height": "3.5rem", /* --pg-top-bar-height */
         }}
       >
-        <SiteHeader />
-        <div className="relative flex min-h-0 w-full flex-1 overflow-hidden rounded-t-2xl bg-[#f1f1f1]">
-          {!isSettingsPage ? (
-            <Suspense fallback={<Spinner className="m-4 size-5 text-muted-foreground" />}>
-              <AdminSidebar
-                variant="sidebar"
-                className="top-0! bottom-0! h-full!"
-              />
-            </Suspense>
-          ) : null}
-          <SidebarInset
-            className={
-              isSettingsPage
-                ? "min-h-0 min-w-0 overflow-hidden"
-                : "min-h-0 min-w-0 overflow-y-auto overscroll-contain"
-            }
-          >
-            {isSettingsPage ? (
-              <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-            ) : (
-              <div className="flex min-w-0 flex-1 flex-col">
-                <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">
-                  <div className="flex min-w-0 flex-col gap-3 px-3 py-3 md:gap-4 md:px-4 md:py-4">
-                    {children}
-                  </div>
+        <SiteHeader className="md:hidden" />
+        <div className="relative flex min-h-0 w-full flex-1 overflow-hidden rounded-t-2xl bg-(--p-color-bg-fill) md:rounded-none md:bg-(--p-color-app-bg)">
+          <Suspense fallback={<Spinner className="m-4 size-5 text-muted-foreground" />}>
+            <AdminSidebar variant="sidebar" className="top-0! bottom-0! h-full!" />
+          </Suspense>
+          <SidebarInset className="min-h-0 min-w-0 overflow-y-auto overscroll-contain md:mt-2 md:rounded-tl-2xl">
+            {/* Zero-height sticky anchor: the save bar floats over the page, no layout shift */}
+            <div className="sticky top-0 z-40 hidden h-0 md:block">
+              <AdminSaveBar floating />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex min-w-0 flex-col gap-3 px-3 py-3 md:gap-4 md:px-4 md:pt-6 md:pb-4">
+                  {children}
                 </div>
               </div>
-            )}
+            </div>
             <Toaster position="bottom-right" theme="light" />
           </SidebarInset>
         </div>

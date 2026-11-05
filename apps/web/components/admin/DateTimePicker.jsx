@@ -29,18 +29,18 @@ function Stepper({ label, value, options, onChange }) {
       <button
         type="button"
         onClick={() => step(1)}
-        className="flex h-6 w-11 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+        className="flex h-6 w-11 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
         aria-label={`Increase ${label}`}
       >
         <ChevronUp className="size-3.5" />
       </button>
-      <span className="grid h-8 w-11 place-items-center rounded-md border border-[#e3e3e3] bg-white text-[14px] font-semibold tabular-nums text-[#303030]">
+      <span className="grid h-8 w-11 place-items-center rounded-md border border-(--p-color-border) bg-white text-[14px] font-semibold tabular-nums text-(--p-color-text)">
         {pad(value)}
       </span>
       <button
         type="button"
         onClick={() => step(-1)}
-        className="flex h-6 w-11 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+        className="flex h-6 w-11 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
         aria-label={`Decrease ${label}`}
       >
         <ChevronDown className="size-3.5" />
@@ -85,15 +85,15 @@ export default function DateTimePicker({
       <PopoverTrigger
         aria-label={ariaLabel}
         className={cn(
-          "inline-flex h-8 w-full items-center gap-2 rounded-lg border border-[#e3e3e3] bg-white px-2.5 text-left text-[13px] outline-none hover:border-[#ccc] focus-visible:border-[#b5b5b5]",
-          open && "border-[#b5b5b5]"
+          "inline-flex h-8 w-full items-center gap-2 rounded-lg border border-(--p-color-border) bg-white px-2.5 text-left text-[13px] outline-none hover:border-(--p-color-border-hover) focus-visible:border-(--p-color-border-tertiary)",
+          open && "border-(--p-color-border-tertiary)"
         )}
       >
-        <CalendarDays className="size-3.5 shrink-0 text-[#616161]" />
-        <span className={cn("min-w-0 flex-1 truncate", label ? "text-[#303030]" : "text-[#8a8a8a]")}>
+        <CalendarDays className="size-3.5 shrink-0 text-(--p-color-text-secondary)" />
+        <span className={cn("min-w-0 flex-1 truncate", label ? "text-(--p-color-text)" : "text-(--p-color-text-tertiary)")}>
           {label || placeholder}
         </span>
-        <ChevronDown className="size-3.5 shrink-0 text-[#8a8a8a]" />
+        <ChevronDown className="size-3.5 shrink-0 text-(--p-color-text-tertiary)" />
       </PopoverTrigger>
       <PopoverContent align={align} sideOffset={6} className="w-auto gap-0 p-1.5 shadow-lg">
         <Calendar
@@ -110,14 +110,14 @@ export default function DateTimePicker({
             options={hours}
             onChange={(hour12) => update({ hour12 })}
           />
-          <span className="pb-0.5 text-[15px] font-semibold text-[#616161]">:</span>
+          <span className="pb-0.5 text-[15px] font-semibold text-(--p-color-text-secondary)">:</span>
           <Stepper
             label="minute"
             value={draft.minute}
             options={minutes}
             onChange={(minute) => update({ minute })}
           />
-          <div className="ml-1 flex flex-col overflow-hidden rounded-md border border-[#e3e3e3]">
+          <div className="ml-1 flex flex-col overflow-hidden rounded-md border border-(--p-color-border)">
             {["AM", "PM"].map((m) => (
               <button
                 key={m}
@@ -127,8 +127,8 @@ export default function DateTimePicker({
                 className={cn(
                   "h-7 w-11 text-[12px] font-semibold",
                   draft.meridiem === m
-                    ? "bg-[#303030] text-white"
-                    : "bg-white text-[#616161] hover:bg-[#f1f1f1]"
+                    ? "bg-(--p-color-button-primary-bg) text-white"
+                    : "bg-white text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
                 )}
               >
                 {m}

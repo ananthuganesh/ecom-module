@@ -99,11 +99,11 @@ export default function ProductAttrCombobox({
   return (
     <div className={cn("relative", className)} ref={anchorRef}>
       <div
-        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg border border-[#e3e3e3] bg-white px-2.5 py-1 shadow-none focus-within:border-[#b5b5b5]"
+        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg border border-(--p-color-border) bg-white px-2.5 py-1 shadow-none focus-within:border-(--p-color-border-tertiary)"
         onClick={() => inputRef.current?.focus()}
       >
         {current && !draft ? (
-          <span className="inline-flex h-5 max-w-full items-center gap-1 rounded-md bg-[#e3e3e3] px-1.5 text-[12px] leading-none font-[550] text-[#303030]">
+          <span className="inline-flex h-5 max-w-full items-center gap-1 rounded-md bg-(--p-color-button-bg-fill) px-1.5 text-[12px] leading-none font-medium text-(--p-color-text)">
             <span className="truncate leading-none">{current}</span>
             <button
               type="button"
@@ -140,7 +140,7 @@ export default function ProductAttrCombobox({
             }
           }}
           placeholder={current ? "" : placeholder}
-          className="h-5 min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-[13px] leading-5 outline-none placeholder:text-[#b5b5b5]"
+          className="h-5 min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-[13px] leading-5 outline-none placeholder:text-(--p-color-text-disabled)"
           autoComplete="off"
         />
       </div>
@@ -148,7 +148,7 @@ export default function ProductAttrCombobox({
       {open && rect && (filtered.length > 0 || canCreate)
         ? createPortal(
         <div
-          className="fixed z-50 max-h-48 overflow-auto rounded-lg border border-[#e3e3e3] bg-white py-1 text-left shadow-md"
+          className="fixed z-50 max-h-48 overflow-auto rounded-lg border border-(--p-color-border) bg-white py-1 text-left shadow-md"
           style={{ top: rect.top, left: rect.left, width: rect.width }}
         >
           {filtered.map((opt) => (
@@ -156,8 +156,8 @@ export default function ProductAttrCombobox({
               key={opt}
               type="button"
               className={cn(
-                "flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 text-[#303030] hover:bg-[#f1f1f1]",
-                opt.toLowerCase() === current.toLowerCase() && "font-[550]"
+                "flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 text-(--p-color-text) hover:bg-(--p-color-bg-fill)",
+                opt.toLowerCase() === current.toLowerCase() && "font-medium"
               )}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => commit(opt)}
@@ -168,7 +168,7 @@ export default function ProductAttrCombobox({
           {canCreate ? (
             <button
               type="button"
-              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 font-[550] text-[#303030] hover:bg-[#f1f1f1]"
+              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 font-medium text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => commit(draft)}
             >

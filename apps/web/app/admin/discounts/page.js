@@ -59,18 +59,18 @@ const KINDS = [
 // ─────────────────────────────────────────────────────────── small controls
 
 const fieldCls =
-  "h-8 w-full rounded-lg border border-[#8a8a8a]/50 bg-white px-3 text-[0.8125rem] text-[#303030] outline-none transition-shadow placeholder:text-[#8a8a8a] focus:border-[#303030] focus:shadow-[0_0_0_1px_#303030]";
+  "h-8 w-full rounded-lg border border-(--p-color-input-border)/50 bg-white px-3 text-[0.8125rem] text-(--p-color-text) outline-none transition-shadow placeholder:text-(--p-color-text-tertiary) focus:border-(--p-color-text) focus:shadow-[0_0_0_1px_#303030]";
 const softBtn =
-  "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] text-[#303030] transition-colors hover:bg-[#d4d4d4] active:bg-[#ccc]";
-const labelCls = "mb-1 block text-[0.8125rem] font-[450] text-[#303030]";
-const helpCls = "mt-1 text-[0.75rem] text-[#616161]";
+  "admin-btn-secondary inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[0.8125rem] font-medium text-(--p-color-text) transition-colors";
+const labelCls = "mb-1 block text-[0.8125rem] font-normal text-(--p-color-text)";
+const helpCls = "mt-1 text-[0.75rem] text-(--p-color-text-secondary)";
 
 function Section({ title, action, children }) {
   return (
     <section className="space-y-2">
       {title ? (
         <div className="flex items-center justify-between">
-          <h2 className="text-[0.875rem] font-[650] text-[#303030]">{title}</h2>
+          <h2 className="text-[0.875rem] font-semibold text-(--p-color-text)">{title}</h2>
           {action}
         </div>
       ) : null}
@@ -96,7 +96,7 @@ function SelectBox({ value, onChange, options, label, className = "" }) {
           </option>
         ))}
       </select>
-      <ChevronsUpDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-[#616161]" />
+      <ChevronsUpDown className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 text-(--p-color-text-secondary)" />
     </div>
   );
 }
@@ -105,7 +105,7 @@ function NumberField({ value, onChange, prefix, suffix, label, step = "1", place
   return (
     <div className={`relative ${className}`}>
       {prefix ? (
-        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[0.8125rem] text-[#616161]">
+        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[0.8125rem] text-(--p-color-text-secondary)">
           {prefix}
         </span>
       ) : null}
@@ -121,7 +121,7 @@ function NumberField({ value, onChange, prefix, suffix, label, step = "1", place
         className={`${fieldCls} ${prefix ? "pl-7" : ""} ${suffix ? "pr-8" : ""}`}
       />
       {suffix ? (
-        <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[0.8125rem] text-[#616161]">
+        <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[0.8125rem] text-(--p-color-text-secondary)">
           {suffix}
         </span>
       ) : null}
@@ -131,12 +131,12 @@ function NumberField({ value, onChange, prefix, suffix, label, step = "1", place
 
 function Radio({ checked, onChange, children }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.8125rem] text-[#303030]">
+    <label className="flex cursor-pointer items-center gap-2 py-1 text-[0.8125rem] text-(--p-color-text)">
       <input
         type="radio"
         checked={checked}
         onChange={onChange}
-        className="size-4 accent-[#303030]"
+        className="size-4 accent-(--p-color-text)"
       />
       {children}
     </label>
@@ -145,12 +145,12 @@ function Radio({ checked, onChange, children }) {
 
 function Check({ checked, onChange, children }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2 py-1 text-[0.8125rem] text-[#303030]">
+    <label className="flex cursor-pointer items-start gap-2 py-1 text-[0.8125rem] text-(--p-color-text)">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 size-4 rounded accent-[#303030]"
+        className="mt-0.5 size-4 rounded accent-(--p-color-text)"
       />
       <span>{children}</span>
     </label>
@@ -182,7 +182,7 @@ function TargetPicker({ kind, items, selected, onChange }) {
     <div className="space-y-2">
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-[#616161]" />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-(--p-color-text-secondary)" />
           <input
             className={`${fieldCls} pl-8`}
             placeholder={`Search ${noun}`}
@@ -202,23 +202,23 @@ function TargetPicker({ kind, items, selected, onChange }) {
       </div>
 
       {chosen.length ? (
-        <ul className="divide-y divide-[#ebebeb] rounded-lg border border-[#ebebeb]">
+        <ul className="divide-y divide-(--p-color-border-secondary) rounded-lg border border-(--p-color-border-secondary)">
           {chosen.map((item) => (
             <li key={id(item)} className="flex items-center gap-3 px-3 py-2">
               {kind === "products" ? (
-                <span className="size-8 shrink-0 overflow-hidden rounded-md border border-[#ebebeb] bg-[#f7f7f7]">
+                <span className="size-8 shrink-0 overflow-hidden rounded-md border border-(--p-color-border-secondary) bg-(--p-color-bg-surface-hover)">
                   {image(item) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={image(item)} alt="" className="size-full object-cover" />
                   ) : null}
                 </span>
               ) : null}
-              <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-[#303030]">{label(item)}</span>
+              <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-(--p-color-text)">{label(item)}</span>
               <button
                 type="button"
                 aria-label={`Remove ${label(item)}`}
                 onClick={() => toggle(id(item))}
-                className="inline-flex size-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+                className="inline-flex size-7 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
               >
                 <X className="size-3.5" />
               </button>
@@ -230,16 +230,16 @@ function TargetPicker({ kind, items, selected, onChange }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent showCloseButton={false} className="gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[36rem]">
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <DialogTitle className="text-[16px] font-[550] text-[#303030]">
+            <DialogTitle className="text-[16px] font-medium text-(--p-color-text)">
               Add {noun}
             </DialogTitle>
-            <DialogClose aria-label="Close" className="flex size-8 items-center justify-center rounded-full hover:bg-[#f1f1f1]">
+            <DialogClose aria-label="Close" className="flex size-8 items-center justify-center rounded-full hover:bg-(--p-color-bg-fill)">
               <X className="size-4" />
             </DialogClose>
           </div>
           <div className="px-5 pb-3">
             <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-[#616161]" />
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-(--p-color-text-secondary)" />
               <input
                 autoFocus
                 className={`${fieldCls} pl-8`}
@@ -249,42 +249,42 @@ function TargetPicker({ kind, items, selected, onChange }) {
               />
             </div>
           </div>
-          <ul className="max-h-[50vh] divide-y divide-[#ebebeb] overflow-y-auto border-y border-[#ebebeb]">
+          <ul className="max-h-[50vh] divide-y divide-(--p-color-border-secondary) overflow-y-auto border-y border-(--p-color-border-secondary)">
             {filtered.length ? (
               filtered.map((item) => {
                 const sid = id(item);
                 return (
                   <li key={sid}>
-                    <label className="flex cursor-pointer items-center gap-3 px-5 py-2.5 hover:bg-[#f7f7f7]">
+                    <label className="flex cursor-pointer items-center gap-3 px-5 py-2.5 hover:bg-(--p-color-bg-surface-hover)">
                       <input
                         type="checkbox"
                         checked={selected.includes(sid)}
                         onChange={() => toggle(sid)}
-                        className="size-4 accent-[#303030]"
+                        className="size-4 accent-(--p-color-text)"
                       />
                       {kind === "products" ? (
-                        <span className="size-8 shrink-0 overflow-hidden rounded-md border border-[#ebebeb] bg-[#f7f7f7]">
+                        <span className="size-8 shrink-0 overflow-hidden rounded-md border border-(--p-color-border-secondary) bg-(--p-color-bg-surface-hover)">
                           {image(item) ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={image(item)} alt="" className="size-full object-cover" />
                           ) : null}
                         </span>
                       ) : null}
-                      <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-[#303030]">{label(item)}</span>
+                      <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-(--p-color-text)">{label(item)}</span>
                       {kind === "collections" && item.productCount != null ? (
-                        <span className="text-[0.75rem] text-[#616161]">{item.productCount} products</span>
+                        <span className="text-[0.75rem] text-(--p-color-text-secondary)">{item.productCount} products</span>
                       ) : null}
                     </label>
                   </li>
                 );
               })
             ) : (
-              <li className="px-5 py-6 text-center text-[0.8125rem] text-[#616161]">No {noun} found</li>
+              <li className="px-5 py-6 text-center text-[0.8125rem] text-(--p-color-text-secondary)">No {noun} found</li>
             )}
           </ul>
           <div className="flex items-center justify-between px-5 py-3.5">
-            <span className="text-[0.8125rem] text-[#616161]">{selected.length} selected</span>
-            <DialogClose className="h-8 rounded-lg bg-[#303030] px-3 text-[0.8125rem] font-[550] text-white hover:bg-[#1a1a1a]">
+            <span className="text-[0.8125rem] text-(--p-color-text-secondary)">{selected.length} selected</span>
+            <DialogClose className="h-8 rounded-lg bg-(--p-color-button-primary-bg) px-3 text-[0.8125rem] font-medium text-white hover:bg-(--p-color-button-primary-bg-hover)">
               Done
             </DialogClose>
           </div>
@@ -338,7 +338,7 @@ function CustomerPicker({ selected, onChange }) {
   return (
     <div className="mt-3 space-y-2">
       <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-[#616161]" />
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-(--p-color-text-secondary)" />
         <input
           className={`${fieldCls} pl-8`}
           placeholder="Search customers by name, email or phone"
@@ -348,41 +348,41 @@ function CustomerPicker({ selected, onChange }) {
         {query.trim().length >= 2 ? (
           <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg bg-white py-1 shadow-[0_4px_16px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.08)]">
             {searching ? (
-              <li className="px-3 py-2 text-[0.8125rem] text-[#616161]">Searching…</li>
+              <li className="px-3 py-2 text-[0.8125rem] text-(--p-color-text-secondary)">Searching…</li>
             ) : results.length ? (
               results.map((row) => (
                 <li key={row._id}>
                   <button
                     type="button"
                     onClick={() => add(row)}
-                    className="flex w-full flex-col px-3 py-2 text-left hover:bg-[#f7f7f7]"
+                    className="flex w-full flex-col px-3 py-2 text-left hover:bg-(--p-color-bg-surface-hover)"
                   >
-                    <span className="text-[0.8125rem] text-[#303030]">{row.name || "Unnamed customer"}</span>
-                    <span className="text-[0.75rem] text-[#616161]">{describe(row)}</span>
+                    <span className="text-[0.8125rem] text-(--p-color-text)">{row.name || "Unnamed customer"}</span>
+                    <span className="text-[0.75rem] text-(--p-color-text-secondary)">{describe(row)}</span>
                   </button>
                 </li>
               ))
             ) : (
-              <li className="px-3 py-2 text-[0.8125rem] text-[#616161]">No customers found</li>
+              <li className="px-3 py-2 text-[0.8125rem] text-(--p-color-text-secondary)">No customers found</li>
             )}
           </ul>
         ) : null}
       </div>
       {selected.length ? (
-        <ul className="divide-y divide-[#ebebeb] rounded-lg border border-[#ebebeb]">
+        <ul className="divide-y divide-(--p-color-border-secondary) rounded-lg border border-(--p-color-border-secondary)">
           {selected.map((sid) => {
             const row = known[sid] || { _id: sid, name: "Loading…" };
             return (
               <li key={sid} className="flex items-center gap-3 px-3 py-2">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[0.8125rem] text-[#303030]">{row.name || "Unnamed customer"}</span>
-                  <span className="block truncate text-[0.75rem] text-[#616161]">{describe(row)}</span>
+                  <span className="block truncate text-[0.8125rem] text-(--p-color-text)">{row.name || "Unnamed customer"}</span>
+                  <span className="block truncate text-[0.75rem] text-(--p-color-text-secondary)">{describe(row)}</span>
                 </span>
                 <button
                   type="button"
                   aria-label="Remove customer"
                   onClick={() => onChange(selected.filter((x) => x !== sid))}
-                  className="inline-flex size-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+                  className="inline-flex size-7 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -405,9 +405,9 @@ function TagsInput({ tags, onChange }) {
     setDraft("");
   };
   return (
-    <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-[#8a8a8a]/50 bg-white p-1.5">
+    <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-(--p-color-input-border)/50 bg-white p-1.5">
       {tags.map((t) => (
-        <span key={t} className="inline-flex h-6 items-center gap-1 rounded-md bg-[#e3e3e3] pr-1 pl-2 text-[0.75rem] font-[550] text-[#303030]">
+        <span key={t} className="inline-flex h-6 items-center gap-1 rounded-md bg-(--p-color-button-bg-fill) pr-1 pl-2 text-[0.75rem] font-medium text-(--p-color-text)">
           {t}
           <button type="button" aria-label={`Remove ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
             <X className="size-3" />
@@ -440,7 +440,7 @@ function TagsInput({ tags, onChange }) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="inline-flex h-6 items-center gap-1 rounded-md bg-[#f1f1f1] px-2 text-[0.75rem] font-[550] text-[#303030] hover:bg-[#e3e3e3]"
+          className="inline-flex h-6 items-center gap-1 rounded-md bg-(--p-color-bg-fill) px-2 text-[0.75rem] font-medium text-(--p-color-text) hover:bg-(--p-color-button-bg-fill)"
         >
           <CirclePlus className="size-3.5" />
           Add tags
@@ -527,7 +527,7 @@ function createDiscountColumns({ onEdit, onDelete }) {
               e.stopPropagation();
               onEdit(row.original);
             }}
-            className="inline-flex size-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+            className="inline-flex size-7 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
           >
             <Edit3 className="h-3.5 w-3.5" />
           </button>
@@ -538,7 +538,7 @@ function createDiscountColumns({ onEdit, onDelete }) {
               e.stopPropagation();
               onDelete(row.original._id || row.original.id);
             }}
-            className="inline-flex size-7 items-center justify-center rounded-md text-[#c70a24] hover:bg-[#fbe9e7]"
+            className="inline-flex size-7 items-center justify-center rounded-md text-(--p-color-text-critical-accent) hover:bg-(--p-color-badge-bg-fill-critical)"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -665,7 +665,7 @@ export default function AdminDiscountsPage() {
     error || success ? (
       <div
         className={`mb-4 flex items-start gap-2 rounded-lg p-3 text-[13px] ${
-          success ? "bg-emerald-50 text-emerald-700" : "bg-destructive/10 text-destructive"
+          success ? "bg-(--p-color-bg-surface-success) text-(--p-color-text-success-secondary)" : "bg-destructive/10 text-destructive"
         }`}
       >
         {success ? <CheckCircle2 size={16} className="mt-0.5" /> : <AlertCircle size={16} className="mt-0.5" />}
@@ -711,39 +711,39 @@ export default function AdminDiscountsPage() {
         <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
           <DialogContent
             showCloseButton={false}
-            className="gap-0 overflow-hidden rounded-2xl p-0 text-[#303030] sm:max-w-[40rem]"
+            className="gap-0 overflow-hidden rounded-2xl p-0 text-(--p-color-text) sm:max-w-[40rem]"
           >
             <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-3">
-              <DialogTitle className="text-[16px] font-[550] leading-6 text-[#303030]">
+              <DialogTitle className="text-[16px] font-medium leading-6 text-(--p-color-text)">
                 Select discount type
               </DialogTitle>
               <DialogClose
                 aria-label="Close"
-                className="flex size-8 items-center justify-center rounded-full bg-white text-[#303030] shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.08)] transition-colors hover:bg-[#f1f1f1]"
+                className="flex size-8 items-center justify-center rounded-full bg-white text-(--p-color-text) shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.08)] transition-colors hover:bg-(--p-color-bg-fill)"
               >
                 <X className="size-4" />
               </DialogClose>
             </div>
-            <ul className="divide-y divide-[#ebebeb] border-b border-[#ebebeb]">
+            <ul className="divide-y divide-(--p-color-border-secondary) border-b border-(--p-color-border-secondary)">
               {KINDS.map((k) => (
                 <li key={k.id}>
                   <button
                     type="button"
                     onClick={() => pickKind(k.id)}
-                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-[#f7f7f7] focus-visible:bg-[#f7f7f7] focus-visible:outline-none"
+                    className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-(--p-color-bg-surface-hover) focus-visible:bg-(--p-color-bg-surface-hover) focus-visible:outline-none"
                   >
                     <k.icon className="mt-0.5 size-4 shrink-0 self-start" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[0.875rem] font-[550] leading-5">{k.title}</span>
-                      <span className="mt-1 block text-[0.8125rem] leading-5 text-[#616161]">{k.description}</span>
+                      <span className="block text-[0.875rem] font-medium leading-5">{k.title}</span>
+                      <span className="mt-1 block text-[0.8125rem] leading-5 text-(--p-color-text-secondary)">{k.description}</span>
                     </span>
-                    <ChevronRight className="size-4 shrink-0 text-[#616161]" />
+                    <ChevronRight className="size-4 shrink-0 text-(--p-color-text-secondary)" />
                   </button>
                 </li>
               ))}
             </ul>
             <div className="flex justify-end px-5 py-3.5">
-              <DialogClose className="h-8 rounded-lg bg-white px-3 text-[0.8125rem] font-[550] text-[#303030] shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.08)] transition-colors hover:bg-[#f1f1f1]">
+              <DialogClose className="h-8 rounded-lg bg-white px-3 text-[0.8125rem] font-medium text-(--p-color-text) shadow-[0_1px_2px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.08)] transition-colors hover:bg-(--p-color-bg-fill)">
                 Cancel
               </DialogClose>
             </div>
@@ -796,7 +796,7 @@ export default function AdminDiscountsPage() {
           {/* Method + code */}
           <Section title={KIND_TITLES[f.kind]}>
             <span className={labelCls}>Method</span>
-            <div role="radiogroup" aria-label="Method" className="mb-3 inline-flex rounded-lg bg-[#e3e3e3] p-0.5">
+            <div role="radiogroup" aria-label="Method" className="mb-3 inline-flex rounded-lg bg-(--p-color-button-bg-fill) p-0.5">
               {[
                 { value: "code", label: "Discount code" },
                 { value: "automatic", label: "Automatic discount" },
@@ -814,10 +814,10 @@ export default function AdminDiscountsPage() {
                         : { method: m.value }
                     )
                   }
-                  className={`rounded-md px-3 py-1 text-[0.75rem] font-[550] transition-colors ${
+                  className={`rounded-md px-3 py-1 text-[0.75rem] font-medium transition-colors ${
                     f.method === m.value
-                      ? "bg-white text-[#303030] shadow-[0_1px_0_rgba(0,0,0,0.08)]"
-                      : "text-[#616161] hover:text-[#303030]"
+                      ? "bg-white text-(--p-color-text) shadow-[0_1px_0_rgba(0,0,0,0.08)]"
+                      : "text-(--p-color-text-secondary) hover:text-(--p-color-text)"
                   }`}
                 >
                   {m.label}
@@ -847,7 +847,7 @@ export default function AdminDiscountsPage() {
                   <button
                     type="button"
                     onClick={() => set({ code: randomCode() })}
-                    className="mb-1 text-[0.8125rem] text-[#005bd3] hover:underline"
+                    className="mb-1 text-[0.8125rem] text-(--p-color-text-link) hover:underline"
                   >
                     Generate random code
                   </button>
@@ -919,7 +919,7 @@ export default function AdminDiscountsPage() {
                 <div className="mt-3">
                   <Check checked={!!f.limitMaxDiscount} onChange={(v) => set({ limitMaxDiscount: v })}>
                     Set a maximum discount amount
-                    <span className="block text-[0.75rem] text-[#616161]">
+                    <span className="block text-[0.75rem] text-(--p-color-text-secondary)">
                       The discount stops at this amount per order, whatever the cart total.
                     </span>
                   </Check>
@@ -955,7 +955,7 @@ export default function AdminDiscountsPage() {
                   {f.discountType === "fixed" ? (
                     <Check checked={!!f.oncePerOrder} onChange={(v) => set({ oncePerOrder: v })}>
                       Only apply discount once per order
-                      <span className="block text-[0.75rem] text-[#616161]">
+                      <span className="block text-[0.75rem] text-(--p-color-text-secondary)">
                         If not selected, the amount will be taken off each eligible item in an order.
                       </span>
                     </Check>
@@ -965,7 +965,7 @@ export default function AdminDiscountsPage() {
             </Section>
           ) : (
             <Section title="Discount value">
-              <h3 className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Customer buys</h3>
+              <h3 className="mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">Customer buys</h3>
               <Radio checked={f.buyRequirement === "quantity"} onChange={() => set({ buyRequirement: "quantity" })}>
                 Minimum quantity of items
               </Radio>
@@ -1000,10 +1000,10 @@ export default function AdminDiscountsPage() {
                 />
               </div>
 
-              <div className="my-4 border-t border-[#ebebeb]" />
+              <div className="my-4 border-t border-(--p-color-border-secondary)" />
 
-              <h3 className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Customer gets</h3>
-              <p className="mb-2 text-[0.8125rem] text-[#616161]">
+              <h3 className="mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">Customer gets</h3>
+              <p className="mb-2 text-[0.8125rem] text-(--p-color-text-secondary)">
                 Customers must add the quantity of items specified below to their cart.
               </p>
               <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-2">
@@ -1030,7 +1030,7 @@ export default function AdminDiscountsPage() {
                 />
               </div>
 
-              <h3 className="mt-4 mb-1 text-[0.8125rem] font-[650] text-[#303030]">At a discounted value</h3>
+              <h3 className="mt-4 mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">At a discounted value</h3>
               <Radio checked={f.getValueType === "percentage"} onChange={() => set({ getValueType: "percentage" })}>
                 Percentage
               </Radio>
@@ -1153,7 +1153,7 @@ export default function AdminDiscountsPage() {
 
           {/* Combinations */}
           <Section title="Combinations">
-            <p className="mb-1 text-[0.8125rem] text-[#303030]">{KIND_TITLES[f.kind]} can be combined with:</p>
+            <p className="mb-1 text-[0.8125rem] text-(--p-color-text)">{KIND_TITLES[f.kind]} can be combined with:</p>
             {combinationOptions(f.kind).map((o) => (
               <Check key={o.key} checked={!!f[o.key]} onChange={(v) => set({ [o.key]: v })}>
                 {o.label}
@@ -1230,7 +1230,7 @@ export default function AdminDiscountsPage() {
             ) : null}
           </Section>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e3e3e3] pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-(--p-color-border) pt-4">
             <div className="flex gap-2">
               {editingId ? (
                 <>
@@ -1243,7 +1243,7 @@ export default function AdminDiscountsPage() {
                   <button
                     type="button"
                     onClick={() => handleDelete(editingId)}
-                    className="inline-flex h-8 items-center rounded-lg px-3 text-[0.8125rem] font-[550] text-[#c70a24] hover:bg-[#fbe9e7]"
+                    className="inline-flex h-8 items-center rounded-lg px-3 text-[0.8125rem] font-medium text-(--p-color-text-critical-accent) hover:bg-(--p-color-badge-bg-fill-critical)"
                   >
                     Delete discount
                   </button>
@@ -1262,7 +1262,7 @@ export default function AdminDiscountsPage() {
         {/* Sidebar summary */}
         <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
           <div className="rounded-xl bg-white p-4 shadow-[0_1px_0_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.07)]">
-            <p className="font-mono text-[0.875rem] font-[650] text-[#303030]">
+            <p className="font-mono text-[0.875rem] font-semibold text-(--p-color-text)">
               {isAutomatic ? (
                 <span className="font-sans">{f.name || "No title yet"}</span>
               ) : heading ? (
@@ -1271,29 +1271,29 @@ export default function AdminDiscountsPage() {
                 <span className="font-sans">No discount code yet</span>
               )}
             </p>
-            <p className="text-[0.75rem] text-[#616161]">{isAutomatic ? "Automatic discount" : "Code"}</p>
+            <p className="text-[0.75rem] text-(--p-color-text-secondary)">{isAutomatic ? "Automatic discount" : "Code"}</p>
 
-            <div className="my-3 border-t border-[#ebebeb]" />
-            <p className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Type</p>
-            <p className="text-[0.8125rem] text-[#303030]">{KIND_TITLES[f.kind]}</p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-[#303030]">
+            <div className="my-3 border-t border-(--p-color-border-secondary)" />
+            <p className="mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">Type</p>
+            <p className="text-[0.8125rem] text-(--p-color-text)">{KIND_TITLES[f.kind]}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-(--p-color-text)">
               <KindIcon className="size-3.5" />
               {KIND_CLASS[f.kind]}
             </p>
 
-            <div className="my-3 border-t border-[#ebebeb]" />
-            <p className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Details</p>
-            <ul className="list-disc space-y-1 pl-4 text-[0.8125rem] text-[#303030]">
+            <div className="my-3 border-t border-(--p-color-border-secondary)" />
+            <p className="mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">Details</p>
+            <ul className="list-disc space-y-1 pl-4 text-[0.8125rem] text-(--p-color-text)">
               {details.map((line) => (
                 <li key={line}>{line}</li>
               ))}
             </ul>
 
-            <div className="my-3 border-t border-[#ebebeb]" />
-            <p className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Sales channel access</p>
+            <div className="my-3 border-t border-(--p-color-border-secondary)" />
+            <p className="mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">Sales channel access</p>
             <Check checked={!!f.showOnProduct} onChange={(v) => set({ showOnProduct: v })}>
               Allow discount to be featured on selected channels
-              <span className="block text-[0.75rem] text-[#616161]">
+              <span className="block text-[0.75rem] text-(--p-color-text-secondary)">
                 {isAutomatic
                   ? "Shows this discount under “Active offers” on the product pages it applies to."
                   : "Lists the code under “Active offers” on the product pages it applies to."}
@@ -1309,8 +1309,8 @@ export default function AdminDiscountsPage() {
               />
             ) : null}
 
-            <div className="my-3 border-t border-[#ebebeb]" />
-            <p className="mb-1 text-[0.8125rem] font-[650] text-[#303030]">Tags</p>
+            <div className="my-3 border-t border-(--p-color-border-secondary)" />
+            <p className="mb-1 text-[0.8125rem] font-semibold text-(--p-color-text)">Tags</p>
             <TagsInput tags={f.tags} onChange={(tags) => set({ tags })} />
           </div>
         </aside>

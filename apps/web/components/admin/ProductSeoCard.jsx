@@ -44,7 +44,7 @@ function formatPreviewPrice(sellingPrice) {
 
 function CharHint({ length, max, recommended }) {
   return (
-    <p className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px] text-[#616161]">
+    <p className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px] text-(--p-color-text-secondary)">
       <span>Recommended: {recommended} characters</span>
       <span className="tabular-nums">
         {length}/{max}
@@ -90,7 +90,7 @@ export default function ProductSeoCard({
   );
 
   const preview = (
-    <div className="rounded-lg border border-[#ebebeb] bg-white px-3 py-2.5">
+    <div className="rounded-lg border border-(--p-color-border-secondary) bg-white px-3 py-2.5">
       <p className="truncate text-[12px] text-[#202124]">{storeName}</p>
       <p className="mt-0.5 truncate text-[12px] text-[#4d5156]">
         {breadcrumb.join(" › ")}
@@ -114,7 +114,7 @@ export default function ProductSeoCard({
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
             aria-label={
               editing
                 ? "Collapse search engine listing"
@@ -134,7 +134,7 @@ export default function ProductSeoCard({
               {preview}
             </div>
 
-            <div className="-mx-(--card-spacing) border-t border-[#ebebeb]" />
+            <div className="-mx-(--card-spacing) border-t border-(--p-color-border-secondary)" />
 
             <Field>
               <FieldLabel>Page title</FieldLabel>
@@ -143,7 +143,7 @@ export default function ProductSeoCard({
                 maxLength={TITLE_MAX}
                 placeholder={productName || "Page title"}
                 onChange={(e) => updateForm({ metaTitle: e.target.value })}
-                className="h-9 border-[#c9cccf] bg-white"
+                className="h-9 border-(--p-color-border-hover) bg-white"
               />
               <CharHint
                 length={metaTitle.length}
@@ -162,7 +162,7 @@ export default function ProductSeoCard({
                 onChange={(e) =>
                   updateForm({ metaDescription: e.target.value })
                 }
-                className="min-h-[4.5rem] border-[#c9cccf] bg-white"
+                className="min-h-[4.5rem] border-(--p-color-border-hover) bg-white"
               />
               <CharHint
                 length={metaDescription.length}
@@ -185,9 +185,9 @@ export default function ProductSeoCard({
                     slugManual: true,
                   });
                 }}
-                className="h-9 border-[#c9cccf] bg-white"
+                className="h-9 border-(--p-color-border-hover) bg-white"
               />
-              <p className="mt-1 truncate text-[12px] text-[#616161]">
+              <p className="mt-1 truncate text-[12px] text-(--p-color-text-secondary)">
                 {fullUrl}
               </p>
             </Field>
@@ -196,7 +196,7 @@ export default function ProductSeoCard({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="w-full rounded-lg text-left hover:bg-[#fafafa]"
+            className="w-full rounded-lg text-left hover:bg-(--p-color-bg-surface-secondary)"
           >
             {preview}
           </button>

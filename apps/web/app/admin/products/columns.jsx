@@ -121,7 +121,7 @@ export function createProductColumns({ categories = [] } = {}) {
           return (
             <AdminStatusText
               tone="success"
-              className="bg-[#95FFB9] text-[#004D41] hover:bg-[#95FFB9] [&_svg]:text-[#004D41] [&_svg]:opacity-100"
+              className="bg-(--p-color-badge-bg-fill-success) text-(--p-color-badge-text-success) hover:bg-(--p-color-badge-bg-fill-success) [&_svg]:text-(--p-color-badge-text-success) [&_svg]:opacity-100"
             >
               {statusLabel(status)}
             </AdminStatusText>
