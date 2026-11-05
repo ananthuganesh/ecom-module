@@ -64,6 +64,8 @@ class Settings(BaseSettings):
 
     delhivery_api_token: str = ""
     delhivery_pickup_location: str = ""
+    # Time (IST, HH:MM:SS) we ask Delhivery's rider to come to the warehouse.
+    delhivery_pickup_time: str = "14:00:00"
 
     resend_api_key: str = ""
     resend_from: str = "Urban Aana <noreply@urbanaana.com>"

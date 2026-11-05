@@ -681,3 +681,156 @@ async def test_top_level_timestamps_win_over_the_carrier_node():
         "delhivery": {"waybill": "DL777", "deliveredAt": "2026-09-04T00:00:00"},
     }
     assert couriers.shipment_meta(order)["timestamps"]["deliveredAt"] == "2026-09-05T00:00:00"
+
+
+# ---------------------------------------------------------------- pickup requests
+
+from datetime import datetime, time, timezone  # noqa: E402
+
+SLOT = time(14, 0)
+
+
+def _ist(day: int, hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 11, day, hour, minute, tzinfo=delhivery.IST)
+
+
+def test_pickup_slot_is_today_while_there_is_lead_time():
+    assert delhivery.next_pickup_slot(_ist(5, 11, 59), SLOT) == _ist(5, 14)
+
+
+def test_pickup_slot_rolls_to_tomorrow_after_the_cutoff():
+    assert delhivery.next_pickup_slot(_ist(5, 12, 1), SLOT) == _ist(6, 14)
+
+
+def test_pickup_slot_skips_sunday():
+    # Sat 7 Nov evening → Mon 9 Nov
+    assert delhivery.next_pickup_slot(_ist(7, 18), SLOT) == _ist(9, 14)
+
+
+def _pickup_and_create_handler(seen: dict, pickup_response: httpx.Response):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/fm/request/new/":
+            seen["pickup"] = json.loads(request.content)
+            return pickup_response
+        assert request.url.path == "/api/cmu/create.json"
+        return httpx.Response(
+            200,
+            json={"success": True, "packages": [{"waybill": "1234567890", "status": "Success"}]},
+        )
+
+    return handler
+
+
+@pytest.mark.usefixtures("db")
+async def test_booking_also_requests_a_pickup(mock_http):
+    seen: dict = {}
+    mock_http(
+        _pickup_and_create_handler(
+            seen, httpx.Response(200, json={"pickup_id": 987, "incoming_center_name": "Kazhakkoottam"})
+        )
+    )
+    order = await _paid_order()
+    await delhivery.create_consignment(order, None)
+
+    assert seen["pickup"]["pickup_location"] == "Urban Aana Warehouse"
+    assert seen["pickup"]["expected_package_count"] == 1
+    record = order.transactionDetails["delhivery"]["pickup"]
+    assert record["id"] == "987"
+    assert record["center"] == "Kazhakkoottam"
+    assert record["time"] == "14:00:00"
+
+
+@pytest.mark.usefixtures("db")
+async def test_booking_survives_a_refused_pickup(mock_http):
+    mock_http(_pickup_and_create_handler({}, httpx.Response(400, json={"error": "Invalid pickup date"})))
+    order = await _paid_order()
+    await delhivery.create_consignment(order, None)
+
+    assert order.awb == "1234567890"
+    assert order.transactionDetails["delhivery"]["pickup"]["error"] == "Invalid pickup date"
+
+
+@pytest.mark.usefixtures("db")
+async def test_an_existing_pickup_for_the_day_counts_as_scheduled(mock_http):
+    mock_http(
+        lambda request: httpx.Response(
+            400, json={"pr_exist": True, "error": {"message": "Pickup request already exists"}}
+        )
+    )
+    order = await _paid_order(awb="1234567890", carrier="delhivery")
+    record = await delhivery.request_pickup(order)
+    assert record["existing"] is True
+    assert "error" not in record
+
+
+@pytest.mark.usefixtures("db")
+async def test_pickup_needs_a_waybill():
+    order = await _paid_order()
+    with pytest.raises(HTTPException) as exc:
+        await delhivery.request_pickup(order)
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.usefixtures("db")
+async def test_pickup_due_rules():
+    now = datetime(2026, 11, 5, 10, 0, tzinfo=timezone.utc)  # 15:30 IST
+    order = await _paid_order(awb="1", carrier="delhivery")
+    assert delhivery.pickup_due(order, "Manifested", now=now) is True
+    assert delhivery.pickup_due(order, "In Transit", now=now) is False
+
+    delhivery._set_delhivery_detail(order, "pickup", {"date": "2026-11-05"})
+    assert delhivery.pickup_due(order, "Manifested", now=now) is False
+    # Yesterday's request and the parcel is still "Not Picked": ask again.
+    delhivery._set_delhivery_detail(order, "pickup", {"date": "2026-11-04"})
+    assert delhivery.pickup_due(order, "Not Picked", now=now) is True
+
+    delhivery._set_delhivery_detail(
+        order, "pickup", {"date": "2026-11-05", "error": "x", "requestedAt": "2026-11-05T09:30:00"}
+    )
+    assert delhivery.pickup_due(order, "Manifested", now=now) is False
+    delhivery._set_delhivery_detail(
+        order, "pickup", {"date": "2026-11-05", "error": "x", "requestedAt": "2026-11-05T08:30:00"}
+    )
+    assert delhivery.pickup_due(order, "Manifested", now=now) is True
+
+
+@pytest.mark.usefixtures("db")
+async def test_track_rerequests_a_missed_pickup_and_keeps_the_scan(mock_http):
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/fm/request/new/":
+            seen["pickup"] = True
+            return httpx.Response(200, json={"pickup_id": 55})
+        return httpx.Response(
+            200,
+            json={
+                "ShipmentData": [
+                    {
+                        "Shipment": {
+                            "Status": {
+                                "Status": "Not Picked",
+                                "Instructions": "Shipment not received from client",
+                                "StatusLocation": "Kazhakkoottam_Rdiosttn_D (Kerala)",
+                            }
+                        }
+                    }
+                ]
+            },
+        )
+
+    mock_http(handler)
+    order = await _paid_order(
+        awb="1234567890",
+        carrier="delhivery",
+        shippingStatus="Ready To Ship",
+        transactionDetails={"delhivery": {"waybill": "1234567890", "pickup": {"date": "2020-01-01"}}},
+    )
+    await delhivery.track_consignment(order)
+
+    refreshed = await Order.get(order.id)
+    node = refreshed.transactionDetails["delhivery"]
+    assert seen.get("pickup") is True
+    assert node["pickup"]["id"] == "55"
+    assert node["lastScan"]["remark"] == "Shipment not received from client"
+    assert refreshed.shippingStatus == "Ready To Ship"

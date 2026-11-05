@@ -105,6 +105,20 @@ async def create_shipment(order_id: str, admin: AdminUser, body: dict | None = N
     }
 
 
+@router.post("/pickup/{order_id}")
+async def request_pickup(order_id: str, admin: AdminUser):
+    """Ask the carrier to send a rider. Only Delhivery needs this; DTDC schedules pickup on booking."""
+    from app.services import delhivery
+
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if couriers.carrier_for_order(order) != couriers.DELHIVERY:
+        raise HTTPException(status_code=400, detail="DTDC schedules the pickup automatically when you book")
+    pickup = await delhivery.request_pickup(order)
+    return {"ok": True, "pickup": pickup, "order": remap_order(order)}
+
+
 @router.post("/retry/{order_id}")
 async def retry(order_id: str, admin: AdminUser, body: dict | None = None):
     """Alias for create — keeps older admin clients working."""

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
@@ -116,6 +116,9 @@ def _env_delhivery() -> dict[str, Any]:
         # Must match the warehouse name registered with Delhivery *exactly* (case sensitive).
         "pickupLocation": (
             os.environ.get("DELHIVERY_PICKUP_LOCATION") or settings.delhivery_pickup_location or ""
+        ).strip(),
+        "pickupTime": (
+            os.environ.get("DELHIVERY_PICKUP_TIME") or settings.delhivery_pickup_time or ""
         ).strip(),
     }
 
@@ -491,6 +494,11 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
     await order.save()
 
     try:
+        await request_pickup(order)
+    except Exception as exc:  # noqa: BLE001 — the waybill stands; the sync and admin retry pickup
+        print(f"[Delhivery] pickup request for {order.orderNumber or order.id}: {exc}")
+
+    try:
         from app.services import erp_ops
 
         await erp_ops.ensure_order_invoice_safe(order, actor=user, context="delhivery_ready_to_ship")
@@ -613,15 +621,34 @@ def waybill_for(order: Order) -> str | None:
     return str(node.get("waybill") or "").strip() or None
 
 
-def _extract_track_status(data: Any) -> str | None:
-    """Pull the current status out of a Delhivery ShipmentData payload."""
+def _shipment(data: Any) -> dict | None:
     if not isinstance(data, dict):
         return None
     shipments = data.get("ShipmentData")
     if not isinstance(shipments, list) or not shipments:
         return None
     shipment = shipments[0].get("Shipment") if isinstance(shipments[0], dict) else None
-    if not isinstance(shipment, dict):
+    return shipment if isinstance(shipment, dict) else None
+
+
+def _last_scan(data: Any) -> dict | None:
+    """Delhivery's own wording for the latest scan, e.g. "Not Picked — Shipment not received from client"."""
+    shipment = _shipment(data)
+    status = shipment.get("Status") if shipment else None
+    if not isinstance(status, dict) or not status.get("Status"):
+        return None
+    return {
+        "status": str(status.get("Status") or ""),
+        "remark": str(status.get("Instructions") or ""),
+        "location": str(status.get("StatusLocation") or ""),
+        "at": str(status.get("StatusDateTime") or ""),
+    }
+
+
+def _extract_track_status(data: Any) -> str | None:
+    """Pull the current status out of a Delhivery ShipmentData payload."""
+    shipment = _shipment(data)
+    if shipment is None:
         return None
     status = shipment.get("Status")
     if isinstance(status, dict):
@@ -653,7 +680,18 @@ async def track_consignment(order: Order) -> dict:
                 detail=(data.get("Error") if isinstance(data, dict) else None) or resp.text[:300] or "Track failed",
             )
 
-    mapped = map_delhivery_track_status(_extract_track_status(data))
+    raw_status = _extract_track_status(data)
+    scan = _last_scan(data)
+    if scan and scan != _delhivery_detail(order, "lastScan"):
+        _set_delhivery_detail(order, "lastScan", scan)
+        await order.save()
+    if pickup_due(order, raw_status):
+        try:
+            await request_pickup(order)
+        except Exception as exc:  # noqa: BLE001 — recorded on the order; retried next sync
+            print(f"[Delhivery] pickup request for {order.orderNumber or order.id}: {exc}")
+
+    mapped = map_delhivery_track_status(raw_status)
     prev = order.shippingStatus
     if mapped and can_apply_shipping_status(prev, mapped):
         order.shippingStatus = mapped
@@ -809,9 +847,58 @@ async def register_warehouse(payload: dict) -> dict:
     return data
 
 
+# Booking a waybill (cmu/create) never sends a rider: Delhivery only collects
+# after a separate pickup request for the warehouse. One request per location
+# per day covers every parcel waiting there.
+IST = timezone(timedelta(hours=5, minutes=30))
+DEFAULT_PICKUP_TIME = "14:00:00"
+# Book today's slot only while the hub still has this long to route a rider.
+PICKUP_LEAD = timedelta(hours=2)
+# After a failed request, the status sync waits this long before trying again.
+PICKUP_RETRY_AFTER = timedelta(hours=1)
+# Delhivery scan statuses that mean the parcel is still at our warehouse.
+AWAITING_PICKUP_SCANS = frozenset({"manifested", "not picked", "not_picked", "open", "pending pickup"})
+
+
+def _pickup_time(cfg: dict) -> time:
+    raw = str(cfg.get("pickupTime") or "").strip() or DEFAULT_PICKUP_TIME
+    try:
+        return time.fromisoformat(raw)
+    except ValueError:
+        return time.fromisoformat(DEFAULT_PICKUP_TIME)
+
+
+def next_pickup_slot(now: datetime, slot: time) -> datetime:
+    """The next pickup slot in IST: today if there's still lead time, else the next working day."""
+    now = now.astimezone(IST) if now.tzinfo else now.replace(tzinfo=timezone.utc).astimezone(IST)
+    day = now.date()
+    if now + PICKUP_LEAD > datetime.combine(day, slot, IST):
+        day += timedelta(days=1)
+    while day.weekday() == 6:  # no Sunday collections
+        day += timedelta(days=1)
+    return datetime.combine(day, slot, IST)
+
+
+def _already_requested(data: Any) -> bool:
+    """Delhivery rejects a second request for the same location and day; the first one still stands."""
+    text = (data if isinstance(data, str) else json.dumps(data, default=str)).lower()
+    return "already" in text or '"pr_exist": true' in text
+
+
+def _pickup_error(data: Any, fallback: str) -> str:
+    if isinstance(data, dict):
+        err = data.get("error") or data.get("Error") or data.get("message") or data.get("detail")
+        if isinstance(err, dict):
+            err = err.get("message") or json.dumps(err, default=str)
+        if err:
+            return str(err)[:300]
+    return (str(data)[:300] if data else "") or fallback
+
+
 async def create_pickup_request(
     *, pickup_date: str, pickup_time: str, expected_package_count: int
 ) -> dict:
+    """Raise Delhivery's pickup request. Returns {"existing": True} when one is already open for that day."""
     cfg = await require_delhivery_creds()
     location = (await _pickup_location(cfg))["name"]
     async with httpx.AsyncClient(timeout=45.0) as client:
@@ -825,7 +912,96 @@ async def create_pickup_request(
                 "expected_package_count": int(expected_package_count),
             },
         )
-        data = resp.json() if resp.content else {}
-        if resp.status_code >= 400:
-            raise HTTPException(status_code=502, detail=str(data or resp.text)[:300])
-    return data
+        try:
+            data = resp.json() if resp.content else {}
+        except Exception:  # noqa: BLE001
+            data = resp.text[:500]
+    if isinstance(data, dict) and data.get("pickup_id") and resp.status_code < 400:
+        return data
+    if _already_requested(data):
+        return {"existing": True}
+    raise HTTPException(status_code=502, detail=_pickup_error(data, "Delhivery pickup request failed"))
+
+
+async def _awaiting_pickup_count() -> int:
+    return await Order.find(
+        {
+            "carrier": CARRIER_CODE,
+            "awb": {"$nin": [None, ""]},
+            "shippingStatus": {"$in": ["Awaiting Shipment", "Ready To Ship"]},
+        }
+    ).count()
+
+
+def _set_delhivery_detail(order: Order, key: str, value: Any) -> None:
+    details = dict(order.transactionDetails or {})
+    node = dict(details.get("delhivery") or {})
+    node[key] = value
+    details["delhivery"] = node
+    order.transactionDetails = details
+
+
+def _delhivery_detail(order: Order, key: str) -> dict:
+    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
+    node = details.get("delhivery") if isinstance(details.get("delhivery"), dict) else {}
+    return node.get(key) if isinstance(node.get(key), dict) else {}
+
+
+def pickup_record(order: Order) -> dict:
+    return _delhivery_detail(order, "pickup")
+
+
+async def request_pickup(order: Order, *, now: datetime | None = None) -> dict:
+    """Ask Delhivery to send a rider for this order's parcel; record the outcome on the order.
+
+    Raises HTTPException when Delhivery refuses, after saving the error so admin can see it.
+    """
+    cfg = await require_delhivery_creds()
+    if not waybill_for(order):
+        raise HTTPException(status_code=400, detail="Book the Delhivery shipment before requesting a pickup")
+
+    slot = next_pickup_slot(now or datetime.now(timezone.utc), _pickup_time(cfg))
+    record: dict[str, Any] = {
+        "date": slot.date().isoformat(),
+        "time": slot.strftime("%H:%M:%S"),
+        "requestedAt": datetime.utcnow().isoformat(),
+    }
+    try:
+        data = await create_pickup_request(
+            pickup_date=record["date"],
+            pickup_time=record["time"],
+            expected_package_count=max(1, await _awaiting_pickup_count()),
+        )
+    except (HTTPException, httpx.HTTPError) as exc:
+        message = str(getattr(exc, "detail", None) or exc or "Delhivery pickup request failed")
+        _set_delhivery_detail(order, "pickup", {**record, "error": message})
+        await order.save()
+        raise HTTPException(status_code=502, detail=message) from exc
+
+    if data.get("existing"):
+        record["existing"] = True
+    else:
+        record["id"] = str(data.get("pickup_id"))
+        if data.get("incoming_center_name"):
+            record["center"] = str(data["incoming_center_name"])
+    _set_delhivery_detail(order, "pickup", record)
+    await order.save()
+    return record
+
+
+def pickup_due(order: Order, scan_status: str | None, *, now: datetime | None = None) -> bool:
+    """True when the parcel is still at the warehouse and no live pickup request covers it."""
+    if str(scan_status or "").strip().lower() not in AWAITING_PICKUP_SCANS:
+        return False
+    record = pickup_record(order)
+    if not record:
+        return True
+    now_utc = now or datetime.now(timezone.utc)
+    if record.get("error"):
+        try:
+            last = datetime.fromisoformat(str(record.get("requestedAt"))).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return True
+        return now_utc - last >= PICKUP_RETRY_AFTER
+    # A request for a past day that the rider didn't honour: book the next slot.
+    return str(record.get("date") or "") < now_utc.astimezone(IST).date().isoformat()

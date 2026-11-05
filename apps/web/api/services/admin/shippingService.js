@@ -21,6 +21,12 @@ export const adminShippingService = {
     return response.data;
   },
 
+  /** Ask the carrier to send a rider (Delhivery only; DTDC schedules on booking). */
+  requestPickup: async (orderId) => {
+    const response = await api.post(`/shipping/pickup/${orderId}`);
+    return response.data;
+  },
+
   /** Soft-refresh carrier statuses for open AWB orders; returns updated order payloads. */
   syncStatuses: async (orderIds) => {
     const response = await api.post(`/shipping/sync-statuses`, { orderIds });

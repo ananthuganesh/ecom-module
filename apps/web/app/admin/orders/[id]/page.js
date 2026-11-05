@@ -43,6 +43,7 @@ import {
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
 import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
 import { activeReturn } from "@/lib/returnStatus";
+import { courierUpdateText, pickupSummary } from "@/lib/shipmentPickup";
 import {
   Card,
   CardContent,
@@ -331,6 +332,7 @@ export default function AdminOrderDetailPage() {
   const [isPrintingInvoice, setIsPrintingInvoice] = useState(false);
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
   const [fulfillLoading, setFulfillLoading] = useState(false);
+  const [pickupLoading, setPickupLoading] = useState(false);
   const [carriers, setCarriers] = useState([]);
   const [carrier, setCarrier] = useState("");
   const [carrierTouched, setCarrierTouched] = useState(false);
@@ -581,6 +583,31 @@ export default function AdminOrderDetailPage() {
       toast.error(userErrorMessage(e, "Couldn’t book the shipment"));
     } finally {
       setFulfillLoading(false);
+    }
+  };
+
+  const handleRequestPickup = async () => {
+    if (!order || pickupLoading) return;
+    setPickupLoading(true);
+    try {
+      const response = await adminShippingService.requestPickup(order._id);
+      if (response?.order) setOrder(response.order);
+      toast.success(
+        response?.pickup?.existing
+          ? "A Delhivery pickup is already booked for that day — this parcel is included"
+          : "Delhivery pickup requested"
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(await userErrorFromAxios(e, "Couldn’t request a Delhivery pickup"));
+      try {
+        const refreshed = await adminOrderService.getById(order._id);
+        if (refreshed) setOrder(refreshed);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setPickupLoading(false);
     }
   };
 
@@ -1145,6 +1172,37 @@ export default function AdminOrderDetailPage() {
                           {order.awbCode || order.awb}
                         </p>
                       </div>
+                      {courierUpdateText(order) ? (
+                        <div>
+                          <p className="mb-1 admin-card-label">Courier update</p>
+                          <p className="admin-card-muted">{courierUpdateText(order)}</p>
+                        </div>
+                      ) : null}
+                      {pickupSummary(order) ? (
+                        <div>
+                          <p className="mb-1 admin-card-label">Pickup</p>
+                          <p
+                            className={
+                              pickupSummary(order).problem
+                                ? "text-destructive text-[13px]"
+                                : "admin-card-muted"
+                            }
+                          >
+                            {pickupSummary(order).text}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            disabled={pickupLoading}
+                            onClick={handleRequestPickup}
+                          >
+                            {pickupLoading ? <Spinner className="size-3.5" /> : null}
+                            Request pickup
+                          </Button>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </div>

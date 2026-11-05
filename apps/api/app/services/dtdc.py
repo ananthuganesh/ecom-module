@@ -534,6 +534,12 @@ async def track_consignment(order: Order) -> dict:
             raise HTTPException(status_code=502, detail=data.get("message") or resp.text or "Track failed")
 
     raw_status = _extract_track_status(data)
+    scan = _last_scan(data)
+    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
+    node = details.get("dtdc") if isinstance(details.get("dtdc"), dict) else {}
+    if scan and scan != node.get("lastScan"):
+        order.transactionDetails = {**details, "dtdc": {**node, "lastScan": scan}}
+        await order.save()
     mapped = map_dtdc_track_status(raw_status)
     prev = order.shippingStatus
     if mapped and can_apply_shipping_status(prev, mapped):
@@ -561,6 +567,34 @@ async def track_consignment(order: Order) -> dict:
                 print(f"[Notify] orderDelivered: {exc}")
 
     return data
+
+
+def _last_scan(data: Any) -> dict | None:
+    """DTDC's wording for the newest event, e.g. "Undelivered — RECEIVER NOT AVAILABLE"."""
+    events = data.get("events") if isinstance(data, dict) else None
+    if not isinstance(events, list) or not events:
+        return None
+    dated = [e for e in events if isinstance(e, dict)]
+    if not dated:
+        return None
+    dated.sort(key=lambda e: e.get("event_time") or 0, reverse=True)
+    last = dated[0]
+    status = last.get("customer_update") or last.get("type")
+    if not status:
+        return None
+    at = ""
+    if isinstance(last.get("event_time"), (int, float)):
+        at = datetime.utcfromtimestamp(last["event_time"] / 1000).isoformat() + "Z"
+    remark = last.get("failure_reason") or last.get("notes") or ""
+    if not remark and str(last.get("type") or "").lower() != "delivered":
+        # A failed attempt is usually followed by "Reached At Hub"; keep its reason visible.
+        remark = next((e["failure_reason"] for e in dated if e.get("failure_reason")), "")
+    return {
+        "status": str(status),
+        "remark": str(remark),
+        "location": str(last.get("hub_name") or ""),
+        "at": at,
+    }
 
 
 def _extract_track_status(data: Any) -> str | None:

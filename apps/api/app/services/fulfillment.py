@@ -56,6 +56,14 @@ DTDC_TRACK_STATUS_MAP = {
     "pickup scheduled": "Ready To Ship",
     "pickup_awaited": "Ready To Ship",
     "pickup awaited": "Ready To Ship",
+    "out_for_pickup": "Ready To Ship",
+    # Shipsy's live codes once the rider has collected the parcel.
+    "pickup_completed": "In Transit",
+    "pickupcompleted": "In Transit",
+    "booked_at_hub": "In Transit",
+    "inscan_at_hub": "In Transit",
+    "intransittohub": "In Transit",
+    "in_transit_to_hub": "In Transit",
     "pickup_done": "In Transit",
     "pickup done": "In Transit",
     "picked_up": "In Transit",
@@ -155,7 +163,9 @@ def map_dtdc_track_status(raw: str | None) -> str | None:
     if mapped:
         return mapped
     spaced = text.lower().replace("_", " ")
-    return DTDC_TRACK_STATUS_MAP.get(spaced)
+    return DTDC_TRACK_STATUS_MAP.get(spaced) or DTDC_TRACK_STATUS_MAP.get(
+        "_".join(key.split())
+    )
 
 
 def can_apply_shipping_status(current: str | None, incoming: str | None) -> bool:
