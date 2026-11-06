@@ -1,33 +1,8 @@
 "use client";
 
 import { CloseIcon } from "@/components/icons/storeIcons";
+import { getColorHex, isLightColor } from "@/utils/colorSwatch";
 
-const getColorHex = (colorName) => {
-  const map = {
-    black: "#000000",
-    blue: "#0000FF",
-    white: "#FFFFFF",
-    red: "#DF1721",
-    pink: "#FFC0CB",
-    "off-white": "#F5F2EB",
-    "off white": "#F5F2EB",
-    "yellow gold": "#E6C98C",
-    "rose gold": "#F3C5B5",
-    silver: "#C0C0C0",
-    gold: "#FFD700",
-    green: "#008000",
-    purple: "#800080",
-    orange: "#FFA500",
-    brown: "#A52A2A",
-    gray: "#808080",
-    grey: "#808080",
-    navy: "#000080",
-    teal: "#008080",
-    maroon: "#800000",
-    beige: "#F5F5DC",
-  };
-  return map[String(colorName || "").toLowerCase()] || "#EEEEEE";
-};
 
 function FilterSection({ title, children }) {
   return (
@@ -172,13 +147,19 @@ export default function FilterSidebar({
                     key={color}
                     type="button"
                     onClick={() => toggleMultiFilter("color", color)}
+                    aria-pressed={isSelected}
                     className="group flex w-full items-center gap-2.5 text-left"
                   >
+                    {/* Selected = black ring drawn inside the 18px circle (a ring-offset
+                        outside it was clipped by the scrolling panel's left edge). */}
                     <span
-                      className={`h-4 w-4 rounded-full border ${
+                      aria-hidden
+                      className={`size-[18px] shrink-0 rounded-full border transition-shadow ${
                         isSelected
-                          ? "border-black ring-1 ring-black ring-offset-1"
-                          : "border-gray-200"
+                          ? "border-black shadow-[inset_0_0_0_2px_#fff]"
+                          : isLightColor(getColorHex(color))
+                            ? "border-gray-300"
+                            : "border-black/10"
                       }`}
                       style={{ backgroundColor: getColorHex(color) }}
                     />

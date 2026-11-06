@@ -194,9 +194,14 @@ export function productJsonLdScript(product) {
 }
 
 /** Home › Collection › Product — only linking a collection the API says is live. */
-export function productBreadcrumbJsonLd(product) {
+/**
+ * Home › Collection › Product, as [{ name, path }]. The visible breadcrumb on the
+ * product page and the BreadcrumbList structured data both use this, so they agree.
+ * Empty when the product has no name.
+ */
+export function productBreadcrumbs(product) {
   const name = plainText(product?.productName || product?.name || product?.product);
-  if (!name) return null;
+  if (!name) return [];
   const links = Array.isArray(product?.collectionLinks)
     ? product.collectionLinks.filter((c) => c?.slug && c?.name)
     : [];
@@ -210,5 +215,10 @@ export function productBreadcrumbJsonLd(product) {
     crumbs.push({ name: "All products", path: "/all-products" });
   }
   crumbs.push({ name, path: productCanonicalPath(product) });
-  return buildBreadcrumbJsonLd(crumbs);
+  return crumbs;
+}
+
+export function productBreadcrumbJsonLd(product) {
+  const crumbs = productBreadcrumbs(product);
+  return crumbs.length ? buildBreadcrumbJsonLd(crumbs) : null;
 }

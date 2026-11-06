@@ -144,3 +144,13 @@ select:-webkit-autofill {
   caret-color: currentColor;
   transition: background-color 99999s ease-in-out 0s;
 }
+
+/* Product page mobile sticky "Add to cart / Buy now" bar: reserve exactly its height
+   at the very bottom of the page (under the footer) so it never covers content and
+   leaves no gap between the product sections and the footer. Mirrors the bar's
+   border + pt-2.5 + h-11 buttons + pb-[max(0.65rem,safe-area)]. */
+@media (max-width: 63.999rem) {
+  body:has([data-sticky-cta]) {
+    padding-bottom: calc(1px + 0.625rem + 2.75rem + max(0.65rem, env(safe-area-inset-bottom)));
+  }
+}

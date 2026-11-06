@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildProductJsonLd,
   productBreadcrumbJsonLd,
+  productBreadcrumbs,
   productJsonLdScript,
 } from "./productJsonLd.js";
 import { buildBreadcrumbJsonLd, buildOrganizationJsonLd } from "./structuredData.js";
@@ -143,6 +144,18 @@ describe("breadcrumbs", () => {
       productBreadcrumbJsonLd(SIZED).itemListElement[1].item,
       "https://urbanaana.com/all-products"
     );
+  });
+
+  it("gives the page the same crumbs as the structured data", () => {
+    assert.deepEqual(
+      productBreadcrumbs({ ...SIZED, collectionLinks: [{ name: "T-Shirt", slug: "t-shirt" }] }),
+      [
+        { name: "Home", path: "/" },
+        { name: "T-Shirt", path: "/collections/t-shirt" },
+        { name: "Luffy - The Onepiece", path: "/product/luffy-the-onepiece" },
+      ]
+    );
+    assert.deepEqual(productBreadcrumbs({}), []);
   });
 
   it("needs at least two crumbs", () => {

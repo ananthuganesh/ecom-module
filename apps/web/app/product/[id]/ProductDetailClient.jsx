@@ -37,6 +37,7 @@ import { resolveImageUrl } from "@/utils/imageResolver";
 import { getProductSizeOptions } from "@/utils/productSizes";
 import { sanitizeProductHtml } from "@/utils/sanitizeProductHtml";
 import { resolveCardBadge } from "@/utils/urbanProductAdapter";
+import { productBreadcrumbs } from "@/lib/productJsonLd";
 
 const stockFor = (item, fallback = 0) => Number(item?.stock ?? item?.quantity ?? fallback ?? 0);
 
@@ -559,9 +560,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
     },
   ].filter((spec) => spec.value);
 
-  const categoryLabel = toSentenceCase(
-    product.category?.name || product.category || "Archive"
-  );
+  const breadcrumbs = productBreadcrumbs(product);
+
 
   const ctaDisabled = !inStock || (sizes.length > 0 && !selectedSize);
   const addLabel =
@@ -745,20 +745,35 @@ export default function ProductDetailPage({ initialProduct = null }) {
   );
 
   return (
-    <main
-      className={`min-h-screen bg-[#ffffff] text-black lg:pb-0 ${
-        showStickyCta
-          ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))]"
-          : "pb-0"
-      }`}
-    >
+    <main className="min-h-screen bg-[#ffffff] text-black">
+      {/* No bottom padding here: room for the mobile sticky bar is added under the
+          footer (body:has([data-sticky-cta]) in globals.css), so there's no gap above it. */}
       <section className="w-full px-4 py-5 md:px-4 md:py-8 lg:px-8 lg:py-10">
-        <nav className="mb-4 text-[11px] font-medium text-gray-400 md:mb-5">
-          <Link href="/all-products" className="transition-colors hover:text-black">
-            All Products
-          </Link>
-          <span className="mx-1.5 text-gray-300">/</span>
-          <span>{categoryLabel}</span>
+        {/* Same crumbs as the BreadcrumbList structured data (lib/productJsonLd.js) */}
+        <nav aria-label="Breadcrumb" className="mb-4 text-[11px] font-medium text-gray-400 md:mb-5">
+          <ol className="flex min-w-0 items-center">
+            {breadcrumbs.map((crumb, i) => {
+              const last = i === breadcrumbs.length - 1;
+              return (
+                <li key={crumb.path} className={`flex items-center ${last ? "min-w-0" : "shrink-0"}`}>
+                  {i > 0 ? (
+                    <span aria-hidden className="mx-1.5 text-gray-300">
+                      /
+                    </span>
+                  ) : null}
+                  {last ? (
+                    <span aria-current="page" className="truncate text-gray-600">
+                      {crumb.name}
+                    </span>
+                  ) : (
+                    <Link href={crumb.path} className="transition-colors hover:text-black">
+                      {crumb.name}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
         </nav>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,0.7fr)] lg:gap-8 xl:gap-10">
@@ -983,7 +998,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 <WishlistButton
                   product={product}
                   iconSize={20}
-                  className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-800 transition-colors hover:border-black hover:bg-gray-50 lg:inline-flex"
+                  className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center text-gray-800 transition-colors hover:text-black lg:inline-flex"
                 />
               </div>
 
@@ -994,12 +1009,13 @@ export default function ProductDetailPage({ initialProduct = null }) {
             ) : null}
 
             <div className="mt-4 space-y-1">
-              <p className="text-2xl font-bold tracking-tight text-black">
-                ₹{price.toLocaleString("en-IN")}
-              </p>
-              {hasCompareAt ? (
-                <>
-                  <div className="flex flex-wrap items-center gap-2">
+              {/* Selling price, struck-through MRP and % OFF on one line */}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <p className="text-2xl font-bold tracking-tight text-black">
+                  ₹{price.toLocaleString("en-IN")}
+                </p>
+                {hasCompareAt ? (
+                  <>
                     <p className="text-sm text-gray-400">
                       MRP{" "}
                       <span className="line-through">
@@ -1011,11 +1027,13 @@ export default function ProductDetailPage({ initialProduct = null }) {
                         {savePercent}% OFF
                       </span>
                     ) : null}
-                  </div>
-                  <p className="text-[13px] font-semibold text-emerald-600">
-                    You save ₹{saveAmount.toLocaleString("en-IN")}
-                  </p>
-                </>
+                  </>
+                ) : null}
+              </div>
+              {hasCompareAt ? (
+                <p className="text-[13px] font-semibold text-emerald-600">
+                  You save ₹{saveAmount.toLocaleString("en-IN")}
+                </p>
               ) : null}
               <p className="text-[11px] text-gray-400">Inclusive of all taxes</p>
             </div>
@@ -1293,7 +1311,10 @@ export default function ProductDetailPage({ initialProduct = null }) {
       ) : null}
 
       {!showSizeGuide && showStickyCta ? (
-        <div className="fixed inset-x-0 bottom-0 z-[120] border-t border-gray-200 bg-white/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden">
+        <div
+          data-sticky-cta
+          className="fixed inset-x-0 bottom-0 z-[120] border-t border-gray-200 bg-white/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden"
+        >
           <div className="flex gap-2">
               {isInCart && ctaPending !== "add" ? (
                 <button
