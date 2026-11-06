@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime
 from typing import Any
 
@@ -21,11 +22,63 @@ TERMINAL_SHIPPING = frozenset(
     }
 )
 
+_TERMINAL_SHIPPING_RE = re.compile(r"^(delivered|cancelled|canceled|returned)$", re.IGNORECASE)
+
 # Soft refresh / cron defaults
 SYNC_BATCH_LIMIT = 40
 SYNC_CONCURRENCY = 3
 SYNC_INTERVAL_SECONDS = 300.0  # 5 minutes
 SYNC_MAX_IDS = 50
+
+# A carrier that says the AWB doesn't exist will never say otherwise (typically
+# orders imported from the old store, booked outside this system). After this
+# many such answers in a row the order is taken out of auto-tracking.
+PERMANENT_TRACK_ERROR_LIMIT = 3
+_PERMANENT_TRACK_ERROR_MARKERS = (
+    "reference number is not valid",  # DTDC / Shipsy WRONG_INPUT
+    "wrong_input",
+    "doesn't exist",  # Delhivery: "waybill ... doesn't exist"
+    "does not exist",
+    "no such waybill",
+    "invalid waybill",
+)
+
+
+def is_permanent_track_error(message: str | None) -> bool:
+    """True when the carrier says it doesn't know this AWB at all (not a timeout / outage)."""
+    text = str(message or "").strip().lower()
+    return any(marker in text for marker in _PERMANENT_TRACK_ERROR_MARKERS)
+
+
+def tracking_stopped(order: Order) -> bool:
+    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
+    return bool(details.get("trackingStopped"))
+
+
+def _record_track_error(order: Order, message: str) -> None:
+    """Note the failure on the order (admin can see it) and rotate it to the back of the batch.
+
+    Consecutive "AWB unknown" answers stop auto-tracking; any other error resets the count.
+    """
+    now = datetime.utcnow().isoformat()
+    details = dict(order.transactionDetails or {})
+    previous = details.get("trackError") if isinstance(details.get("trackError"), dict) else {}
+    permanent = is_permanent_track_error(message)
+    count = int(previous.get("permanentCount") or 0) + 1 if permanent else 0
+    details["trackError"] = {"message": message, "at": now, "permanentCount": count}
+    details["dtdcLastTrackAt"] = now
+    if permanent and count >= PERMANENT_TRACK_ERROR_LIMIT:
+        details["trackingStopped"] = {
+            "reason": f"Carrier doesn't recognise this AWB: {message}",
+            "at": now,
+        }
+    order.transactionDetails = details
+
+
+def _clear_track_error(order: Order) -> None:
+    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
+    if "trackError" in details:
+        order.transactionDetails = {k: v for k, v in details.items() if k != "trackError"}
 
 
 def shipment_reference(order: Order) -> str | None:
@@ -36,6 +89,8 @@ def shipment_reference(order: Order) -> str | None:
 
 def is_open_for_track(order: Order) -> bool:
     if not order or not shipment_reference(order):
+        return False
+    if tracking_stopped(order):
         return False
     if bool(getattr(order, "isDelivered", False)):
         return False
@@ -99,6 +154,7 @@ async def sync_orders_tracking(
             before = str(order.shippingStatus or "")
             try:
                 await couriers.track_shipment(order)
+                _clear_track_error(order)
                 after = str(order.shippingStatus or "")
                 if after != before:
                     details = dict(order.transactionDetails or {})
@@ -121,15 +177,24 @@ async def sync_orders_tracking(
                             await order.save()
                         except Exception:
                             pass
-            except HTTPException as exc:
+            except Exception as exc:  # noqa: BLE001 — one bad order never stops the batch
+                message = (
+                    str(exc.detail or "Track failed")
+                    if isinstance(exc, HTTPException)
+                    else str(exc) or exc.__class__.__name__
+                )
                 errors.append(
                     {
                         "orderId": str(order.id),
-                        "error": str(exc.detail or "Track failed"),
+                        "orderNumber": str(order.orderNumber or ""),
+                        "error": message,
                     }
                 )
-            except Exception as exc:  # noqa: BLE001
-                errors.append({"orderId": str(order.id), "error": str(exc)})
+                _record_track_error(order, message)
+                try:
+                    await order.save()
+                except Exception:
+                    pass
 
     await asyncio.gather(*[_one(o) for o in targets])
     return {
@@ -175,12 +240,9 @@ async def sync_open_shipments_batch(*, limit: int = SYNC_BATCH_LIMIT) -> dict[st
             {"transactionDetails.dtdc.reference_number": {"$exists": True, "$nin": [None, ""]}},
             {"transactionDetails.delhivery.waybill": {"$exists": True, "$nin": [None, ""]}},
         ],
-        "shippingStatus": {
-            "$not": {
-                "$regex": r"^(delivered|cancelled|canceled|returned)$",
-                "$options": "i",
-            }
-        },
+        # Compiled regex: same query on Atlas, and mongomock (tests) accepts it under $not.
+        "shippingStatus": {"$not": _TERMINAL_SHIPPING_RE},
+        "transactionDetails.trackingStopped": {"$exists": False},
     }
     orders = (
         await Order.find(query)
@@ -210,10 +272,14 @@ async def shipment_status_sync_loop(
         try:
             result = await sync_open_shipments_batch()
             updated_n = len(result.get("updated") or [])
-            if updated_n or result.get("errors"):
+            errors = result.get("errors") or []
+            if updated_n or errors:
+                detail = "; ".join(
+                    f"{e.get('orderNumber') or e.get('orderId')}: {e.get('error')}" for e in errors[:5]
+                )
                 print(
                     f"[Shipping] Status sync: scanned={result.get('scanned')} "
-                    f"updated={updated_n} errors={len(result.get('errors') or [])}"
+                    f"updated={updated_n} errors={len(errors)}" + (f" ({detail})" if detail else "")
                 )
         except Exception as exc:  # noqa: BLE001
             print(f"[Shipping] Status sync error: {exc}")

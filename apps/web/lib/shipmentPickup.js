@@ -58,3 +58,23 @@ export function pickupSummary(order) {
     canRequest: true,
   };
 }
+
+/**
+ * Tracking problems recorded by the status sync, or null when tracking is fine.
+ * `stopped`: the courier doesn't recognise the AWB (e.g. orders imported from the
+ * old store), so auto-tracking was switched off and the status must be set by hand.
+ * @returns {{ text: string, stopped: boolean } | null}
+ */
+export function trackingNotice(order) {
+  const td = order?.transactionDetails || {};
+  if (td.trackingStopped) {
+    const reason = String(td.trackingStopped.reason || "").trim();
+    return {
+      text: `Auto-tracking stopped${reason ? ` — ${reason}` : ""}. Update the shipping status by hand.`,
+      stopped: true,
+    };
+  }
+  const message = String(td.trackError?.message || "").trim();
+  if (message) return { text: `Last tracking check failed: ${message}`, stopped: false };
+  return null;
+}

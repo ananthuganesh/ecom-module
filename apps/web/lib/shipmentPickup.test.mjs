@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { courierUpdateText, pickupSummary } from "./shipmentPickup.js";
+import { courierUpdateText, pickupSummary, trackingNotice } from "./shipmentPickup.js";
 
 const delhivery = (extra = {}, status = "Ready To Ship") => ({
   carrier: "delhivery",
@@ -55,4 +55,24 @@ test("courier update joins status, remark and location", () => {
   };
   assert.equal(courierUpdateText(dtdc), "Reached At Hub — RECEIVER NOT AVAILABLE (AVANAVANCHERY)");
   assert.equal(courierUpdateText({}), "");
+});
+
+test("tracking notice: stopped, failing, or nothing", () => {
+  assert.deepEqual(
+    trackingNotice({
+      transactionDetails: {
+        trackingStopped: { reason: "Carrier doesn't recognise this AWB: Reference number is not valid" },
+      },
+    }),
+    {
+      text: "Auto-tracking stopped — Carrier doesn't recognise this AWB: Reference number is not valid. Update the shipping status by hand.",
+      stopped: true,
+    }
+  );
+  assert.deepEqual(trackingNotice({ transactionDetails: { trackError: { message: "Read timed out" } } }), {
+    text: "Last tracking check failed: Read timed out",
+    stopped: false,
+  });
+  assert.equal(trackingNotice({ transactionDetails: {} }), null);
+  assert.equal(trackingNotice(null), null);
 });

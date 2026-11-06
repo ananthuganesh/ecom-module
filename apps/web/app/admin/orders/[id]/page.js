@@ -43,7 +43,7 @@ import {
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
 import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
 import { activeReturn } from "@/lib/returnStatus";
-import { courierUpdateText, pickupSummary } from "@/lib/shipmentPickup";
+import { courierUpdateText, pickupSummary, trackingNotice } from "@/lib/shipmentPickup";
 import {
   Card,
   CardContent,
@@ -1176,6 +1176,20 @@ export default function AdminOrderDetailPage() {
                         <div>
                           <p className="mb-1 admin-card-label">Courier update</p>
                           <p className="admin-card-muted">{courierUpdateText(order)}</p>
+                        </div>
+                      ) : null}
+                      {trackingNotice(order) ? (
+                        <div>
+                          <p className="mb-1 admin-card-label">Tracking</p>
+                          <p
+                            className={
+                              trackingNotice(order).stopped
+                                ? "text-destructive text-[13px]"
+                                : "admin-card-muted"
+                            }
+                          >
+                            {trackingNotice(order).text}
+                          </p>
                         </div>
                       ) : null}
                       {pickupSummary(order) ? (
