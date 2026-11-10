@@ -13,6 +13,7 @@ import { useState, useEffect, use, Suspense } from "react";
 import { orderService, shippingService } from "@/api";
 
 import Link from "next/link";
+import { orderAddressEditState } from "@/lib/orderAddressEdit";
 import SafeImage from "@/components/SafeImage";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -404,6 +405,14 @@ function OrderContent({ params: paramsPromise }) {
                 </p>
                 <p>{order.shippingAddress?.country}</p>
               </div>
+              {orderAddressEditState(order, "customer").editable ? (
+                <Link
+                  href={`/account/orders/${order._id}`}
+                  className="mt-2 inline-block text-[13px] font-medium text-gray-900 underline underline-offset-4 hover:text-[#DF1721]"
+                >
+                  Change address
+                </Link>
+              ) : null}
             </div>
 
             {order.isGift ? (

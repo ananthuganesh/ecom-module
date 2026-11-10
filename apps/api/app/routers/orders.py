@@ -14,6 +14,7 @@ from app.serializers import doc_to_dict, remap_order
 from app.services import erp_ops
 from app.services.attribution import sanitize_attribution
 from app.services.fulfillment import process_full_order_flow
+from app.services.order_address import OrderAddressBody
 from app.services.rate_limit import rate_limit_dependency
 from app.services.shipping_settings import get_shipping_settings, rate_for_zip
 from app.services.stock import apply_order_commitments, reserve_order_stock
@@ -1025,6 +1026,32 @@ async def get_order(order_id: str, user: CurrentUser):
     if not _is_owner(order, user):
         raise HTTPException(status_code=403, detail="Not authorized to view this order")
     return remap_order(order)
+
+
+@router.put("/{order_id}/shipping-address")
+async def change_shipping_address(
+    order_id: str,
+    body: OrderAddressBody,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("orders-address", limit=10)),
+):
+    """Customer changes where a paid order goes, until it is handed to the courier.
+
+    Same state only (the GST invoice is already issued). Body is either typed
+    address fields or ``{"addressId": "<saved address id>"}``.
+    """
+    from app.services.order_address import change_order_address
+
+    order = await Order.get(ObjectId(order_id)) if ObjectId.is_valid(order_id) else None
+    # Strictly the buyer's own order — not the legacy isAdmin flag.
+    if not order or str(order.customerId) != str(user.id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    result = await change_order_address(
+        order, body, actor="customer", actor_id=str(user.id), customer=user
+    )
+    payload = remap_order(order)
+    payload["addressResult"] = result
+    return payload
 
 
 @router.put("/{order_id}/pay")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any
 
 from bson import ObjectId
@@ -385,6 +385,20 @@ async def reports_overview(_: ReportsReader):
         "stockUnits": stock_units,
         "gst": {"cgst": round(cgst, 2), "sgst": round(sgst, 2), "igst": round(igst, 2)},
     }
+
+
+@router.get("/reports/product-sales")
+async def reports_product_sales(
+    _: ReportsReader,
+    start: date | None = Query(None, alias="from", description="First IST day, YYYY-MM-DD"),
+    end: date | None = Query(None, alias="to", description="Last IST day (inclusive), YYYY-MM-DD"),
+):
+    """Pieces sold per product (paid, non-cancelled orders) for the date range."""
+    from app.services.product_sales import sales_report
+
+    if start and end and start > end:
+        raise HTTPException(status_code=400, detail="'from' date must be on or before 'to' date")
+    return await sales_report(start, end)
 
 
 # ─── RBAC ────────────────────────────────────────────────────

@@ -237,6 +237,7 @@ const menuItems = [
     subItems: [
       { name: "Collections", href: "/admin/products/collections" },
       { name: "Inventory", href: "/admin/products/inventory" },
+      { name: "Sales by product", href: "/admin/products/sales" },
       { name: "Reviews", href: "/admin/reviews" },
     ],
   },

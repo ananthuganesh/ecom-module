@@ -1,10 +1,9 @@
 from datetime import datetime
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from app.documents import Address, AdminAccount, User
+from app.documents import AdminAccount, User
 from app.deps import AdminUser, CustomersReader, CurrentUser, OptionalUser, user_has_admin_access
 from app.config import get_settings
 from app.security import (
@@ -15,6 +14,12 @@ from app.security import (
 )
 from app.serializers import user_public
 from app.services.auth_cookie import clear_auth_cookie, set_auth_cookie
+from app.services import customer_addresses as addr_svc
+from app.services.customer_addresses import (
+    AddressBody,
+    ensure_address_ids as _ensure_address_ids,
+    normalize_indian_mobile as _normalize_indian_mobile,
+)
 from app.services.customer_url_id import ensure_customer_url_id, next_customer_url_id
 from app.services.email_quality import QualityEmail
 from app.services.otp_auth import admin_otp_key, consume_login_otp, issue_login_otp
@@ -58,92 +63,6 @@ class CheckoutEmailBody(BaseModel):
     name: str | None = None
     emailSubscribed: bool | None = None
     whatsappSubscribed: bool | None = None
-
-
-class AddressBody(BaseModel):
-    label: str | None = None
-    name: str | None = None
-    phone: str | None = None
-    house: str | None = None
-    address: str | None = None  # checkout alias for house
-    city: str | None = None
-    state: str | None = None
-    pincode: str | None = None
-    postalCode: str | None = None  # checkout alias
-    country: str | None = None
-    isDefault: bool | None = None
-
-
-def _normalize_indian_mobile(value: str | None) -> str:
-    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
-    if digits.startswith("91") and len(digits) >= 12:
-        digits = digits[-10:]
-    elif digits.startswith("0") and len(digits) == 11:
-        digits = digits[1:]
-    return digits[:10]
-
-
-def _ensure_address_ids(user: User) -> bool:
-    changed = False
-    next_addrs: list[Address] = []
-    for a in list(user.addresses or []):
-        data = a.model_dump() if hasattr(a, "model_dump") else dict(a or {})
-        if not str(data.get("id") or "").strip():
-            data["id"] = uuid4().hex
-            changed = True
-        next_addrs.append(Address(**data))
-    if changed:
-        user.addresses = next_addrs
-    return changed
-
-
-def _find_address_index(user: User, address_id: str) -> int:
-    aid = str(address_id or "").strip()
-    for i, a in enumerate(user.addresses or []):
-        if str(getattr(a, "id", "") or "") == aid:
-            return i
-    # legacy-{i} ids from serializer when DB row has no id yet
-    if aid.startswith("legacy-"):
-        try:
-            idx = int(aid.split("-", 1)[1])
-        except ValueError:
-            idx = -1
-        if 0 <= idx < len(user.addresses or []):
-            return idx
-    raise HTTPException(status_code=404, detail="Address not found")
-
-
-def _address_from_body(body: AddressBody, *, fallback_name: str = "", fallback_phone: str = "") -> Address:
-    house = str(body.house or body.address or "").strip()
-    pincode = str(body.pincode or body.postalCode or "").strip()
-    city = str(body.city or "").strip()
-    state = str(body.state or "").strip()
-    if len(house) < 5:
-        raise HTTPException(status_code=400, detail="Enter a complete street address.")
-    if not (len(pincode) == 6 and pincode.isdigit()):
-        raise HTTPException(status_code=400, detail="Enter a valid 6-digit PIN code.")
-    if not city or not state:
-        raise HTTPException(status_code=400, detail="City and state are required.")
-    phone = _normalize_indian_mobile(body.phone) or _normalize_indian_mobile(fallback_phone)
-    name = str(body.name or fallback_name or "").strip()
-    return Address(
-        id=uuid4().hex,
-        label=str(body.label or "").strip()[:40],
-        name=name,
-        phone=phone,
-        house=house,
-        city=city,
-        state=state,
-        pincode=pincode,
-        country=str(body.country or "India").strip() or "India",
-        isDefault=bool(body.isDefault),
-    )
-
-
-def _set_default_address(user: User, index: int) -> None:
-    for i, a in enumerate(user.addresses or []):
-        a.isDefault = i == index
-
 
 
 class SetPasswordBody(BaseModel):
@@ -426,75 +345,31 @@ async def list_addresses(user: CurrentUser):
 
 @router.post("/addresses")
 async def add_address(body: AddressBody, user: CurrentUser, response: Response):
-    _ensure_address_ids(user)
-    addr = _address_from_body(
-        body,
-        fallback_name=str(user.name or ""),
-        fallback_phone=str(user.phone or ""),
-    )
-    addrs = list(user.addresses or [])
-    make_default = bool(body.isDefault) or not addrs
-    if make_default:
-        for a in addrs:
-            a.isDefault = False
-        addr.isDefault = True
-    else:
-        addr.isDefault = False
-    addrs.append(addr)
-    user.addresses = addrs
-    user.updatedAt = datetime.utcnow()
-    await user.save()
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token, scope="customer")
-    return _auth_payload(user, token)
+    addr_svc.add_address(user, body)
+    return await _save_addresses(user, response)
 
 
 @router.put("/addresses/{address_id}")
 async def update_address(
     address_id: str, body: AddressBody, user: CurrentUser, response: Response
 ):
-    _ensure_address_ids(user)
-    idx = _find_address_index(user, address_id)
-    current = user.addresses[idx]
-    patch = _address_from_body(
-        body,
-        fallback_name=str(current.name or user.name or ""),
-        fallback_phone=str(current.phone or user.phone or ""),
-    )
-    patch.id = current.id or patch.id
-    if body.isDefault is None:
-        patch.isDefault = bool(current.isDefault)
-    user.addresses[idx] = patch
-    if patch.isDefault:
-        _set_default_address(user, idx)
-    user.updatedAt = datetime.utcnow()
-    await user.save()
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token, scope="customer")
-    return _auth_payload(user, token)
+    addr_svc.update_address(user, address_id, body)
+    return await _save_addresses(user, response)
 
 
 @router.post("/addresses/{address_id}/default")
 async def set_default_address(address_id: str, user: CurrentUser, response: Response):
-    _ensure_address_ids(user)
-    idx = _find_address_index(user, address_id)
-    _set_default_address(user, idx)
-    user.updatedAt = datetime.utcnow()
-    await user.save()
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token, scope="customer")
-    return _auth_payload(user, token)
+    addr_svc.make_default(user, address_id)
+    return await _save_addresses(user, response)
 
 
 @router.delete("/addresses/{address_id}")
 async def delete_address(address_id: str, user: CurrentUser, response: Response):
-    _ensure_address_ids(user)
-    idx = _find_address_index(user, address_id)
-    was_default = bool(user.addresses[idx].isDefault)
-    user.addresses = [a for i, a in enumerate(user.addresses) if i != idx]
-    if was_default and user.addresses:
-        user.addresses[0].isDefault = True
-    user.updatedAt = datetime.utcnow()
+    addr_svc.delete_address(user, address_id)
+    return await _save_addresses(user, response)
+
+
+async def _save_addresses(user: User, response: Response) -> dict:
     await user.save()
     token = create_access_token(user.id)
     set_auth_cookie(response, token, scope="customer")

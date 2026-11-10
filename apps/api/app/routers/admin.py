@@ -38,6 +38,9 @@ from app.documents import (
 )
 from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
 from app.services import collections as collections_svc
+from app.services import customer_addresses as addr_svc
+from app.services.customer_addresses import AddressBody
+from app.services.order_address import OrderAddressBody
 from app.services import sale_pricing
 from app.services import erp_ops
 from app.services.rate_limit import rate_limit_dependency
@@ -566,6 +569,51 @@ async def admin_user_orders(user_id: str, _: OrdersReader):
         raise HTTPException(status_code=404, detail="User not found")
     orders = await Order.find(Order.customerId == user.id).to_list()
     return await enrich_orders(orders)
+
+
+# ─── Customer address book (same rules as the customer's own account page) ───
+
+
+async def _customer_for_address_edit(user_id: str) -> User:
+    user = await _resolve_customer(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+async def _saved_customer_payload(user: User) -> dict:
+    await user.save()
+    return await admin_user(str(user.id), None)
+
+
+@router.post("/users/{user_id}/addresses", status_code=201)
+async def admin_add_customer_address(user_id: str, body: AddressBody, _: CustomersWriter):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.add_address(user, body)
+    return await _saved_customer_payload(user)
+
+
+@router.put("/users/{user_id}/addresses/{address_id}")
+async def admin_update_customer_address(
+    user_id: str, address_id: str, body: AddressBody, _: CustomersWriter
+):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.update_address(user, address_id, body)
+    return await _saved_customer_payload(user)
+
+
+@router.post("/users/{user_id}/addresses/{address_id}/default")
+async def admin_default_customer_address(user_id: str, address_id: str, _: CustomersWriter):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.make_default(user, address_id)
+    return await _saved_customer_payload(user)
+
+
+@router.delete("/users/{user_id}/addresses/{address_id}")
+async def admin_delete_customer_address(user_id: str, address_id: str, _: CustomersWriter):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.delete_address(user, address_id)
+    return await _saved_customer_payload(user)
 
 
 @router.delete("/users/{user_id}")
@@ -1706,6 +1754,8 @@ async def bulk_orders(body: dict, _: OrdersWriter):
     ids = body.get("ids") or body.get("orderIds") or []
     status_val = body.get("status")
     _refuse_return_status(status_val)
+    if str(status_val or "").strip().lower() == "delivered":
+        return await _bulk_mark_delivered(ids)
     count = 0
     for oid in ids:
         order = await Order.get(ObjectId(oid))
@@ -1751,6 +1801,11 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
         payload = (await enrich_orders([order]))[0]
         payload["cancelResult"] = result
         return payload
+    if str(body.get("status") or "").strip().lower() == "delivered":
+        from app.services.order_deliver import mark_order_delivered
+
+        await mark_order_delivered(order, actor="admin")
+        return remap_order(order)
     if "status" in body:
         order.status = body["status"]
         apply_shipping_status_from_order_status(order, body["status"])
@@ -1781,6 +1836,67 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
         except Exception as exc:
             print(f"[Notify] admin shipped: {exc}")
     return remap_order(order)
+
+
+async def _bulk_mark_delivered(ids: list) -> dict:
+    from app.services.order_deliver import mark_order_delivered
+
+    count = 0
+    skipped: list[dict] = []
+    for oid in ids:
+        order = await Order.get(ObjectId(oid)) if ObjectId.is_valid(str(oid)) else None
+        if not order:
+            skipped.append({"id": str(oid), "reason": "Order not found"})
+            continue
+        try:
+            result = await mark_order_delivered(order, actor="admin_bulk")
+        except HTTPException as exc:
+            skipped.append({"id": str(oid), "orderNumber": order.orderNumber, "reason": exc.detail})
+            continue
+        if result.get("changed"):
+            count += 1
+    return {"updated": count, "skipped": skipped}
+
+
+@router.put("/orders/{order_id}/shipping-address")
+async def order_shipping_address(order_id: str, body: OrderAddressBody, admin: OrdersWriter):
+    """Change the delivery address before the courier is booked (any state; invoice follows)."""
+    from app.services.order_address import change_order_address
+    from app.services.order_resolve import resolve_order
+
+    order = await resolve_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    customer = None
+    if body.addressId and order.customerId and ObjectId.is_valid(str(order.customerId)):
+        customer = await User.get(ObjectId(str(order.customerId)))
+    actor_id = str(getattr(admin, "email", "") or getattr(admin, "id", "") or "admin")
+    result = await change_order_address(
+        order, body, actor="admin", actor_id=actor_id, customer=customer
+    )
+    payload = (await enrich_orders([order]))[0]
+    payload["addressResult"] = result
+    return payload
+
+
+@router.post("/orders/{order_id}/mark-delivered")
+async def order_mark_delivered(order_id: str, admin: OrdersWriter, body: dict | None = None):
+    """Manually mark delivered — e.g. the courier never reported the delivery.
+
+    Optional body: ``{"deliveredAt": "<ISO date>"}`` (defaults to now)."""
+    from app.services.order_deliver import mark_order_delivered, parse_delivered_at
+    from app.services.order_resolve import resolve_order
+
+    order = await resolve_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payload_body = body if isinstance(body, dict) else {}
+    delivered_at = parse_delivered_at(payload_body.get("deliveredAt"))
+    actor = str(getattr(admin, "email", "") or getattr(admin, "name", "") or "admin")
+    result = await mark_order_delivered(order, actor=actor, delivered_at=delivered_at)
+    payload = (await enrich_orders([order]))[0]
+    payload["deliveryResult"] = result
+    return payload
 
 
 @router.post("/orders/{order_id}/cancel")

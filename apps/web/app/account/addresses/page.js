@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { authService } from "@/api";
 import { persistAuth } from "@/lib/persistAuth";
 import { userErrorMessage } from "@/lib/userMessage";
+import { lookupPincode } from "@/lib/pincodeLookup";
 import { normalizeIndianState } from "@/components/storefront/StateSearchSelect";
 import Link from "next/link";
 
@@ -67,19 +68,14 @@ export default function AddressesPage() {
     if (!/^\d{6}$/.test(code)) return;
     setPinLoading(true);
     try {
-      const response = await fetch(`https://api.postalpincode.in/pincode/${code}`);
-      const data = await response.json();
-      const result = Array.isArray(data) ? data[0] : null;
-      if (result?.Status === "Success" && result.PostOffice?.length > 0) {
-        const office = result.PostOffice[0];
+      const hit = await lookupPincode(code);
+      if (hit) {
         setForm((prev) => ({
           ...prev,
-          city: office.District || office.Block || office.Name || "",
-          state: normalizeIndianState(office.State || ""),
+          city: hit.city,
+          state: normalizeIndianState(hit.state),
         }));
       }
-    } catch {
-      // ignore — user can retry
     } finally {
       setPinLoading(false);
     }

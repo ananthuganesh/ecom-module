@@ -37,6 +37,9 @@ export const adminErpService = {
   // Reports / RBAC
   reports: {
     overview: () => client.get(`${base}/reports/overview`).then((r) => r.data),
+    /** params: { from?: "YYYY-MM-DD", to?: "YYYY-MM-DD" } (IST days, inclusive) */
+    productSales: (params = {}) =>
+      client.get(`${base}/reports/product-sales`, { params }).then((r) => r.data),
   },
   roles: {
     list: () => client.get(`${base}/roles`).then((r) => r.data),

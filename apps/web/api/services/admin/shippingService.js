@@ -21,6 +21,12 @@ export const adminShippingService = {
     return response.data;
   },
 
+  /** Cancel the booked consignment only (order stays open; AWB is cleared so it can be rebooked). */
+  cancelShipment: async (orderId) => {
+    const response = await api.post(`/shipping/cancel/${orderId}`);
+    return response.data;
+  },
+
   /** Ask the carrier to send a rider (Delhivery only; DTDC schedules on booking). */
   requestPickup: async (orderId) => {
     const response = await api.post(`/shipping/pickup/${orderId}`);

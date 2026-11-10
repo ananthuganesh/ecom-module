@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, MapPin } from "@/components/icons";
+import { Download } from "@/components/icons";
 import {
   ChevronLeftIcon,
   InfoIcon,
@@ -18,6 +18,7 @@ import { buildInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
 import { printHtml } from "@/utils/printHtml";
 import { userErrorMessage } from "@/lib/userMessage";
 import ReturnRequestPanel from "@/components/account/ReturnRequestPanel";
+import OrderShippingAddress from "@/components/account/OrderShippingAddress";
 
 const SHIPPED_STATUSES = new Set([
   "shipped",
@@ -408,19 +409,12 @@ export default function OrderDetailsPage({ params: paramsPromise }) {
             </aside>
           ) : null}
 
-          <aside className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="mb-3 flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-[#DF1721]" />
-              <h2 className="text-[14px] font-semibold text-gray-900">Shipping address</h2>
-            </div>
-            <div className="text-sm leading-relaxed text-gray-600">
-              {order.shippingAddress?.address}
-              <br />
-              {order.shippingAddress?.city}, {order.shippingAddress?.postalCode}
-              <br />
-              {order.shippingAddress?.country}
-            </div>
-          </aside>
+          <OrderShippingAddress
+            order={order}
+            onUpdated={(updated) =>
+              setOrder((prev) => (prev && updated ? { ...prev, ...updated } : prev))
+            }
+          />
         </div>
       </div>
     </DashboardLayout>

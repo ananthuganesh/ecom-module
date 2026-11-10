@@ -302,24 +302,15 @@ async def ensure_order_invoice(order, *, actor=None):
     customer_id = str(order.customerId) if order.customerId else None
     customer_name = None
     customer_gstin = None
-    customer_state = ""
+    user = None
     if customer_id and ObjectId.is_valid(customer_id):
         user = await User.get(ObjectId(customer_id))
         if user:
             customer_name = user.name
             customer_gstin = getattr(user, "gstin", None)
-            customer_state = resolve_state_code(
-                getattr(user, "stateCode", None),
-                getattr(user, "stateName", None),
-            )
 
     addr = order.shippingAddress or {}
-    customer_state = resolve_state_code(
-        customer_state,
-        addr.get("stateCode"),
-        addr.get("state"),
-        addr.get("stateName"),
-    )
+    customer_state = invoice_buyer_state(order, user)
     if not customer_name:
         customer_name = addr.get("name") or addr.get("fullName") or None
     if not customer_gstin:
@@ -401,6 +392,59 @@ async def ensure_order_invoice(order, *, actor=None):
     await order.save()
 
     return doc
+
+
+def invoice_buyer_state(order, user=None) -> str:
+    """Place-of-supply state code: the customer's profile state, else the delivery address."""
+    addr = order.shippingAddress or {}
+    return resolve_state_code(
+        getattr(user, "stateCode", None) if user else None,
+        getattr(user, "stateName", None) if user else None,
+        addr.get("stateCode"),
+        addr.get("state"),
+        addr.get("stateName"),
+    )
+
+
+async def refresh_invoice_place_of_supply(order) -> bool:
+    """Redo the CGST+SGST / IGST split after the delivery state changed.
+
+    Line amounts and the grand total don't depend on the state, so the same
+    invoice (and number) is kept; only the buyer state and the split move.
+    Returns True when the invoice was updated.
+    """
+    from bson import ObjectId
+
+    from app.documents import SalesInvoice, User
+
+    inv = None
+    if getattr(order, "invoiceId", None) and ObjectId.is_valid(str(order.invoiceId)):
+        inv = await SalesInvoice.get(ObjectId(order.invoiceId))
+    if inv is None:
+        inv = await SalesInvoice.find_one(SalesInvoice.orderId == str(order.id))
+    if inv is None or inv.status == "void":
+        return False
+
+    user = None
+    if order.customerId and ObjectId.is_valid(str(order.customerId)):
+        user = await User.get(ObjectId(str(order.customerId)))
+    buyer = invoice_buyer_state(order, user)
+    if buyer == (inv.customerStateCode or ""):
+        return False
+
+    seller = inv.sellerStateCode
+    if not seller:
+        company = await company_profile()
+        seller = resolve_state_code(company.get("stateCode"), company.get("stateName"))
+    totals = summarize_lines(list(inv.items or []), seller, buyer)
+    previous = inv.customerStateCode or "unknown"
+    inv.customerStateCode = buyer
+    inv.cgst, inv.sgst, inv.igst = totals["cgst"], totals["sgst"], totals["igst"]
+    stamp = datetime.utcnow().strftime("%Y-%m-%d")
+    note = f"Place of supply changed {previous} → {buyer or 'unknown'} on {stamp} (delivery address updated)."
+    inv.notes = f"{inv.notes}\n{note}" if inv.notes else note
+    await inv.save()
+    return True
 
 
 async def ensure_order_invoice_safe(order, *, actor=None, context: str = "") -> None:

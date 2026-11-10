@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { userErrorMessage } from "@/lib/userMessage";
 import { adminUserService } from "@/api";
 import { Users } from "@/components/admin/LocalIcons";
+import CustomerAddressesSheet from "@/components/admin/CustomerAddressesSheet";
 import {
   AdminHeaderButton,
   AdminStatusText,
@@ -212,6 +213,8 @@ export default function AdminCustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
+  // null = closed; "list" = all addresses; "new" / address id = straight to the form.
+  const [addressSheet, setAddressSheet] = useState(null);
   const columns = useMemo(() => customerOrderColumns(), []);
 
   useEffect(() => {
@@ -293,7 +296,9 @@ export default function AdminCustomerDetailPage() {
           name: saved.name || name,
         })
       : null;
-    const fromOrder = latest ? formatAddrLines(latest) : null;
+    const fromOrder = latest
+      ? { ...formatAddrLines(latest), fromOrder: true }
+      : null;
     const base =
       fromSaved?.street || fromSaved?.city
         ? fromSaved
@@ -317,6 +322,11 @@ export default function AdminCustomerDetailPage() {
     );
     return orderPhone ? { ...base, phone: orderPhone } : base;
   }, [customer, name, visibleOrders]);
+  const savedAddresses = Array.isArray(customer?.addresses)
+    ? customer.addresses
+    : [];
+  const defaultAddressId =
+    (savedAddresses.find((a) => a.isDefault) || savedAddresses[0])?.id || null;
   const lastOrder = useMemo(() => {
     if (!visibleOrders.length) return null;
     return visibleOrders.reduce((latest, order) => {
@@ -499,12 +509,37 @@ export default function AdminCustomerDetailPage() {
               </div>
 
               <div>
-                <CardTitle className="admin-card-heading mb-2">
-                  Shipping address
-                </CardTitle>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <CardTitle className="admin-card-heading m-0">
+                    Shipping address
+                  </CardTitle>
+                  <button
+                    type="button"
+                    className="admin-card-link text-[13px] hover:underline"
+                    onClick={() =>
+                      setAddressSheet(defaultAddressId || "new")
+                    }
+                  >
+                    {defaultAddressId ? "Edit" : "Add"}
+                  </button>
+                </div>
                 <div className="admin-card-muted leading-relaxed">
                   {renderAddressBlock(shipping, "No shipping address")}
+                  {shipping.fromOrder ? (
+                    <p className="mt-2 text-[12px] text-(--p-color-text-tertiary)">
+                      From latest order — not saved to the customer.
+                    </p>
+                  ) : null}
                 </div>
+                {savedAddresses.length > 0 ? (
+                  <button
+                    type="button"
+                    className="mt-2 admin-card-link text-[13px] hover:underline"
+                    onClick={() => setAddressSheet("list")}
+                  >
+                    Manage addresses ({savedAddresses.length})
+                  </button>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -557,6 +592,20 @@ export default function AdminCustomerDetailPage() {
           </Card>
         </aside>
       </div>
+
+      <CustomerAddressesSheet
+        open={addressSheet !== null}
+        onClose={() => setAddressSheet(null)}
+        customer={customer}
+        initialEditId={
+          addressSheet && addressSheet !== "list" ? addressSheet : null
+        }
+        onSaved={(updated) => {
+          if (updated?._id) setCustomer(updated);
+          // Opened straight into one address: close once it's saved.
+          if (addressSheet && addressSheet !== "list") setAddressSheet(null);
+        }}
+      />
     </main>
   );
 }

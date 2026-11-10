@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { adminOrderService, adminErpService, adminShippingService, adminCompanyProfileService, adminTaxClassService } from "@/api";
-import { Package, ChevronUp, ChevronDown, Copy, Check, X, Archive, RotateCcw } from "@/components/icons";
+import { Package, PackageCheck, ChevronUp, ChevronDown, Copy, Check, X, Archive, RotateCcw } from "@/components/icons";
 import { ShoppingBag } from "@/components/admin/LocalIcons";
 import SafeImage from "@/components/SafeImage";
 import {
@@ -41,6 +41,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
+import { canMarkDelivered, markDeliveredConfirmText } from "@/lib/orderDelivery";
+import { lastAddressChange, orderAddressEditState } from "@/lib/orderAddressEdit";
+import OrderAddressSheet from "@/components/admin/OrderAddressSheet";
 import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
 import { activeReturn } from "@/lib/returnStatus";
 import { courierUpdateText, pickupSummary, trackingNotice } from "@/lib/shipmentPickup";
@@ -328,6 +331,7 @@ export default function AdminOrderDetailPage() {
   const [taxClasses, setTaxClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [addressSheetOpen, setAddressSheetOpen] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [isPrintingInvoice, setIsPrintingInvoice] = useState(false);
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
@@ -720,6 +724,60 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const handleEditAddress = async () => {
+    if (!order) return;
+    const state = orderAddressEditState(order, "admin");
+    if (state.editable) {
+      setAddressSheetOpen(true);
+      return;
+    }
+    if (!state.needsShipmentCancel) {
+      toast.message(state.reason);
+      return;
+    }
+    const carrierName = order.courierName || order.courier || "courier";
+    if (
+      !confirm(
+        `Cancel the ${carrierName} shipment to change the address? ` +
+          "You'll need to book the shipment again afterwards."
+      )
+    ) {
+      return;
+    }
+    setUpdating(true);
+    try {
+      const response = await adminShippingService.cancelShipment(order._id);
+      if (response?.order) setOrder((prev) => (prev ? { ...prev, ...response.order } : prev));
+      toast.success("Shipment cancelled — now update the address");
+      setAddressSheetOpen(true);
+    } catch (e) {
+      console.error(e);
+      toast.error(userErrorMessage(e, "Couldn’t cancel the shipment"));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleMarkDelivered = async () => {
+    if (!order || !canMarkDelivered(order)) return;
+    if (!confirm(markDeliveredConfirmText(order))) return;
+    setUpdating(true);
+    try {
+      const updated = await adminOrderService.markDelivered(order._id);
+      setOrder((prev) => (prev ? { ...prev, ...(updated || {}) } : null));
+      toast.success(
+        updated?.deliveryResult?.changed === false
+          ? "Order was already delivered"
+          : "Order marked as delivered"
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(userErrorMessage(e, "Couldn’t mark this order as delivered"));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleRefundOrder = async () => {
     if (!order) return;
     if (String(order.status || "").toLowerCase() !== "cancelled") {
@@ -865,6 +923,8 @@ export default function AdminOrderDetailPage() {
   const currentReturn = activeReturn(order);
   const isCancelled = String(order.status || "").toLowerCase() === "cancelled";
   const hasAwb = Boolean(order.awbCode || order.awb);
+  const addressEdit = orderAddressEditState(order, "admin");
+  const addressChange = lastAddressChange(order);
   // Invoice print is the post-fulfillment document on this page (labels live under Shipments).
   const showPrintInvoice = canPrintOrderInvoice(order);
   const canRefund =
@@ -931,6 +991,16 @@ export default function AdminOrderDetailPage() {
                   Mark as Paid
                 </AdminHeaderButton>
               )}
+
+              {canMarkDelivered(order) ? (
+                <AdminHeaderButton
+                  onClick={handleMarkDelivered}
+                  disabled={updating}
+                >
+                  <PackageCheck className="size-3.5" />
+                  Mark as delivered
+                </AdminHeaderButton>
+              ) : null}
 
               {showPrintInvoice ? (
                 <AdminHeaderButton
@@ -1122,12 +1192,34 @@ export default function AdminOrderDetailPage() {
               </div>
 
               <div>
-                <CardTitle className="admin-card-heading mb-2">
-                  Shipping address
-                </CardTitle>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <CardTitle className="admin-card-heading m-0">
+                    Shipping address
+                  </CardTitle>
+                  {addressEdit.editable || addressEdit.needsShipmentCancel ? (
+                    <button
+                      type="button"
+                      disabled={updating}
+                      onClick={handleEditAddress}
+                      title={addressEdit.needsShipmentCancel ? addressEdit.reason : undefined}
+                      className="admin-card-link text-[13px] hover:underline disabled:opacity-50"
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
                 <div className="admin-card-muted leading-relaxed">
                   {renderAddressBlock(shipping, "No shipping address")}
                 </div>
+                {addressChange ? (
+                  <p className="mt-2 text-[12px] leading-4 text-(--p-color-text-caution)">
+                    Changed by {addressChange.by === "customer" ? "the customer" : "staff"}
+                    {addressChange.at ? ` on ${formatOrderDateTime(addressChange.at)}` : ""}
+                    {addressChange.from?.postalCode
+                      ? ` · was ${[addressChange.from.city, addressChange.from.postalCode].filter(Boolean).join(" ")}`
+                      : ""}
+                  </p>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -1688,6 +1780,17 @@ export default function AdminOrderDetailPage() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
       `}</style>
+
+      <OrderAddressSheet
+        open={addressSheetOpen}
+        onClose={() => setAddressSheetOpen(false)}
+        order={order}
+        onSaved={(updated) => {
+          if (updated) setOrder((prev) => (prev ? { ...prev, ...updated } : updated));
+          // GST split may have moved; reload the invoice shown on this page.
+          if (updated?.addressResult?.invoiceUpdated) loadInvoice(updated._id || order._id).catch(() => {});
+        }}
+      />
     </main>
   );
 }

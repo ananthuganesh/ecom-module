@@ -25,6 +25,16 @@ export const adminOrderService = {
   cancel: (id, reason = "admin_cancel") =>
     client.post(e.cancel(id), { reason }).then((res) => res.data),
 
+  /** Manual delivery (courier never reported it). deliveredAt: optional ISO date. */
+  markDelivered: (id, deliveredAt) =>
+    client
+      .post(e.markDelivered(id), deliveredAt ? { deliveredAt } : {})
+      .then((res) => res.data),
+
+  /** Change the delivery address before the courier is booked (any state). */
+  updateShippingAddress: (id, data) =>
+    client.put(e.shippingAddress(id), data).then((res) => res.data),
+
   refund: (id, reason = "admin_cancel_refund") =>
     client.post(e.refund(id), { reason }).then((res) => res.data),
 

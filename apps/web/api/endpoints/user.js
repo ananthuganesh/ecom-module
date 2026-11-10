@@ -38,6 +38,7 @@ const orders = {
   invoice: (id) => `orders/${id}/invoice`,
   pay: (id) => `orders/${id}/pay`,
   releaseReservation: (id) => `orders/${id}/release-reservation`,
+  shippingAddress: (id) => `orders/${id}/shipping-address`,
 };
 
 const razorpay = {

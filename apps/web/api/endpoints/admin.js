@@ -6,6 +6,9 @@ const users = {
   byId: (id) => `/admin/users/${id}`,
   orders: (id) => `/admin/users/${id}/orders`,
   neighbors: (id) => `/admin/users/${id}/neighbors`,
+  addresses: (id) => `/admin/users/${id}/addresses`,
+  address: (id, addressId) => `/admin/users/${id}/addresses/${addressId}`,
+  addressDefault: (id, addressId) => `/admin/users/${id}/addresses/${addressId}/default`,
 };
 
 const products = {
@@ -21,6 +24,8 @@ const orders = {
   byId: (id) => `/admin/orders/${id}`,
   status: (id) => `/admin/orders/${id}/status`,
   cancel: (id) => `/admin/orders/${id}/cancel`,
+  markDelivered: (id) => `/admin/orders/${id}/mark-delivered`,
+  shippingAddress: (id) => `/admin/orders/${id}/shipping-address`,
   refund: (id) => `/admin/orders/${id}/refund`,
   archive: (id) => `/admin/orders/${id}/archive`,
   bulkStatus: "/admin/orders/bulk-update",
