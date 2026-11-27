@@ -7,7 +7,10 @@ const paid = { status: "shipped", paymentStatus: "paid", shippingStatus: "In Tra
 describe("canMarkDelivered", () => {
   it("offers it for paid orders still on the way", () => {
     assert.equal(canMarkDelivered(paid), true);
-    assert.equal(canMarkDelivered({ status: "processing", transactionDetails: { paymentStatus: "paid" } }), true);
+    assert.equal(
+      canMarkDelivered({ status: "processing", awb: "D1", transactionDetails: { paymentStatus: "paid" } }),
+      true
+    );
   });
 
   it("hides it once delivered, however that was recorded", () => {
@@ -24,6 +27,19 @@ describe("canMarkDelivered", () => {
     }
     assert.equal(canMarkDelivered({ ...paid, shippingStatus: "Returned" }), false);
     assert.equal(canMarkDelivered(null), false);
+  });
+});
+
+describe("canMarkDelivered before fulfilment", () => {
+  it("hides it until the order is fulfilled", () => {
+    assert.equal(canMarkDelivered({ status: "order placed", paymentStatus: "paid" }), false);
+    assert.equal(canMarkDelivered({ status: "processing", paymentStatus: "paid" }), false);
+  });
+
+  it("offers it once there is an AWB or the order is packed by hand", () => {
+    assert.equal(canMarkDelivered({ status: "order placed", paymentStatus: "paid", awb: "D1" }), true);
+    assert.equal(canMarkDelivered({ status: "shipped", paymentStatus: "paid" }), true);
+    assert.equal(canMarkDelivered({ status: "out for delivery", paymentStatus: "paid" }), true);
   });
 });
 

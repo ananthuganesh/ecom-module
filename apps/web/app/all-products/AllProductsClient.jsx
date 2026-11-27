@@ -326,7 +326,7 @@ function AllProductsContent({
 
   return (
     <>
-      <section className="bg-[#F9F9F5] pt-10 pb-5">
+      <section className="bg-white pt-10 pb-5">
         <div className="w-full px-4 lg:px-8">
           <motion.header
             initial={{ opacity: 0, y: 16 }}

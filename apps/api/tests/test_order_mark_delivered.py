@@ -130,6 +130,8 @@ async def test_custom_delivery_date_is_kept_and_future_is_rejected():
         ({"status": "return requested"}, "return requested order"),
         ({"status": "shipped", "shippingStatus": "Returned"}, "Shipment is Returned"),
         ({"status": "order placed", "paymentStatus": "pending"}, "Only paid orders"),
+        ({"status": "order placed"}, "Fulfil this order"),
+        ({"status": "processing"}, "Fulfil this order"),
     ],
 )
 async def test_ineligible_orders_are_refused(fields, message, sent):
@@ -189,3 +191,13 @@ async def test_requires_orders_write():
         res = await client.post(f"/api/admin/orders/{order.id}/mark-delivered")
     assert res.status_code == 403
     assert (await Order.get(order.id)).isDelivered is False
+
+
+@pytest.mark.usefixtures("db")
+async def test_unfulfilled_order_with_awb_counts_as_fulfilled():
+    """Booked with the courier but the order status never moved: still deliverable."""
+    order = await _order(status="order placed", awb="D123", shippingStatus="In Transit")
+    async with await _staff_client() as client:
+        res = await client.post(f"/api/admin/orders/{order.id}/mark-delivered")
+    assert res.status_code == 200, res.text
+    assert (await Order.get(order.id)).isDelivered is True

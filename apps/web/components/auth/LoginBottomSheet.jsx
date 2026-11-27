@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon } from "@/components/icons/storeIcons";
 import BrandLogo from "@/components/BrandLogo";
 import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
+import LoginLegalNote from "@/components/auth/LoginLegalNote";
 
 /**
  * Mobile OTP sign-in bottom sheet (storefront style).
@@ -41,7 +42,7 @@ export default function LoginBottomSheet({ open, onClose, onSuccess, title = "Si
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "tween", duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-            className="fixed inset-x-0 bottom-0 z-[180] flex max-h-[min(92dvh,640px)] flex-col rounded-t-2xl border border-gray-200 bg-white shadow-2xl md:hidden"
+            className="fixed inset-x-0 bottom-0 z-[180] flex max-h-[min(92dvh,640px)] flex-col rounded-t-2xl border border-gray-200 bg-[#ffffff] shadow-2xl md:hidden"
           >
             <div className="flex shrink-0 flex-col items-center px-5 pt-3 pb-2">
               <div className="mb-3 h-1 w-10 rounded-full bg-gray-300" aria-hidden="true" />
@@ -68,6 +69,7 @@ export default function LoginBottomSheet({ open, onClose, onSuccess, title = "Si
                   onSuccess?.(data);
                 }}
               />
+              <LoginLegalNote className="mt-4" />
             </div>
           </motion.div>
         </>

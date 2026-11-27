@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 
 export default function NotFound() {
     return (
-        <main className="min-h-screen bg-[#fcfcfc] flex flex-col pt-16 md:pt-20">
+        <main className="min-h-screen bg-white flex flex-col pt-16 md:pt-20">
 
             <section className="flex-1 flex items-center justify-center py-20 px-6 relative overflow-hidden">
                 {/* Large Background Deco Text */}

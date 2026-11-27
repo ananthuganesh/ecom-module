@@ -13,7 +13,10 @@ import { trackSelectItem } from "@/lib/tracking";
 import WishlistButton from "@/components/storefront/WishlistButton";
 
 function formatInr(value) {
-  return Number(value || 0).toLocaleString("en-IN");
+  return Number(value || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function ProductCard({
@@ -137,7 +140,8 @@ export default function ProductCard({
             >
               <Link
                 href={href}
-                className="absolute inset-0 z-0 block"
+                // Sold-out products show in black and white; the badge stays in colour.
+                className={`absolute inset-0 z-0 block ${isOutOfStock ? "grayscale brightness-90" : ""}`}
                 onMouseEnter={() => hoverImage && setShowHover(true)}
                 onClick={() => trackSelectItem(product, listName, listId)}
               >

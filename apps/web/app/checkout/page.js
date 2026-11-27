@@ -35,6 +35,7 @@ import { getAttributionSnapshot } from "@/lib/attribution";
 import { persistAuth } from "@/lib/persistAuth";
 import { userErrorMessage } from "@/lib/userMessage";
 import { clearCopiedCoupon, readCopiedCoupon } from "@/lib/copiedCoupon";
+import { loadRazorpayScript, openMagicCheckout, startMagicCheckout } from "@/lib/magicCheckout";
 
 const INPUT =
   "h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-0 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-[#222222] focus:outline-none focus:ring-1 focus:ring-[#222222]";
@@ -64,33 +65,6 @@ function toIndianMobile(value) {
 }
 
 const isIndianMobile = (phone) => /^[6-9]\d{9}$/.test(String(phone || ""));
-
-const RAZORPAY_STANDARD_SRC = "https://checkout.razorpay.com/v1/checkout.js";
-// Magic Checkout ships its own build of Razorpay. The mode is known before the
-// shopper pays, so a page loads only the script it needs.
-const RAZORPAY_MAGIC_SRC = "https://checkout.razorpay.com/v1/magic-checkout.js";
-
-function loadRazorpayScript(src = RAZORPAY_STANDARD_SRC) {
-  if (typeof window !== "undefined" && window.Razorpay && document.querySelector(`script[src="${src}"]`)) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Razorpay failed to load")), {
-        once: true,
-      });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Razorpay failed to load"));
-    document.body.appendChild(script);
-  });
-}
 
 const formatCheckoutMoney = (amount) => {
   const n = Number(amount) || 0;
@@ -903,8 +877,8 @@ function CheckoutPageContent() {
     next?.(data);
   };
 
-  const openRazorpayCheckout = ({ paymentData, localOrderId, magic = false }) => {
-    const copiedCoupon = magic ? readCopiedCoupon() : null;
+  // Standard Razorpay checkout. Magic Checkout uses lib/magicCheckout.js.
+  const openRazorpayCheckout = ({ paymentData, localOrderId }) => {
     const rzOrderId = paymentData.razorpayOrderId || paymentData.razorpayOrder?.id;
     const keyId = paymentData.keyId;
     const amount = Number(paymentData.amount || paymentData.razorpayOrder?.amount || 0);
@@ -940,20 +914,15 @@ function CheckoutPageContent() {
             razorpaySignature: response.razorpay_signature,
             localOrderId,
           };
-          const verified = magic
-            ? await paymentService.verifyMagicPayment(verification)
-            : await paymentService.verifyPayment(verification);
+          await paymentService.verifyPayment(verification);
           if (isBuyNow) clearBuyNow();
           else removeItems(availableItems);
           clearCopiedCoupon();
-          // Magic Checkout adds delivery and the coupon in the popup, so the
-          // paid total comes from the server rather than this page.
-          const paidOrder = verified?.order || {};
           stashPurchaseEvent({
             transactionId: localOrderId,
-            value: magic ? Number(paidOrder.finalPrice) || totalPrice : totalPrice,
+            value: totalPrice,
             items: availableItems,
-            coupon: (magic ? paidOrder.couponCode : appliedCoupon?.code) || "",
+            coupon: appliedCoupon?.code || "",
           });
           router.push(`/checkout/success?orderId=${localOrderId}`);
         } catch (verifyError) {
@@ -965,25 +934,11 @@ function CheckoutPageContent() {
           setLoading(false);
         }
       },
-      prefill: magic
-        ? {
-            ...(paymentData.prefill || {}),
-            // A code copied on a product page; Razorpay checks it with our apply-promotion endpoint.
-            ...(copiedCoupon ? { coupon_code: copiedCoupon } : {}),
-          }
-        : {
-            name: formData.name || userInfo?.name || "",
-            contact,
-            email: formData.email || userInfo?.email || "",
-          },
-      ...(magic
-        ? {
-            one_click_checkout: true,
-            show_coupons: true,
-            // Signed-in shoppers keep orders on their account's email.
-            readonly: { email: Boolean(paymentData.prefill?.email) },
-          }
-        : {}),
+      prefill: {
+        name: formData.name || userInfo?.name || "",
+        contact,
+        email: formData.email || userInfo?.email || "",
+      },
       theme: { color: "#DF1721" },
       modal: {
         ondismiss: () => {
@@ -1147,38 +1102,40 @@ function CheckoutPageContent() {
       setPaymentError("Online payments are currently unavailable. Please try again later.");
       return;
     }
-    try {
-      await loadRazorpayScript(RAZORPAY_MAGIC_SRC);
-    } catch {
-      setPaymentError("Could not load the payment form. Please try again.");
-      return;
-    }
-
     setLoading(true);
     setPaymentError("");
+    let paymentData;
     try {
-      const paymentData = await paymentService.startMagicCheckout({
-        localOrderId: pendingOrderId,
-        orderItems: availableItems.map((item) => ({
-          name: item.name || item.productName,
-          qty: item.qty || 1,
-          image: item.image || item.thumbnails?.[0] || item.variants?.[0]?.images?.[0],
-          price: Number(item.price) || 0,
-          product: item._id,
-          size: item.size,
-          color: item.color || "",
-        })),
-        guestId: localStorage.getItem("abandoned_guest_id"),
-        attribution: getAttributionSnapshot(),
-      });
-      setPendingOrderId(paymentData.localOrderId);
-      trackAddPaymentInfo(availableItems, "razorpay_magic");
-      openRazorpayCheckout({ paymentData, localOrderId: paymentData.localOrderId, magic: true });
+      paymentData = await startMagicCheckout({ items: availableItems, localOrderId: pendingOrderId });
     } catch (error) {
       console.error("Error starting checkout:", error);
-      setPaymentError(userErrorMessage(error, "We couldn’t start checkout. Please try again."));
+      setPaymentError(
+        error?.message === "Razorpay failed to load"
+          ? "Could not load the payment form. Please try again."
+          : userErrorMessage(error, "We couldn’t start checkout. Please try again.")
+      );
       setLoading(false);
+      return;
     }
+    setPendingOrderId(paymentData.localOrderId);
+    openMagicCheckout({
+      paymentData,
+      items: availableItems,
+      fallbackValue: totalPrice,
+      onPaid: (localOrderId) => {
+        if (isBuyNow) clearBuyNow();
+        else removeItems(availableItems);
+        router.push(`/checkout/success?orderId=${localOrderId}`);
+      },
+      onError: (message) => {
+        setPaymentError(message);
+        setLoading(false);
+      },
+      onDismiss: () => {
+        setLoading(false);
+        setPaymentError("Payment cancelled. You can try again below.");
+      },
+    });
   };
 
   // Open the popup as soon as the page is ready; the button reopens it.

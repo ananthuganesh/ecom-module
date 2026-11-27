@@ -53,8 +53,11 @@ def _clean_slide(raw: Any) -> dict[str, Any] | None:
     url = str(raw.get("url") or "").strip()
     if not url:
         return None
+    # Optional portrait art (1080 × 1620) for phones; desktop art is 1920 × 800.
+    mobile_url = str(raw.get("mobileUrl") or "").strip() or None
     return {
         "url": url,
+        "mobileUrl": mobile_url,
         "alt": str(raw.get("alt") or "").strip()[:200],
         # A hidden slide stays in the list so it can be brought back without
         # re-uploading the image.

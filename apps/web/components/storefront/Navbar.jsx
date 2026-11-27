@@ -2,7 +2,7 @@
 
 import {
   AccountIcon,
-  CartIcon,
+  BagIcon,
   CloseIcon,
   MenuIcon,
   SearchIcon,
@@ -17,19 +17,20 @@ import { productService } from "@/api";
 import { useCartStore } from "@/store/useCartStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useWishlistStore } from "@/store/useWishlistStore";
-import SafeImage from "@/components/SafeImage";
-import { resolveImageUrl } from "@/utils/imageResolver";
-import { formatINR } from "@/utils/formatINR";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart } from "@/components/icons";
 
 const CartDrawer = dynamic(() => import("./CartDrawer"), { ssr: false });
+const SearchPopularProducts = dynamic(() => import("./SearchPopularProducts"), { ssr: false });
+const SearchProductGrid = dynamic(() => import("./SearchProductGrid"), { ssr: false });
 
 const NAVBAR_HEIGHT = 56;
 
 const MENU_LINKS = [
   { href: "/all-products", label: "All Products" },
-  { href: "/about", label: "About Us" },
+  { href: "/collections/new-arrivals", label: "New Arrivals" },
+  { href: "/collections/best-sellers", label: "Best Sellers" },
+  { href: "/collections/t-shirt", label: "Oversized T-Shirt" },
   { href: "/contact", label: "Contact Us" },
 ];
 
@@ -341,7 +342,7 @@ const Navbar = () => {
         className={`fixed top-0 left-0 right-0 z-[100] w-full border-b transition-[background-color,border-color] duration-300 ${
           transparent
             ? "border-transparent bg-transparent"
-            : "border-gray-200 bg-white"
+            : "border-gray-200 bg-[#ffffff]"
         }`}
       >
         <div className="mx-auto grid h-14 w-full grid-cols-3 items-center px-4 lg:px-8">
@@ -434,7 +435,7 @@ const Navbar = () => {
               aria-label={`Cart, ${cartCount} items`}
             >
               <span className="relative inline-flex">
-                <CartIcon size={18} />
+                <BagIcon size={18} />
                 {cartCount > 0 && (
                   <motion.span
                     initial={{ scale: 0 }}
@@ -476,7 +477,7 @@ const Navbar = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed top-0 right-0 left-0 z-[160] border-b border-gray-200 bg-white shadow-lg"
+              className="fixed top-0 right-0 left-0 z-[160] border-b border-gray-200 bg-[#ffffff] shadow-lg"
             >
               <form
                 onSubmit={submitSearch}
@@ -489,12 +490,24 @@ const Navbar = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search products"
-                  className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                  className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
                   autoComplete="off"
                   enterKeyHint="search"
                   aria-autocomplete="list"
                   aria-controls="navbar-search-suggestions"
                 />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery("");
+                      searchInputRef.current?.focus();
+                    }}
+                    className="shrink-0 px-2 py-1 text-[13px] font-medium text-gray-600 underline-offset-4 transition-colors hover:text-gray-900 hover:underline"
+                  >
+                    Clear
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={closeSearch}
@@ -507,72 +520,43 @@ const Navbar = () => {
 
               <div
                 id="navbar-search-suggestions"
-                className={`max-h-[min(70vh,28rem)] overflow-y-auto ${
-                  searchQuery.trim() ? "border-t border-gray-100" : ""
-                }`}
+                className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain"
               >
                 {searchQuery.trim() ? (
-                  <div className="mx-auto w-full px-2 py-2 lg:px-6">
+                  <div className="mx-auto w-full px-4 pt-4 pb-8 lg:px-8 lg:pt-6 lg:pb-10">
                     {suggestLoading && suggestions.length === 0 ? (
-                      <p className="px-3 py-3 text-[13px] text-gray-500">
-                        Searching…
-                      </p>
-                    ) : null}
-                    {suggestions.length > 0 ? (
-                      <ul className="py-1">
-                        {suggestions.map((item) => {
-                          const href = `/product/${item.slug || item._id}`;
-                          const thumb = item.thumbnails?.[0];
-                          return (
-                            <li key={item._id || href}>
-                              <Link
-                                href={href}
-                                onClick={closeSearch}
-                                className="flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-50"
-                              >
-                                <span className="relative h-12 w-10 shrink-0 overflow-hidden rounded-md bg-gray-100">
-                                  {thumb ? (
-                                    <SafeImage
-                                      src={resolveImageUrl(thumb)}
-                                      alt={item.productName || "Product"}
-                                      fill
-                                      sizes="40px"
-                                      className="object-cover"
-                                    />
-                                  ) : null}
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-[14px] font-medium text-gray-900">
-                                    {item.productName}
-                                  </span>
-                                  {item.price != null ? (
-                                    <span className="mt-0.5 block text-[12px] text-gray-500">
-                                      {formatINR(item.price)}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <p className="mb-4 text-[13px] text-gray-500">Searching…</p>
+                    ) : suggestions.length > 0 ? (
+                      <>
+                        <h2 className="mb-4 text-[15px] font-medium text-gray-900 md:mb-6 md:text-[17px]">
+                          Products
+                        </h2>
+                        <SearchProductGrid
+                          products={suggestions}
+                          onNavigate={closeSearch}
+                          listId="search-results"
+                          listName="Search results"
+                        />
+                      </>
                     ) : !suggestLoading ? (
-                      <p className="px-3 py-3 text-[13px] text-gray-500">
+                      <p className="mb-2 text-[14px] text-gray-500">
                         No products match “{searchQuery.trim()}”
                       </p>
                     ) : null}
                     <button
                       type="button"
                       onClick={submitSearch}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-gray-900 transition-colors hover:bg-gray-50"
+                      className="mt-6 flex items-center gap-2 text-[14px] font-medium text-gray-900 underline-offset-4 hover:underline"
                     >
                       <SearchIcon size={16} className="text-gray-400" />
-                      <span>
-                        Search all products for “{searchQuery.trim()}”
-                      </span>
+                      <span>Search all products for “{searchQuery.trim()}”</span>
                     </button>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mx-auto w-full px-4 pt-4 pb-8 lg:px-8 lg:pt-6 lg:pb-10">
+                    <SearchPopularProducts onNavigate={closeSearch} />
+                  </div>
+                )}
               </div>
             </motion.div>
           </>
@@ -601,7 +585,7 @@ const Navbar = () => {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "tween", duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-white shadow-2xl will-change-transform"
+              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-[#ffffff] shadow-2xl will-change-transform"
             >
               <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3.5">
                 <h2 id="storefront-menu-title" className="text-lg font-semibold text-gray-900">
@@ -619,15 +603,18 @@ const Navbar = () => {
 
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
                 <nav>
-                  <ul className="divide-y divide-gray-100">
+                  <ul>
                     {MENU_LINKS.map((item) => (
                       <li key={item.href}>
                         <Link
                           href={item.href}
                           onClick={closeMenu}
-                          className="block px-3 py-3.5 text-[15px] font-medium text-gray-900 transition-colors hover:bg-gray-50"
+                          className="group block px-3 py-3.5 text-[15px] font-medium text-gray-900"
                         >
-                          {item.label}
+                          {/* Underline draws in from the left on hover / keyboard focus. */}
+                          <span className="relative inline-block after:absolute after:-bottom-0.5 after:left-0 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-current after:transition-transform after:duration-300 after:ease-out group-hover:after:scale-x-100 group-focus-visible:after:scale-x-100 motion-reduce:after:transition-none">
+                            {item.label}
+                          </span>
                         </Link>
                       </li>
                     ))}

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import LoginLegalNote from "@/components/auth/LoginLegalNote";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import CustomerOtpForm from "@/components/auth/CustomerOtpForm";
@@ -56,7 +58,7 @@ export default function CustomerLoginClient() {
   // Avoid flash: wait for breakpoint before choosing layout.
   if (isMobile === null) {
     return (
-      <div className="flex min-h-svh items-center justify-center">
+      <div className="flex min-h-[70svh] items-center justify-center bg-[#ffffff]">
         <Spinner className="size-5" />
       </div>
     );
@@ -64,7 +66,7 @@ export default function CustomerLoginClient() {
 
   if (isMobile) {
     return (
-      <div className="min-h-svh bg-[#F9F9F5]">
+      <div className="min-h-svh bg-[#ffffff]">
         <LoginBottomSheet
           open={sheetOpen}
           onClose={handleSheetClose}
@@ -75,8 +77,9 @@ export default function CustomerLoginClient() {
   }
 
   return (
-    <div className="grid min-h-svh">
-      <div className="flex flex-col gap-4 p-6 md:p-10">
+    // Sits between the storefront nav and footer, so not a full-screen block.
+    <div className="grid min-h-[70svh] bg-[#ffffff]">
+      <div className="flex flex-col gap-4 px-6 pt-24 pb-16 md:px-10">
         <div className="flex flex-1 items-center justify-center">
           <div className="flex w-full max-w-xs flex-col gap-1">
             <div className="flex flex-col items-center gap-1 text-center">
@@ -89,6 +92,13 @@ export default function CustomerLoginClient() {
               buttonClassName="h-9"
               onSuccess={finish}
             />
+            <LoginLegalNote className="mt-4" />
+            <Link
+              href="/"
+              className="mx-auto mt-3 inline-flex w-fit items-center gap-1 text-[13px] font-medium text-gray-900 underline-offset-4 hover:underline"
+            >
+              <span aria-hidden>←</span> Return to store
+            </Link>
           </div>
         </div>
       </div>

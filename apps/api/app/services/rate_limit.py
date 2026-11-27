@@ -7,6 +7,7 @@ in-process buckets only when DB is unavailable.
 from __future__ import annotations
 
 import ipaddress
+import math
 import os
 import time
 from collections import defaultdict, deque
@@ -56,6 +57,16 @@ def client_ip(request: Request) -> str:
     return "unknown"
 
 
+def too_many_requests(retry_after: float) -> HTTPException:
+    """429 that tells the client how long to wait (``Retry-After``, seconds)."""
+    seconds = max(1, int(math.ceil(retry_after)))
+    return HTTPException(
+        status_code=429,
+        detail="Too many requests; try again later",
+        headers={"Retry-After": str(seconds)},
+    )
+
+
 def _memory_enforce(key: str, *, limit: int, window_seconds: float) -> None:
     now = time.monotonic()
     bucket = _buckets[key]
@@ -63,7 +74,8 @@ def _memory_enforce(key: str, *, limit: int, window_seconds: float) -> None:
     while bucket and bucket[0] < cutoff:
         bucket.popleft()
     if len(bucket) >= limit:
-        raise HTTPException(status_code=429, detail="Too many requests; try again later")
+        # Sliding window: a slot frees up when the oldest request ages out.
+        raise too_many_requests(bucket[0] + window_seconds - now)
     bucket.append(now)
 
 
@@ -99,7 +111,8 @@ async def enforce_rate_limit(
 
     count = int((doc or {}).get("count") or 0)
     if count > limit:
-        raise HTTPException(status_code=429, detail="Too many requests; try again later")
+        # Fixed window: the bucket resets at the next window boundary.
+        raise too_many_requests((int(now // window) + 1) * window - now)
 
 
 def rate_limit_dependency(prefix: str, *, limit: int, window_seconds: float = 60.0):

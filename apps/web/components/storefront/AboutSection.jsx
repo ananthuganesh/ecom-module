@@ -18,7 +18,7 @@ const fadeUp = {
 
 const AboutSection = () => {
   return (
-    <div className="w-full bg-white text-[#222222] font-[family-name:var(--font-lato)]">
+    <div className="w-full bg-white text-[#222222] font-[family-name:var(--font-archivo-narrow)]">
       {/* Hero */}
       <section className="relative isolate overflow-hidden">
         <Image

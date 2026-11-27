@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { contactService } from "@/api";
 import {
   STORE_EMAIL,
@@ -9,6 +9,7 @@ import {
   STORE_PHONE_TEL,
 } from "@/lib/storeContact";
 import { userErrorMessage } from "@/lib/userMessage";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
 const CONTACT_IMAGE = "/images/44.webp";
 
@@ -22,9 +23,33 @@ export default function ContactPage() {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState({ type: "", text: "" });
+  // Bot filters checked by the API (services/spam_guard.py).
+  const [website, setWebsite] = useState(""); // honeypot: people never see it
+  const startedAtRef = useRef(0);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
+
+  useEffect(() => {
+    startedAtRef.current = Date.now();
+    let alive = true;
+    contactService
+      .getConfig()
+      .then((cfg) => {
+        if (alive) setTurnstileSiteKey(cfg?.turnstileSiteKey || "");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (turnstileSiteKey && !turnstileToken) {
+      setStatus({ type: "error", text: "Please complete the verification below." });
+      return;
+    }
     setSending(true);
     setStatus({ type: "", text: "" });
     try {
@@ -33,6 +58,9 @@ export default function ContactPage() {
         email: email.trim(),
         phone: phone.trim(),
         message: message.trim(),
+        website,
+        startedAt: startedAtRef.current,
+        turnstileToken: turnstileToken || undefined,
       });
       setName("");
       setEmail("");
@@ -52,6 +80,8 @@ export default function ContactPage() {
       });
     } finally {
       setSending(false);
+      // Turnstile tokens are single-use.
+      if (turnstileSiteKey) setTurnstileReset((n) => n + 1);
     }
   }
 
@@ -155,6 +185,27 @@ export default function ContactPage() {
                   placeholder="Order number, question, or feedback…"
                 />
               </div>
+
+              {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
+              <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+                <label htmlFor="contact-website">Website</label>
+                <input
+                  id="contact-website"
+                  type="text"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
+              </div>
+
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                onToken={setTurnstileToken}
+                resetKey={turnstileReset}
+                className="min-h-[65px]"
+              />
 
               <button
                 type="submit"

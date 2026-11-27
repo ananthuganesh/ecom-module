@@ -16,6 +16,7 @@ from fastapi import HTTPException
 
 from app.documents import Category, Product
 from app.serializers import doc_to_dict
+from app.services import collection_rules
 
 _EDITABLE = ("name", "slug", "description", "image", "isActive", "metaTitle", "metaDescription")
 
@@ -52,7 +53,10 @@ async def _product_count(collection_id: str, *, live_only: bool = False) -> int:
 
 async def collection_dict(doc: Category, *, live_only: bool = False) -> dict:
     data = doc_to_dict(doc)
-    data["productCount"] = await _product_count(str(doc.id), live_only=live_only)
+    if collection_rules.clean_rule(doc.rule):
+        data["productCount"] = len(await collection_rules.rule_product_ids(doc))
+    else:
+        data["productCount"] = await _product_count(str(doc.id), live_only=live_only)
     return data
 
 
@@ -81,7 +85,10 @@ async def list_collections(*, active_only: bool = False) -> list[dict]:
     out = []
     for doc in docs:
         data = doc_to_dict(doc)
-        data["productCount"] = counts.get(str(doc.id), 0)
+        if collection_rules.clean_rule(doc.rule):
+            data["productCount"] = len(await collection_rules.rule_product_ids(doc))
+        else:
+            data["productCount"] = counts.get(str(doc.id), 0)
         out.append(data)
     return out
 
@@ -97,6 +104,16 @@ async def _apply(doc: Category, body: dict) -> None:
             doc.description = str(value or "").strip() or None
         else:
             setattr(doc, key, _clean_text(value))
+    if "rule" in body:
+        raw_rule = str(body.get("rule") or "").strip()
+        rule = collection_rules.clean_rule(raw_rule)
+        if raw_rule and raw_rule != "manual" and not rule:
+            raise HTTPException(status_code=400, detail="Unknown automatic collection type.")
+        doc.rule = rule
+    if "ruleLimit" in body:
+        doc.ruleLimit = collection_rules.clamp_limit(body.get("ruleLimit"))
+    if "ruleDays" in body:
+        doc.ruleDays = collection_rules.clamp_days(body.get("ruleDays"))
     if not doc.name:
         raise HTTPException(status_code=400, detail="Collection name is required.")
     doc.slug = slugify(doc.slug or doc.name)
@@ -119,6 +136,7 @@ async def update(collection_id: str, body: dict) -> dict:
     await _apply(doc, body)
     doc.updatedAt = datetime.utcnow()
     await doc.save()
+    collection_rules.clear_cache()
     return await collection_dict(doc)
 
 
@@ -150,13 +168,24 @@ def _product_summary(product: Product) -> dict:
     }
 
 
+async def ordered_products(ids: list[ObjectId]) -> list[Product]:
+    """Fetch products by id, keeping the order of ``ids``."""
+    if not ids:
+        return []
+    found = {p.id: p for p in await Product.find({"_id": {"$in": ids}}).to_list()}
+    return [found[i] for i in ids if i in found]
+
+
 async def detail(collection_id: str) -> dict:
     doc = await _get(collection_id)
-    products = (
-        await Product.find({"collections": str(doc.id)})
-        .sort([("sortOrder", 1), ("createdAt", -1)])
-        .to_list()
-    )
+    if collection_rules.clean_rule(doc.rule):
+        products = await ordered_products(await collection_rules.rule_product_ids(doc))
+    else:
+        products = (
+            await Product.find({"collections": str(doc.id)})
+            .sort([("sortOrder", 1), ("createdAt", -1)])
+            .to_list()
+        )
     data = doc_to_dict(doc)
     data["productCount"] = len(products)
     data["products"] = [_product_summary(p) for p in products]
@@ -169,8 +198,17 @@ def _object_ids(product_ids: Any) -> list[ObjectId]:
     return [ObjectId(str(p)) for p in product_ids if ObjectId.is_valid(str(p))]
 
 
+def _assert_manual(doc: Category) -> None:
+    if collection_rules.clean_rule(doc.rule):
+        raise HTTPException(
+            status_code=400,
+            detail="This collection fills itself automatically; products can't be added or removed by hand.",
+        )
+
+
 async def add_products(collection_id: str, product_ids: Any) -> dict:
     doc = await _get(collection_id)
+    _assert_manual(doc)
     ids = _object_ids(product_ids)
     if ids:
         await Product.find({"_id": {"$in": ids}}).update({"$addToSet": {"collections": str(doc.id)}})
@@ -179,6 +217,7 @@ async def add_products(collection_id: str, product_ids: Any) -> dict:
 
 async def remove_products(collection_id: str, product_ids: Any) -> dict:
     doc = await _get(collection_id)
+    _assert_manual(doc)
     ids = _object_ids(product_ids)
     if ids:
         await Product.find({"_id": {"$in": ids}}).update({"$pull": {"collections": str(doc.id)}})

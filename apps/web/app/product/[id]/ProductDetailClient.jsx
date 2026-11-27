@@ -1,5 +1,6 @@
 "use client";
 
+import { formatINR } from "@/utils/formatINR";
 import {
   CaretIcon,
   CloseIcon,
@@ -16,7 +17,14 @@ import RecentlyViewed from "@/components/RecentlyViewed";
 import { filterInStock } from "@/lib/productStock";
 import { estimateDeliveryWindow } from "@/lib/deliveryEstimate";
 import { productService } from "@/api";
-import { trackViewItem } from "@/lib/tracking";
+import { trackBeginCheckout, trackViewItem } from "@/lib/tracking";
+import {
+  getPaymentConfig,
+  openMagicCheckout,
+  prefetchMagicCheckout,
+  startMagicCheckout,
+} from "@/lib/magicCheckout";
+import { userErrorMessage } from "@/lib/userMessage";
 import WishlistButton from "@/components/storefront/WishlistButton";
 import BackInStockNotify from "@/components/storefront/BackInStockNotify";
 import SaleOfferCard from "@/components/storefront/SaleOfferCard";
@@ -89,6 +97,24 @@ export default function ProductDetailPage({ initialProduct = null }) {
   const [openSection, setOpenSection] = useState("description");
   const [deliveryWindow, setDeliveryWindow] = useState("");
   const [ctaPending, setCtaPending] = useState(null);
+  // Buy now opens Razorpay Magic Checkout right here when it's enabled;
+  // otherwise it goes to /checkout as before. null = not known yet.
+  const [magicEnabled, setMagicEnabled] = useState(null);
+  const [buyError, setBuyError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    getPaymentConfig()
+      .then((cfg) => {
+        if (alive) setMagicEnabled(cfg?.razorpayConfigured !== false && cfg?.magicCheckout === true);
+      })
+      .catch(() => {
+        if (alive) setMagicEnabled(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [showStickyCta, setShowStickyCta] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const trackedViewIdRef = useRef(null);
@@ -500,11 +526,16 @@ export default function ProductDetailPage({ initialProduct = null }) {
     window.setTimeout(() => setCtaPending(null), 450);
   };
 
-  const handleBuyNow = () => {
+  const prefetchBuyNow = () => {
+    if (magicEnabled) prefetchMagicCheckout();
+  };
+
+  const handleBuyNow = async () => {
     if (!inStock || ctaPending) return;
     if (sizes.length > 0 && !selectedSize) return;
     setCtaPending("buy");
-    const ok = useBuyNowStore.getState().setBuyNowItem({
+    setBuyError("");
+    const item = {
       ...product,
       qty: 1,
       size: selectedSize,
@@ -513,7 +544,39 @@ export default function ProductDetailPage({ initialProduct = null }) {
       totalStock: availableStock,
       variants: product?.variants || [],
       price,
-    });
+    };
+
+    if (magicEnabled) {
+      // One tap: Magic Checkout collects phone, address and coupon in its popup.
+      trackBeginCheckout([item]);
+      let paymentData;
+      try {
+        paymentData = await startMagicCheckout({ items: [item] });
+      } catch (error) {
+        setBuyError(
+          error?.message === "Razorpay failed to load"
+            ? "Couldn’t load the payment window. Please try again."
+            : userErrorMessage(error, "We couldn’t start checkout. Please try again.")
+        );
+        setCtaPending(null);
+        return;
+      }
+      openMagicCheckout({
+        paymentData,
+        items: [item],
+        fallbackValue: price,
+        // Keep the spinner while the success page loads.
+        onPaid: (localOrderId) => router.push(`/checkout/success?orderId=${localOrderId}`),
+        onError: (message) => {
+          setBuyError(message);
+          setCtaPending(null);
+        },
+        onDismiss: () => setCtaPending(null),
+      });
+      return;
+    }
+
+    const ok = useBuyNowStore.getState().setBuyNowItem(item);
     if (!ok) {
       setCtaPending(null);
       return;
@@ -859,7 +922,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                         }}
                         className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md ${
                           active
-                            ? "border-2 border-gray-400"
+                            ? "border border-[#b5b9be]"
                             : "border border-gray-200"
                         }`}
                         aria-label={`View image ${index + 1}`}
@@ -1011,15 +1074,15 @@ export default function ProductDetailPage({ initialProduct = null }) {
             <div className="mt-4 space-y-1">
               {/* Selling price, struck-through MRP and % OFF on one line */}
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                <p className="text-2xl font-bold tracking-tight text-black">
-                  ₹{price.toLocaleString("en-IN")}
+                <p className="text-2xl font-semibold tracking-[0.02em] text-black">
+                  {formatINR(price)}
                 </p>
                 {hasCompareAt ? (
                   <>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-base text-gray-400">
                       MRP{" "}
                       <span className="line-through">
-                        ₹{originalPrice.toLocaleString("en-IN")}
+                        {formatINR(originalPrice)}
                       </span>
                     </p>
                     {savePercent > 0 ? (
@@ -1030,12 +1093,14 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   </>
                 ) : null}
               </div>
-              {hasCompareAt ? (
-                <p className="text-[13px] font-semibold text-emerald-600">
-                  You save ₹{saveAmount.toLocaleString("en-IN")}
-                </p>
-              ) : null}
-              <p className="text-[11px] text-gray-400">Inclusive of all taxes</p>
+              <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="text-[13px] text-gray-400">Inclusive of all taxes</span>
+                {hasCompareAt ? (
+                  <span className="text-[15px] font-semibold text-emerald-600">
+                    You save {formatINR(saveAmount)}
+                  </span>
+                ) : null}
+              </p>
             </div>
 
             {product.sale?.live ? (
@@ -1044,15 +1109,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
 
             {sizes.length > 0 ? (
               <div className="mt-6">
-                <div className="mb-2.5 flex items-center justify-between gap-3">
-                  <p className="text-[12px] font-medium text-gray-600">
-                    Size
-                    {lowStockLeft ? (
-                      <span className="ml-2 font-semibold text-[#DF1721]">
-                        Only {lowStockLeft} Left
-                      </span>
-                    ) : null}
-                  </p>
+                <div className="mb-2.5 flex items-center gap-3">
+                  <p className="text-[12px] font-medium text-gray-600">Size</p>
                   <button
                     type="button"
                     onClick={() => setShowSizeGuide(true)}
@@ -1060,6 +1118,11 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   >
                     <RulerIcon className="h-3 w-3" /> Find my size
                   </button>
+                  {lowStockLeft ? (
+                    <span className="ml-auto text-[12px] font-semibold text-[#DF1721]">
+                      Only {lowStockLeft} Left
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {sizes.map((size) => {
@@ -1112,7 +1175,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 <button
                   type="button"
                   onClick={() => useCartStore.getState().setDrawerOpen(true)}
-                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[13px] font-semibold transition hover:bg-black hover:text-white"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[13px] font-semibold"
                 >
                   View bag
                 </button>
@@ -1122,10 +1185,10 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   onClick={handleAddToCart}
                   disabled={ctaDisabled || Boolean(ctaPending)}
                   aria-busy={ctaPending === "add"}
-                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[13px] font-semibold transition hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[13px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-400"
                 >
                   {ctaPending === "add" ? (
-                    <CtaSpinner tone="dark" />
+                    <CtaSpinner tone="light" />
                   ) : sizes.length > 0 && !selectedSize ? (
                     "Select size"
                   ) : (
@@ -1136,13 +1199,21 @@ export default function ProductDetailPage({ initialProduct = null }) {
               <button
                 type="button"
                 onClick={handleBuyNow}
+                onPointerEnter={prefetchBuyNow}
+                onTouchStart={prefetchBuyNow}
+                onFocus={prefetchBuyNow}
                 disabled={ctaDisabled || Boolean(ctaPending)}
                 aria-busy={ctaPending === "buy"}
-                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-black text-[13px] font-semibold text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-200"
+                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-[#D92D36] text-[13px] font-semibold text-white transition-colors hover:bg-[#BF2530] disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
               >
                 {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
               </button>
             </div>
+            {buyError ? (
+              <p role="alert" className="mt-2 text-[13px] text-destructive">
+                {buyError}
+              </p>
+            ) : null}
 
             {deliveryWindow ? (
               <div className="mt-5 flex flex-col gap-1.5 rounded-md bg-gray-100 px-3 py-2.5">
@@ -1169,7 +1240,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   <span>
                     Trusted by{" "}
                     <span className="font-semibold text-gray-900">
-                      1,000+ customers.
+                      5,000+ customers.
                     </span>
                   </span>
                 </p>
@@ -1231,10 +1302,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
 
             <div className="flex flex-wrap items-end justify-between gap-3 pr-8">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#DF1721]">
-                  Urban Aana
-                </p>
-                <h2 className="mt-1 text-lg font-bold uppercase tracking-tight sm:text-xl">
+                <h2 className="text-lg font-bold uppercase tracking-tight sm:text-xl">
                   Size chart
                 </h2>
               </div>
@@ -1315,12 +1383,17 @@ export default function ProductDetailPage({ initialProduct = null }) {
           data-sticky-cta
           className="fixed inset-x-0 bottom-0 z-[120] border-t border-gray-200 bg-white/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden"
         >
+          {buyError ? (
+            <p role="alert" className="mb-2 text-[12px] text-destructive">
+              {buyError}
+            </p>
+          ) : null}
           <div className="flex gap-2">
               {isInCart && ctaPending !== "add" ? (
                 <button
                   type="button"
                   onClick={() => useCartStore.getState().setDrawerOpen(true)}
-                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[12px] font-semibold"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[12px] font-semibold"
                 >
                   View bag
                 </button>
@@ -1330,17 +1403,20 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   onClick={handleAddToCart}
                   disabled={ctaDisabled || Boolean(ctaPending)}
                   aria-busy={ctaPending === "add"}
-                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-black text-[12px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300"
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[12px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-400"
                 >
-                  {ctaPending === "add" ? <CtaSpinner tone="dark" /> : addLabel}
+                  {ctaPending === "add" ? <CtaSpinner tone="light" /> : addLabel}
                 </button>
               )}
               <button
                 type="button"
                 onClick={handleBuyNow}
+                onPointerEnter={prefetchBuyNow}
+                onTouchStart={prefetchBuyNow}
+                onFocus={prefetchBuyNow}
                 disabled={ctaDisabled || Boolean(ctaPending)}
                 aria-busy={ctaPending === "buy"}
-                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-black text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-200"
+                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-[#D92D36] text-[12px] font-semibold text-white transition-colors hover:bg-[#BF2530] disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
               >
                 {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
               </button>

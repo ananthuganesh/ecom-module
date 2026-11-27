@@ -1,32 +1,43 @@
 "use client";
 
 import React from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Facebook01Icon, InstagramIcon as HugeInstagram } from "@hugeicons/core-free-icons";
+import { FOOTER_ID } from "./WhatsAppButton";
 import Link from "next/link";
 import Image from "next/image";
 import {
   STORE_EMAIL,
   STORE_PHONE,
   STORE_PHONE_TEL,
+  whatsappChatUrl,
 } from "@/lib/storeContact";
 
 const FOOTER_INK = "rgb(243, 241, 236)";
-const FOOTER_BG = "#222222";
+const FOOTER_BG = "#121212";
 const FOOTER_LINK =
-  "footer-link relative inline-block w-fit text-[13px] font-medium opacity-90 transition-colors duration-300 hover:text-gray-400";
+  "footer-link relative inline-block w-fit text-[15px] leading-6 font-normal antialiased text-white transition-colors duration-300 hover:text-gray-400";
 const FOOTER_HEADING =
-  "inline-block w-fit -ml-2 bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]";
+  "inline-block w-fit -ml-2 bg-brand-red px-2 py-1 text-[14px] font-semibold leading-[14px] tracking-[1.4px] uppercase text-white";
 
-const InstagramIcon = () => <HugeiconsIcon icon={HugeInstagram} size={18} aria-hidden />;
+const PAYMENT_ICONS = [
+  { src: "/payment-icons/visa.png", label: "Visa" },
+  { src: "/payment-icons/mastercard.png", label: "Mastercard" },
+  { src: "/payment-icons/googlepay.png", label: "Google Pay" },
+  { src: "/payment-icons/applepay.png", label: "Apple Pay" },
+  { src: "/payment-icons/amazonpay.png", label: "Amazon Pay" },
+];
 
-const FacebookIcon = () => <HugeiconsIcon icon={Facebook01Icon} size={18} aria-hidden />;
+
+const SOCIAL_LINKS = [
+  { href: "https://www.instagram.com/urbanaana.in", icon: "/social/instagram.png", label: "Instagram" },
+  { href: "https://www.facebook.com/share/18vF3ZB3BJ/", icon: "/social/facebook.png", label: "Facebook" },
+  { href: whatsappChatUrl(), icon: "/social/whatsapp.png", label: "WhatsApp" },
+];
 
 const Footer = () => {
   return (
-    <footer className="w-full" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
-      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 pt-14 pb-10">
-        <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 sm:gap-x-6 lg:grid-cols-[2fr_1fr_1fr_1fr] lg:gap-x-12">
+    <footer id={FOOTER_ID} className="w-full font-[family-name:var(--font-archivo-narrow)]" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
+      <div className="w-full px-4 lg:px-8 pt-14 pb-10">
+        <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 sm:gap-x-6 lg:grid-cols-[repeat(4,max-content)] lg:justify-start lg:gap-x-20 xl:gap-x-28">
           <div className="flex flex-col gap-5 sm:col-span-2 lg:col-span-1">
             <Link href="/" className="inline-block w-fit">
               <Image
@@ -34,14 +45,14 @@ const Footer = () => {
                 alt="URBAN AANA"
                 width={140}
                 height={50}
-                className="object-contain h-10 w-auto"
+                className="object-contain h-14 w-auto"
                 priority={false}
               />
             </Link>
 
-            <p className="text-sm font-medium opacity-80">Where Style Meets Strength</p>
+            <p className="text-[15px] leading-6 font-normal antialiased text-white">Where Style Meets Strength</p>
 
-            <div className="flex flex-col gap-1 text-[13px] opacity-80">
+            <div className="flex flex-col gap-1 text-[15px] leading-6 font-normal antialiased text-white">
               <a
                 href={`mailto:${STORE_EMAIL}`}
                 className="w-fit transition-colors hover:text-brand-red hover:opacity-100"
@@ -57,45 +68,60 @@ const Footer = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => window.open("https://www.instagram.com/urbanaana.in", "_blank", "noopener,noreferrer")}
-                className="w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:text-brand-red"
-                style={{ borderColor: "rgba(243, 241, 236, 0.25)", color: FOOTER_INK }}
-                aria-label="Instagram"
-              >
-                <InstagramIcon />
-              </button>
-              <a
-                href="https://www.facebook.com/share/18vF3ZB3BJ/"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:text-brand-red"
-                style={{ borderColor: "rgba(243, 241, 236, 0.25)", color: FOOTER_INK }}
-                aria-label="Facebook"
-              >
-                <FacebookIcon />
-              </a>
+              {SOCIAL_LINKS.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-full border border-white/25 flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:bg-brand-red"
+                  aria-label={item.label}
+                  title={item.label}
+                >
+                  <Image src={item.icon} alt="" width={18} height={18} className="h-[18px] w-[18px]" />
+                </a>
+              ))}
             </div>
           </div>
 
           <div className="flex flex-col gap-4">
-            <p className={FOOTER_HEADING} style={{ color: FOOTER_INK }}>
+            <p className={FOOTER_HEADING}>
               Collection
             </p>
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
               <li>
                 <Link href="/all-products" className={FOOTER_LINK}>
                   All Products
+                </Link>
+              </li>
+              <li>
+                <Link href="/collections/new-arrivals" className={FOOTER_LINK}>
+                  New Arrivals
+                </Link>
+              </li>
+              <li>
+                <Link href="/collections/best-sellers" className={FOOTER_LINK}>
+                  Best Sellers
+                </Link>
+              </li>
+              <li>
+                <Link href="/collections/t-shirt" className={FOOTER_LINK}>
+                  Oversized T-Shirt
                 </Link>
               </li>
             </ul>
           </div>
 
           <div className="flex flex-col gap-4">
-            <p className={FOOTER_HEADING} style={{ color: FOOTER_INK }}>
+            <p className={FOOTER_HEADING}>
               About
             </p>
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
+              <li>
+                <Link href="/about" className={FOOTER_LINK}>
+                  About Us
+                </Link>
+              </li>
               <li>
                 <Link href="/account" className={FOOTER_LINK}>
                   My Account
@@ -110,10 +136,10 @@ const Footer = () => {
           </div>
 
           <div className="flex flex-col gap-4">
-            <p className={FOOTER_HEADING} style={{ color: FOOTER_INK }}>
+            <p className={FOOTER_HEADING}>
               Policies
             </p>
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
               <li>
                 <Link href="/privacy-policy" className={FOOTER_LINK}>
                   Privacy Policy
@@ -130,20 +156,34 @@ const Footer = () => {
                 </Link>
               </li>
             </ul>
+            <ul className="mt-2 flex flex-wrap items-center gap-2" aria-label="Payment methods we accept">
+              {PAYMENT_ICONS.map((icon) => (
+                <li key={icon.src}>
+                  <Image
+                    src={icon.src}
+                    alt={icon.label}
+                    title={icon.label}
+                    width={35}
+                    height={24}
+                    className="h-6 w-[35px]"
+                  />
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
 
-      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12">
+      <div className="w-full px-4 lg:px-8">
         <div className="border-t" style={{ borderColor: "rgba(243, 241, 236, 0.15)" }} />
       </div>
 
-      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 py-5">
+      <div className="w-full px-4 lg:px-8 py-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <p className="text-[12px] tracking-wide opacity-80 text-left">
+          <p className="text-[15px] leading-6 font-normal antialiased text-[#cecece] text-left">
             © {new Date().getFullYear()} Urban Aana. All rights reserved.
           </p>
-          <p className="text-[12px] tracking-wide opacity-80 text-left sm:text-right">
+          <p className="text-[13px] leading-[21px] font-normal antialiased text-[#cecece] text-left sm:text-right">
             Designed &amp; developed by{" "}
             <a
               href="https://www.bridnetwork.com"
@@ -151,7 +191,7 @@ const Footer = () => {
               rel="noopener noreferrer"
               className="underline-offset-4 hover:underline hover:text-brand-red transition-colors"
             >
-              Brid Network LLP
+              BRID NETWORK LLP
             </a>
           </p>
         </div>
@@ -170,7 +210,7 @@ const Footer = () => {
               {Array.from({ length: 6 }).map((_, i) => (
                 <span
                   key={`${copy}-${i}`}
-                  className="footer-marquee-text font-knewave px-8 text-[clamp(3rem,12vw,8rem)] font-normal italic leading-none tracking-tight block normal-case"
+                  className="footer-marquee-text px-8 text-[clamp(3rem,12vw,8rem)] font-normal leading-none tracking-tight block uppercase"
                 >
                   Urban Aana
                 </span>
@@ -195,7 +235,7 @@ const Footer = () => {
             will-change: transform;
           }
           .footer-marquee-text {
-            font-family: var(--font-archivo-black), "Archivo Black", sans-serif;
+            font-family: var(--font-archivo-narrow), "Archivo Narrow", sans-serif;
             color: ${FOOTER_BG};
             -webkit-text-stroke: 3px ${FOOTER_INK};
             paint-order: stroke fill;

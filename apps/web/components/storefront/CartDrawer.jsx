@@ -129,7 +129,7 @@ export default function CartDrawer() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
-            className="fixed inset-y-0 right-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[420px] flex-col overflow-hidden bg-white shadow-2xl"
+            className="fixed inset-y-0 right-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[420px] flex-col overflow-hidden bg-[#ffffff] shadow-2xl"
           >
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
               <h2 id="cart-drawer-title" className="text-lg font-semibold text-gray-900">
@@ -262,7 +262,7 @@ export default function CartDrawer() {
             </div>
 
             {cartItems.length > 0 && (
-              <div className="shrink-0 border-t border-gray-200 bg-white pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+              <div className="shrink-0 border-t border-gray-200 bg-[#ffffff] pb-[max(1.25rem,env(safe-area-inset-bottom))]">
                 <div className="space-y-4 px-5 pt-4">
                   {autoDiscounts.map((d) => (
                     <div key={d.id} className="-mb-2 flex items-center justify-between text-[13px] text-emerald-700">

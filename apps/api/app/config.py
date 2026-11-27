@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     # Time (IST, HH:MM:SS) we ask Delhivery's rider to come to the warehouse.
     delhivery_pickup_time: str = "14:00:00"
 
+    # Cloudflare Turnstile (bot check on public forms). Both empty = off.
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
+    # Hard ceiling on contact-form messages per day, across all senders.
+    contact_daily_cap: int = 100
+
     resend_api_key: str = ""
     resend_from: str = "Urban Aana <noreply@urbanaana.com>"
 

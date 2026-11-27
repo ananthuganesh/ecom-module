@@ -16,7 +16,6 @@ export default function CheckoutAccountPrompt({ email, onSkip, verifyWithCode = 
         <CustomerOtpForm
           fixedEmail={email}
           idPrefix="checkout-otp"
-          successToast="Email verified"
           className="mt-1"
           inputClassName="h-10"
           buttonClassName="h-10"

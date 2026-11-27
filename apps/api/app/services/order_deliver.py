@@ -21,6 +21,9 @@ from app.documents import Order, User
 # States a delivery can't follow: the parcel never left, or the return flow owns it.
 BLOCKED_STATUSES = {"cancelled", "canceled", "abandoned", "return requested", "returned"}
 BLOCKED_SHIPPING = {"cancelled", "returned"}
+# Without a consignment, only these statuses mean the parcel has left (hand
+# delivery / own courier). "order placed" and "processing" are still unfulfilled.
+FULFILLED_STATUSES = {"shipped", "out for delivery"}
 
 
 def _paid(order: Order) -> bool:
@@ -47,6 +50,13 @@ def parse_delivered_at(value: Any) -> datetime | None:
     return parsed
 
 
+def is_fulfilled(order: Order) -> bool:
+    """Booked with a courier (has an AWB) or marked packed / out for delivery by hand."""
+    if str(getattr(order, "awbCode", None) or getattr(order, "awb", None) or "").strip():
+        return True
+    return str(order.status or "").strip().lower() in FULFILLED_STATUSES
+
+
 def assert_can_mark_delivered(order: Order) -> None:
     status = str(order.status or "").strip().lower()
     if status in BLOCKED_STATUSES:
@@ -63,6 +73,11 @@ def assert_can_mark_delivered(order: Order) -> None:
         raise HTTPException(
             status_code=400,
             detail="Only paid orders can be marked as delivered.",
+        )
+    if not is_fulfilled(order):
+        raise HTTPException(
+            status_code=400,
+            detail="Fulfil this order before marking it as delivered.",
         )
 
 

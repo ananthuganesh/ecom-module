@@ -18,8 +18,11 @@ import { Sparkles } from "@/components/admin/LocalIcons";
 import { AdminListLayout, AdminHeaderButton } from "@/components/admin/list";
 import { Input } from "@/components/ui/input";
 import SafeImage from "@/components/SafeImage";
+import { HERO_DESKTOP_SIZE, HERO_MOBILE_SIZE } from "@/lib/heroArtDirection";
 
 const MAX_SLIDES = 5;
+const DESKTOP_LABEL = `${HERO_DESKTOP_SIZE.width} × ${HERO_DESKTOP_SIZE.height} px`;
+const MOBILE_LABEL = `${HERO_MOBILE_SIZE.width} × ${HERO_MOBILE_SIZE.height} px`;
 
 export default function AdminBannersPage() {
   const [slides, setSlides] = useState([]);
@@ -29,6 +32,8 @@ export default function AdminBannersPage() {
   const [uploading, setUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
   const fileRef = useRef(null);
+  const mobileFileRef = useRef(null);
+  const [mobileTarget, setMobileTarget] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,7 +93,7 @@ export default function AdminBannersPage() {
         try {
           const result = await adminMediaService.upload(file, "banner");
           const url = result?.url || result?.location || result?.path;
-          if (url) added.push({ url, alt: "", visible: true, href: null });
+          if (url) added.push({ url, mobileUrl: null, alt: "", visible: true, href: null });
         } catch (e) {
           toast.error(userErrorMessage(e, `Couldn’t upload ${file.name}`));
         }
@@ -104,6 +109,32 @@ export default function AdminBannersPage() {
     } finally {
       setUploading(false);
       event.target.value = "";
+    }
+  };
+
+  const pickMobileImage = (index) => {
+    setMobileTarget(index);
+    mobileFileRef.current?.click();
+  };
+
+  const handleMobileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    const index = mobileTarget;
+    event.target.value = "";
+    if (!file || index === null) return;
+    setUploading(true);
+    try {
+      const result = await adminMediaService.upload(file, "banner");
+      const url = result?.url || result?.location || result?.path;
+      if (url) {
+        update(index, { mobileUrl: url });
+        toast.success("Mobile image added — save to publish.");
+      }
+    } catch (e) {
+      toast.error(userErrorMessage(e, `Couldn’t upload ${file.name}`));
+    } finally {
+      setUploading(false);
+      setMobileTarget(null);
     }
   };
 
@@ -124,7 +155,9 @@ export default function AdminBannersPage() {
     }
   };
 
-  const visibleCount = slides.filter((s) => s.visible !== false).length;
+  const visibleSlides = slides.filter((s) => s.visible !== false);
+  const visibleCount = visibleSlides.length;
+  const missingMobile = visibleSlides.filter((s) => !s.mobileUrl).length;
 
   return (
     <AdminListLayout
@@ -165,8 +198,28 @@ export default function AdminBannersPage() {
         hidden
         onChange={handleUpload}
       />
+      <input
+        ref={mobileFileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={handleMobileUpload}
+      />
 
       <div className="flex flex-col gap-3 px-4 pb-6">
+        <p className="rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
+          Desktop banner {DESKTOP_LABEL}. Mobile banner {MOBILE_LABEL} (portrait).
+          Keep text and faces near the centre so nothing important is cut off.
+        </p>
+
+        {visibleCount > 0 && missingMobile > 0 ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
+            {missingMobile === visibleCount
+              ? "No mobile banners yet, so phones show the desktop banners."
+              : `${missingMobile} shown banner${missingMobile === 1 ? " is" : "s are"} missing a mobile image. Phones switch to the tall mobile layout once every shown banner has one; until then they show the desktop banners.`}
+          </p>
+        ) : null}
+
         {usingDefaults ? (
           <p className="rounded-md bg-muted px-3 py-2 text-[13px] text-muted-foreground">
             Showing the banners that ship with the store. Save to replace them
@@ -201,13 +254,52 @@ export default function AdminBannersPage() {
                 {index + 1}
               </span>
 
-              <div className="relative h-16 w-32 shrink-0 overflow-hidden rounded-md bg-muted">
-                <SafeImage
-                  src={slide.url}
-                  alt={slide.alt || "Banner"}
-                  fill
-                  className="object-cover"
-                />
+              <div className="flex shrink-0 items-end gap-2">
+                <div className="flex flex-col gap-1">
+                  <div className="relative h-16 w-[154px] overflow-hidden rounded-md bg-muted">
+                    <SafeImage
+                      src={slide.url}
+                      alt={slide.alt || "Desktop banner"}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">Desktop</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => pickMobileImage(index)}
+                    disabled={uploading}
+                    className="relative flex h-16 w-[43px] items-center justify-center overflow-hidden rounded-md border border-dashed bg-muted text-muted-foreground hover:border-foreground/40 disabled:opacity-60"
+                    aria-label={slide.mobileUrl ? "Replace mobile image" : "Add mobile image"}
+                    title={slide.mobileUrl ? `Replace mobile image (${MOBILE_LABEL})` : `Add mobile image (${MOBILE_LABEL})`}
+                  >
+                    {slide.mobileUrl ? (
+                      <SafeImage
+                        src={slide.mobileUrl}
+                        alt={slide.alt || "Mobile banner"}
+                        fill
+                        className="object-cover"
+                      />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    Mobile
+                    {slide.mobileUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => update(index, { mobileUrl: null })}
+                        className="underline-offset-2 hover:underline"
+                        aria-label="Remove mobile image"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </span>
+                </div>
               </div>
 
               <div className="flex min-w-[220px] flex-1 flex-col gap-2">

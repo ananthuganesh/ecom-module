@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createMemberColumns } from "../columns";
 
 const EMPTY_FORM = {
@@ -37,7 +38,35 @@ const EMPTY_FORM = {
   isActive: true,
   metaTitle: "",
   metaDescription: "",
+  rule: "manual",
+  ruleLimit: 24,
+  ruleDays: 60,
 };
+
+const RULE_OPTIONS = [
+  { value: "manual", label: "Manual — pick products yourself" },
+  { value: "new_arrivals", label: "Automatic — New arrivals" },
+  { value: "best_sellers", label: "Automatic — Best sellers" },
+];
+
+const RULE_HELP = {
+  new_arrivals: "The newest products in your catalog, newest first. Updates itself as you add products.",
+  best_sellers: "Products with the most units sold on paid orders, best-selling first. Updates itself every few minutes.",
+};
+
+function formFromCollection(data) {
+  return {
+    name: data.name || "",
+    slug: data.slug || "",
+    description: data.description || "",
+    isActive: data.isActive !== false,
+    metaTitle: data.metaTitle || "",
+    metaDescription: data.metaDescription || "",
+    rule: data.rule || "manual",
+    ruleLimit: data.ruleLimit || 24,
+    ruleDays: data.ruleDays || 60,
+  };
+}
 
 const ACTIVE_PILL =
   "bg-(--p-color-badge-bg-fill-success) text-(--p-color-badge-text-success) hover:bg-(--p-color-badge-bg-fill-success) [&_svg]:text-(--p-color-badge-text-success) [&_svg]:opacity-100";
@@ -86,14 +115,7 @@ export default function AdminCollectionEditPage() {
       .getById(id)
       .then((data) => {
         if (cancelled) return;
-        const loaded = {
-          name: data.name || "",
-          slug: data.slug || "",
-          description: data.description || "",
-          isActive: data.isActive !== false,
-          metaTitle: data.metaTitle || "",
-          metaDescription: data.metaDescription || "",
-        };
+        const loaded = formFromCollection(data);
         setForm(loaded);
         setSavedForm(loaded);
         setSlugTouched(true);
@@ -143,6 +165,9 @@ export default function AdminCollectionEditPage() {
   );
 
   const slugPreview = collectionSlug(form.slug || form.name);
+  const automatic = form.rule !== "manual";
+  // The product list reflects what's saved, so a rule change shows after Save.
+  const savedAutomatic = !isNew && savedForm.rule !== "manual";
   const dirty = isNew || JSON.stringify(form) !== JSON.stringify(savedForm);
 
   const updateForm = ({ slugManual, ...patch }) => {
@@ -223,7 +248,7 @@ export default function AdminCollectionEditPage() {
       const payload = { ...form, slug: slugPreview };
       if (isNew) {
         const created = await adminCollectionService.create(payload);
-        if (memberIds.length) {
+        if (!automatic && memberIds.length) {
           try {
             await adminCollectionService.addProducts(created._id, memberIds);
           } catch (error) {
@@ -240,10 +265,14 @@ export default function AdminCollectionEditPage() {
         router.replace(`/admin/products/collections/${created._id}`);
         return;
       }
-      const saved = await adminCollectionService.update(id, payload);
-      const next = { ...form, slug: saved.slug };
+      await adminCollectionService.update(id, payload);
+      // Reload so an automatic collection's computed products show right away.
+      const fresh = await adminCollectionService.getById(id);
+      const next = formFromCollection(fresh);
       setForm(next);
       setSavedForm(next);
+      setMembers(fresh.products || []);
+      setRowSelection({});
       toast.success("Collection saved");
       bustStorefrontCatalogCache();
     } catch (error) {
@@ -361,17 +390,23 @@ export default function AdminCollectionEditPage() {
             <Card className="@container/card gap-0 pb-0">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
                 <CardTitle>Products</CardTitle>
-                <AdminHeaderButton variant="outline" onClick={openPicker}>
-                  <Plus className="h-3.5 w-3.5" /> Add products
-                </AdminHeaderButton>
+                {automatic || savedAutomatic ? (
+                  <span className="text-[12px] text-muted-foreground">
+                    {savedAutomatic ? "Filled automatically" : "Save to see the products"}
+                  </span>
+                ) : (
+                  <AdminHeaderButton variant="outline" onClick={openPicker}>
+                    <Plus className="h-3.5 w-3.5" /> Add products
+                  </AdminHeaderButton>
+                )}
               </CardHeader>
               <CardContent className="px-0">
                 <DataTable
                   columns={columns}
                   data={visibleMembers}
                   getRowId={(row) => row._id}
-                  rowSelection={rowSelection}
-                  onRowSelectionChange={setRowSelection}
+                  rowSelection={savedAutomatic ? {} : rowSelection}
+                  onRowSelectionChange={savedAutomatic ? undefined : setRowSelection}
                   onRowClick={
                     isNew ? undefined : (row) => router.push(adminProductHref(row))
                   }
@@ -384,10 +419,14 @@ export default function AdminCollectionEditPage() {
                   emptyDescription={
                     memberSearch
                       ? "Try a different search."
-                      : "Use “Add products” to put products in this collection."
+                      : savedAutomatic
+                        ? savedForm.rule === "best_sellers"
+                          ? "No paid orders in this period yet. Products appear as they sell."
+                          : "No live products yet."
+                        : "Use “Add products” to put products in this collection."
                   }
                   toolbar={
-                    selectedIds.length > 0 ? (
+                    !savedAutomatic && selectedIds.length > 0 ? (
                       <>
                         <div className="flex shrink-0 items-center gap-2">
                           <span className="text-[13px] font-medium text-foreground">
@@ -445,6 +484,59 @@ export default function AdminCollectionEditPage() {
           </div>
 
           <aside className="flex flex-col gap-4">
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Collection type</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <Select value={form.rule} onValueChange={(rule) => updateForm({ rule })}>
+                  <SelectTrigger className="w-full" aria-label="Collection type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RULE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {automatic ? (
+                  <>
+                    <p className="text-[12px] leading-5 text-muted-foreground">{RULE_HELP[form.rule]}</p>
+                    <Field>
+                      <FieldLabel htmlFor="collection-rule-limit">Number of products</FieldLabel>
+                      <Input
+                        id="collection-rule-limit"
+                        type="number"
+                        min={4}
+                        max={100}
+                        value={form.ruleLimit}
+                        onChange={(e) => updateForm({ ruleLimit: Number(e.target.value) || "" })}
+                      />
+                    </Field>
+                    {form.rule === "best_sellers" ? (
+                      <Field>
+                        <FieldLabel htmlFor="collection-rule-days">Count sales from the last (days)</FieldLabel>
+                        <Input
+                          id="collection-rule-days"
+                          type="number"
+                          min={7}
+                          max={365}
+                          value={form.ruleDays}
+                          onChange={(e) => updateForm({ ruleDays: Number(e.target.value) || "" })}
+                        />
+                      </Field>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-[12px] leading-5 text-muted-foreground">
+                    Only the products you add are shown.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
             <Card className="@container/card">
               <CardHeader>
                 <CardTitle>Visibility</CardTitle>

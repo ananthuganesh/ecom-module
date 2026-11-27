@@ -5,6 +5,8 @@
 
 const BLOCKED_STATUSES = new Set(["cancelled", "canceled", "abandoned", "return requested", "returned"]);
 const BLOCKED_SHIPPING = new Set(["cancelled", "returned"]);
+// Without an AWB, only these mean the parcel has left (hand delivery / own courier).
+const FULFILLED_STATUSES = new Set(["shipped", "out for delivery"]);
 
 export function isOrderPaid(order) {
   const status = String(
@@ -21,11 +23,17 @@ export function isOrderDelivered(order) {
   );
 }
 
+/** Booked with a courier (has an AWB) or marked packed / out for delivery by hand. */
+export function isOrderFulfilled(order) {
+  if (String(order?.awbCode || order?.awb || "").trim()) return true;
+  return FULFILLED_STATUSES.has(String(order?.status || "").toLowerCase());
+}
+
 export function canMarkDelivered(order) {
   if (!order || isOrderDelivered(order)) return false;
   if (BLOCKED_STATUSES.has(String(order.status || "").toLowerCase())) return false;
   if (BLOCKED_SHIPPING.has(String(order.shippingStatus || "").toLowerCase())) return false;
-  return isOrderPaid(order);
+  return isOrderPaid(order) && isOrderFulfilled(order);
 }
 
 export function markDeliveredConfirmText(order) {

@@ -44,6 +44,14 @@ async def lifespan(_: FastAPI):
 
     get_settings().assert_production_secrets()
     await init_db()
+    from app.services.collection_rules import ensure_default_auto_collections
+
+    try:
+        created = await ensure_default_auto_collections()
+        if created:
+            logger.info("Created automatic collections: %s", ", ".join(created))
+    except Exception:  # never block startup on this
+        logger.exception("Couldn't create default automatic collections")
     stop_event = asyncio.Event()
     abandoned_task = asyncio.create_task(aisensy_svc.abandoned_recovery_loop(stop_event))
     from app.services.stock_reserve_sweeper import stock_reserve_sweeper_loop

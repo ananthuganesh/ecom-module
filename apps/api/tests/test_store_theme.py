@@ -26,6 +26,17 @@ def test_normalize_defaults_visible_and_trims_text():
     assert slide["href"] is None
 
 
+def test_normalize_keeps_optional_mobile_image():
+    slides = store_theme.normalize_slides(
+        [
+            {"url": "/d.webp", "mobileUrl": "  /m.webp  "},
+            {"url": "/d2.webp", "mobileUrl": "   "},
+            {"url": "/d3.webp"},
+        ]
+    )
+    assert [s["mobileUrl"] for s in slides] == ["/m.webp", None, None]
+
+
 def test_normalize_keeps_hidden_slides():
     """Hiding must not delete the slide — it can be brought back without a re-upload."""
     slides = store_theme.normalize_slides([{"url": "/b.webp", "visible": False}])

@@ -19,6 +19,7 @@ export async function fetchHeroSlides({ revalidate = 300 } = {}) {
     const slides = (data?.heroSlides || [])
       .map((s) => ({
         src: s.url,
+        mobileSrc: s.mobileUrl || null,
         alt: s.alt || "",
         href: s.href || null,
       }))

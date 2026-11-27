@@ -54,7 +54,7 @@ function clearStoredToken() {
 
 function RecoverShell({ children }) {
   return (
-    <main className="min-h-screen bg-[#F9F9F5] flex items-center justify-center px-4 py-24">
+    <main className="min-h-screen bg-white flex items-center justify-center px-4 py-24">
       <div className="w-full max-w-md text-center">{children}</div>
     </main>
   );

@@ -78,13 +78,14 @@ export function createCollectionColumns() {
     },
     {
       id: "products",
-      size: 110,
-      meta: { className: "w-[110px]" },
+      size: 130,
+      meta: { className: "w-[130px]" },
       accessorFn: (row) => Number(row.productCount || 0),
       header: "Products",
       cell: ({ row }) => (
         <span className="text-[13px] font-medium tabular-nums text-muted-foreground">
           {row.original.productCount || 0}
+          {row.original.rule ? <span className="ml-1.5 font-normal">· Auto</span> : null}
         </span>
       ),
     },

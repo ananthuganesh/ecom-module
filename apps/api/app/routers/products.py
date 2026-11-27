@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.deps import OptionalUser
 from app.documents import Product
 from app.serializers import product_dict
+from app.services import collection_rules
 from app.services import collections as collections_svc
 from app.services import product_sales
 from app.services.rate_limit import rate_limit_dependency
@@ -207,10 +208,17 @@ async def list_products(
         maxPrice=maxPrice,
         priceRange=priceRange,
     )
+    rule_ids: list | None = None
     if collection:
         found = await collections_svc.by_slug(collection)
-        # An unknown or hidden collection lists nothing rather than the whole catalog.
-        query["collections"] = str(found.id) if found else "__none__"
+        if found and collection_rules.clean_rule(found.rule):
+            # Automatic collection: its rule picks and orders the products;
+            # the shopper's filters still narrow that set.
+            rule_ids = await collection_rules.rule_product_ids(found)
+            query["_id"] = {"$in": rule_ids}
+        else:
+            # An unknown or hidden collection lists nothing rather than the whole catalog.
+            query["collections"] = str(found.id) if found else "__none__"
 
     # Manual order first (admin drag-to-reorder), newest first within ties.
     # Products with no position sort ahead, so a new arrival leads until placed.
@@ -220,8 +228,18 @@ async def list_products(
     elif sort == "price_desc":
         sort_spec = [("pricing.sellingPrice", -1)]
 
-    total = await Product.find(query).count()
-    products = await Product.find(query).sort(sort_spec).skip(pageSize * (pageNum - 1)).limit(pageSize).to_list()
+    if rule_ids is not None and sort not in ("price_asc", "price_desc"):
+        # Keep the rule's ranking (newest / best-selling first). The set is
+        # capped at 100, so paging in memory is cheap.
+        rank = {pid: i for i, pid in enumerate(rule_ids)}
+        matched = await Product.find(query).to_list()
+        matched.sort(key=lambda p: rank.get(p.id, len(rank)))
+        total = len(matched)
+        start = pageSize * (pageNum - 1)
+        products = matched[start : start + pageSize]
+    else:
+        total = await Product.find(query).count()
+        products = await Product.find(query).sort(sort_spec).skip(pageSize * (pageNum - 1)).limit(pageSize).to_list()
     return {
         "products": [product_dict(p) for p in products],
         "page": pageNum,
@@ -360,6 +378,11 @@ async def suggestions(
                 "slug": p.slug,
                 "thumbnails": thumbs[:1],
                 "price": price,
+                # For the search panel's product cards (sale price + strike-through).
+                "pricing": {
+                    "sellingPrice": price,
+                    "mrp": float(p.pricing.mrp) if p.pricing and p.pricing.mrp is not None else None,
+                },
             }
         )
     return out

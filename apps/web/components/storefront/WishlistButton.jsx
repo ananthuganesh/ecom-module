@@ -15,6 +15,8 @@ export default function WishlistButton({
   showLabel = false,
 }) {
   const [hydrated, setHydrated] = useState(false);
+  // Bumped on each click so the CSS animation restarts; `kind` picks add vs remove.
+  const [pulse, setPulse] = useState({ n: 0, kind: "" });
   const wishlistedFromStore = useWishlistStore((s) =>
     product ? s.has(product) : false
   );
@@ -40,6 +42,7 @@ export default function WishlistButton({
     e.preventDefault();
     e.stopPropagation();
     // No toast: the filled heart and the navbar count already show the result.
+    setPulse((p) => ({ n: p.n + 1, kind: wishlisted ? "remove" : "add" }));
     toggle(product);
   };
 
@@ -51,15 +54,30 @@ export default function WishlistButton({
       aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
       className={className}
     >
-      <Heart
-        size={iconSize}
-        className={
-          wishlisted
-            ? "fill-[#DF1721] text-[#DF1721]"
-            : "fill-transparent text-current"
-        }
-        strokeWidth={wishlisted ? 1.75 : 2}
-      />
+      <span
+        key={pulse.n}
+        className={`wishlist-heart relative inline-flex ${
+          pulse.kind === "add" ? "wishlist-heart--add" : pulse.kind === "remove" ? "wishlist-heart--remove" : ""
+        }`}
+      >
+        <Heart
+          size={iconSize}
+          className={`transition-colors duration-200 ${
+            wishlisted
+              ? "fill-[#DF1721] text-[#DF1721]"
+              : "fill-transparent text-current"
+          }`}
+          strokeWidth={wishlisted ? 1.75 : 2}
+        />
+        {pulse.kind === "add" ? (
+          <span aria-hidden className="wishlist-burst">
+            <span className="wishlist-burst__ring" />
+            {[0, 60, 120, 180, 240, 300].map((deg) => (
+              <span key={deg} className="wishlist-burst__dot" style={{ "--a": `${deg}deg` }} />
+            ))}
+          </span>
+        ) : null}
+      </span>
       {showLabel ? (
         <span>{wishlisted ? "Wishlisted" : "Wishlist"}</span>
       ) : null}

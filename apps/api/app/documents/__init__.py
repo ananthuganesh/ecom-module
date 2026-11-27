@@ -384,6 +384,11 @@ class Category(Document):
     isActive: bool = True
     metaTitle: Optional[str] = None
     metaDescription: Optional[str] = None
+    # None = manual (products join via Product.collections). Otherwise an
+    # automatic rule from services/collection_rules.py: new_arrivals | best_sellers.
+    rule: Optional[str] = None
+    ruleLimit: int = 24
+    ruleDays: int = 60
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 

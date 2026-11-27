@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
-import { Toaster } from "@/components/ui/sonner";
+import WhatsAppButton from "./WhatsAppButton";
 import "@/app/storefront.css";
 
 export default function StorefrontShell({ children }) {
@@ -29,7 +29,6 @@ export default function StorefrontShell({ children }) {
       <div className="storefront-root min-h-screen bg-white text-black">
         {skipLink}
         <main id="main-content">{children}</main>
-        <Toaster position="top-center" theme="light" />
       </div>
     );
   }
@@ -44,7 +43,7 @@ export default function StorefrontShell({ children }) {
         {children}
       </main>
       <Footer />
-      <Toaster position="top-center" theme="light" />
+      <WhatsAppButton />
     </div>
   );
 }

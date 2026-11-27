@@ -1,10 +1,11 @@
 import { preload } from "react-dom";
 import dynamic from "next/dynamic";
+import { getImageProps } from "next/image";
 import HeroBanner from "@/components/storefront/HeroBanner";
-import ProductGrid from "@/components/storefront/ProductGrid";
+import ProductCarousel from "@/components/storefront/ProductCarousel";
 import { HERO_LCP_SRC } from "@/components/storefront/heroSlides";
 import { fetchHeroSlides } from "@/lib/fetchHeroSlides";
-import { getCatalogConfig } from "@/lib/catalogConfig";
+import { HERO_DESKTOP_MEDIA, HERO_MOBILE_MEDIA, heroUsesMobileArt } from "@/lib/heroArtDirection";
 import { fetchStoreProducts } from "@/lib/fetchProducts";
 import { filterInStock } from "@/lib/productStock";
 import { canonicalUrl } from "@/lib/siteUrl";
@@ -25,22 +26,69 @@ export const metadata = {
 // Per-request fetch TTL is STORE_CATALOG_REVALIDATE.
 export const revalidate = 60;
 
+/**
+ * Preload the first slide exactly as HeroBanner renders it (optimized srcset,
+ * not the raw file), split by breakpoint when phones get their own art.
+ */
+function preloadFirstHeroSlide(slides) {
+  const first = slides[0] || { src: HERO_LCP_SRC };
+  const portrait = heroUsesMobileArt(slides);
+  const hint = (src, media) => {
+    const { props } = getImageProps({ src, alt: "", fill: true, sizes: "100vw", quality: 80 });
+    preload(props.src, {
+      as: "image",
+      fetchPriority: "high",
+      imageSrcSet: props.srcSet,
+      imageSizes: props.sizes,
+      ...(media ? { media } : {}),
+    });
+  };
+  if (portrait) {
+    hint(first.src, HERO_DESKTOP_MEDIA);
+    hint(first.mobileSrc, HERO_MOBILE_MEDIA);
+  } else {
+    hint(first.src);
+  }
+}
+
+const HOME_SECTION_SIZE = 12;
+const HOME_COLLECTIONS = [
+  { slug: "new-arrivals", first: "New", accent: "Arrivals", listId: "home-new-arrivals", listName: "New Arrivals" },
+  { slug: "best-sellers", first: "Best", accent: "Sellers", listId: "home-best-sellers", listName: "Best Sellers" },
+];
+
+/** A homepage product row backed by a collection, with a link to the full page. */
+function HomeCollectionSection({ section, products }) {
+  // Hidden until the collection has something to show (e.g. no sales yet).
+  if (!products.length) return null;
+  return (
+    <section id={section.slug} className="scroll-mt-24 py-6 md:py-10">
+      <ProductCarousel
+        products={products}
+        listId={section.listId}
+        listName={section.listName}
+        viewAllHref={`/collections/${section.slug}`}
+        titleFirst={section.first}
+        titleAccent={section.accent}
+      />
+    </section>
+  );
+}
+
 export default async function Home() {
   const heroSlides = await fetchHeroSlides();
-  // Preload whichever slide actually renders first, not the shipped default.
-  preload(heroSlides[0]?.src || HERO_LCP_SRC, {
-    as: "image",
-    fetchPriority: "high",
-  });
+  preloadFirstHeroSlide(heroSlides);
 
-  const { homePageSize } = getCatalogConfig();
-  // Over-fetch: sold-out drops are hidden below, and the API has no stock
-  // filter, so asking for exactly homePageSize would leave gaps in the grid.
-  const fetched = await fetchStoreProducts({
-    pageSize: Math.min(100, homePageSize * 3),
-    sort: "newest",
-  });
-  const products = filterInStock(fetched).slice(0, homePageSize);
+  // Automatic collections (services/collection_rules.py), already ranked.
+  // Over-fetch: sold-out products are hidden and the API has no stock filter.
+  const [newArrivals, bestSellers] = await Promise.all(
+    HOME_COLLECTIONS.map(async ({ slug }) =>
+      filterInStock(await fetchStoreProducts({ collection: slug, pageSize: HOME_SECTION_SIZE * 3 })).slice(
+        0,
+        HOME_SECTION_SIZE
+      )
+    )
+  );
 
   return (
     <div className="w-full bg-white font-sans">
@@ -50,17 +98,8 @@ export default async function Home() {
       />
       <HeroBanner slides={heroSlides} />
 
-      <section
-        id="latest-drops"
-        className="scroll-mt-24 px-4 py-6 md:px-4 md:py-10 lg:px-8"
-      >
-        <header className="mb-3 w-full text-center md:mb-6">
-          <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
-            Latest <span className="title-knewave-accent">Drops</span>
-          </h2>
-        </header>
-        <ProductGrid products={products} priorityCount={0} />
-      </section>
+      <HomeCollectionSection section={HOME_COLLECTIONS[0]} products={newArrivals} />
+      <HomeCollectionSection section={HOME_COLLECTIONS[1]} products={bestSellers} />
 
       <InstagramReels />
       <TwoColumnImages />

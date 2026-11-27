@@ -2,18 +2,37 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "@/components/icons";
-import { toast } from "sonner";
 import { authService } from "@/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import { persistAuth } from "@/lib/persistAuth";
 import { userErrorMessage } from "@/lib/userMessage";
 import { cn } from "@/lib/utils";
+import { formatWait, retryAfterSeconds } from "@/lib/rateLimitWait";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const RESEND_COOLDOWN_SEC = 60;
 const OTP_LENGTH = 6;
+
+/** Problems with the typed email belong under the field, not in the form banner. */
+function isEmailProblem(err) {
+  const status = err?.response?.status;
+  return status === 400 || status === 422;
+}
+
+/** Calm "please wait" banner: a pause, not a mistake. */
+function WaitNotice({ children }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+    >
+      {children}
+    </div>
+  );
+}
 
 export function OtpDigitInputs({
   value,
@@ -129,7 +148,8 @@ export function OtpDigitInputs({
           onFocus={(e) => e.target.select()}
           className={cn(
             "h-12 w-full rounded-md border border-input bg-transparent text-center text-lg font-semibold tabular-nums shadow-xs outline-none",
-            "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+            // One light outline when active (no extra ring around the border).
+            "transition-colors focus-visible:border-gray-400",
             "disabled:cursor-not-allowed disabled:opacity-50"
           )}
         />
@@ -149,15 +169,43 @@ export default function CustomerOtpForm({
   idPrefix = "otp",
   // Verify a known address (checkout) instead of asking for one.
   fixedEmail = "",
-  successToast = "Signed in",
 }) {
   const [email, setEmail] = useState(fixedEmail);
   const [code, setCode] = useState("");
   const [step, setStep] = useState("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  // Rate limited until this time (ms). Drives the countdown and disables Send / Verify.
+  const [waitUntil, setWaitUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const [cooldown, setCooldown] = useState(0);
+  // Inline "New code sent" after Resend (no toast on the storefront).
+  const [resent, setResent] = useState(false);
   const setCustomerInfo = useAuthStore((s) => s.setUserInfo);
+
+  useEffect(() => {
+    if (!resent) return;
+    const t = setTimeout(() => setResent(false), 4000);
+    return () => clearTimeout(t);
+  }, [resent]);
+
+  useEffect(() => {
+    if (waitUntil <= Date.now()) return undefined;
+    const t = setInterval(() => {
+      const tick = Date.now();
+      setNow(tick);
+      if (tick >= waitUntil) clearInterval(t);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [waitUntil]);
+
+  const waitLeft = Math.max(0, Math.ceil((waitUntil - now) / 1000));
+  const startWait = (seconds) => {
+    const at = Date.now();
+    setNow(at);
+    setWaitUntil(at + seconds * 1000);
+  };
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -167,18 +215,25 @@ export default function CustomerOtpForm({
 
   const handleSendCode = async (e) => {
     e.preventDefault();
+    if (waitLeft > 0) return;
     setLoading(true);
     setError("");
+    setEmailError("");
     try {
       await authService.requestOtp(email.trim().toLowerCase());
       setCode("");
       setStep("otp");
       setCooldown(RESEND_COOLDOWN_SEC);
-      toast.success("Code sent — check your email");
+      setResent(false);
     } catch (err) {
-      setError(
-        userErrorMessage(err, "We couldn’t send a code. Please try again.")
-      );
+      const wait = retryAfterSeconds(err);
+      if (wait) {
+        startWait(wait);
+      } else if (isEmailProblem(err) && !fixedEmail) {
+        setEmailError(userErrorMessage(err, "Enter a valid email address."));
+      } else {
+        setError(userErrorMessage(err, "We couldn’t send a code. Please try again."));
+      }
     } finally {
       setLoading(false);
     }
@@ -191,6 +246,7 @@ export default function CustomerOtpForm({
       setError("Enter the 6-digit code");
       return;
     }
+    if (waitLeft > 0) return;
     setLoading(true);
     setError("");
     try {
@@ -200,10 +256,12 @@ export default function CustomerOtpForm({
       );
       setCustomerInfo(data);
       persistAuth(data);
-      if (successToast) toast.success(successToast);
+      // The sheet closing / checkout moving on is the confirmation.
       onSuccess?.(data);
     } catch (err) {
-      setError(userErrorMessage(err, "That code is invalid or has expired."));
+      const wait = retryAfterSeconds(err);
+      if (wait) startWait(wait);
+      else setError(userErrorMessage(err, "That code is invalid or has expired."));
     } finally {
       setLoading(false);
     }
@@ -217,20 +275,29 @@ export default function CustomerOtpForm({
       await authService.requestOtp(email.trim().toLowerCase());
       setCode("");
       setCooldown(RESEND_COOLDOWN_SEC);
-      toast.success("New code sent");
+      setResent(true);
     } catch (err) {
-      setError(
-        userErrorMessage(err, "We couldn’t send a new code. Please try again.")
-      );
+      const wait = retryAfterSeconds(err);
+      if (wait) {
+        // The code already sent still works; Resend just waits for the window.
+        setCooldown(wait);
+      } else {
+        setError(userErrorMessage(err, "We couldn’t send a new code. Please try again."));
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const sentTo = email.trim().toLowerCase();
   const description =
-    step === "otp"
-      ? "Enter the 6-digit OTP sent to your email."
-      : fixedEmail
+    step === "otp" ? (
+      <>
+        We sent a 6-digit code to{" "}
+        <span className="font-medium text-foreground break-all">{sentTo}</span>. Check your inbox
+        (and spam).
+      </>
+    ) : fixedEmail
         ? `We'll email a 6-digit code to ${fixedEmail} to confirm it's you.`
         : "Enter your email below to login to your account";
 
@@ -238,11 +305,36 @@ export default function CustomerOtpForm({
 
   return (
     <div className={cn("w-full", className)}>
-      <p className="mb-5 text-sm text-muted-foreground">{description}</p>
+      <p className="mb-5 text-sm text-muted-foreground" aria-live="polite">
+        {description}
+      </p>
 
       {step === "email" ? (
         <form onSubmit={handleSendCode}>
           <FieldGroup className="gap-4">
+            {waitLeft > 0 ? (
+              <WaitNotice>
+                Too many code requests. Try again in{" "}
+                <span className="font-semibold tabular-nums">{formatWait(waitLeft)}</span>
+                {email.trim() ? (
+                  <>
+                    , or{" "}
+                    <button
+                      type="button"
+                      className="font-semibold underline underline-offset-4"
+                      onClick={() => {
+                        setStep("otp");
+                        setCode("");
+                        setError("");
+                      }}
+                    >
+                      enter the code we already emailed you
+                    </button>
+                  </>
+                ) : null}
+                .
+              </WaitNotice>
+            ) : null}
             {error ? (
               <p
                 role="alert"
@@ -261,22 +353,34 @@ export default function CustomerOtpForm({
                   required
                   className={inputClassName}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError("");
+                  }}
                   disabled={loading}
+                  aria-invalid={emailError ? true : undefined}
+                  aria-describedby={emailError ? `${idPrefix}-email-error` : undefined}
                 />
+                {emailError ? (
+                  <p id={`${idPrefix}-email-error`} className="text-[13px] text-destructive">
+                    {emailError}
+                  </p>
+                ) : null}
               </Field>
             )}
             <Field>
               <Button
                 type="submit"
                 className={cn("w-full", buttonClassName)}
-                disabled={loading}
+                disabled={loading || waitLeft > 0}
               >
                 {loading ? (
                   <>
                     <Loader2 className="animate-spin" />
                     Sending…
                   </>
+                ) : waitLeft > 0 ? (
+                  `Try again in ${formatWait(waitLeft)}`
                 ) : (
                   fixedEmail ? "Email me a code" : "Send OTP"
                 )}
@@ -287,6 +391,12 @@ export default function CustomerOtpForm({
       ) : (
         <form onSubmit={handleVerifyCode}>
           <FieldGroup className="gap-4">
+            {waitLeft > 0 ? (
+              <WaitNotice>
+                Too many attempts. Try again in{" "}
+                <span className="font-semibold tabular-nums">{formatWait(waitLeft)}</span>.
+              </WaitNotice>
+            ) : null}
             {error ? (
               <p
                 role="alert"
@@ -309,7 +419,7 @@ export default function CustomerOtpForm({
               <Button
                 type="submit"
                 className={cn("w-full", buttonClassName)}
-                disabled={loading || !codeComplete}
+                disabled={loading || !codeComplete || waitLeft > 0}
               >
                 {loading ? (
                   <>
@@ -338,14 +448,19 @@ export default function CustomerOtpForm({
                   Change email
                 </button>
               )}
-              <button
-                type="button"
-                className="text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
-                onClick={handleResend}
-                disabled={loading || cooldown > 0}
-              >
-                {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
-              </button>
+              <span className="flex items-center gap-2">
+                <span role="status" aria-live="polite" className="text-emerald-700">
+                  {resent ? "New code sent" : ""}
+                </span>
+                <button
+                  type="button"
+                  className="text-muted-foreground underline-offset-4 hover:underline disabled:opacity-50"
+                  onClick={handleResend}
+                  disabled={loading || cooldown > 0}
+                >
+                  {cooldown > 0 ? `Resend in ${formatWait(cooldown)}` : "Resend code"}
+                </button>
+              </span>
             </div>
           </FieldGroup>
         </form>

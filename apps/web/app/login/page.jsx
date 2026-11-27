@@ -6,7 +6,7 @@ export default function Page() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-svh items-center justify-center">
+        <div className="flex min-h-[70svh] items-center justify-center bg-[#ffffff]">
           <Spinner className="size-5" />
         </div>
       }

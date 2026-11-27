@@ -53,7 +53,7 @@ function AdminLoginInner() {
             rel="noopener noreferrer"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            Brid Network LLP
+            BRID NETWORK LLP
           </a>
         </p>
       </div>

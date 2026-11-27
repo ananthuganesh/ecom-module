@@ -12,6 +12,10 @@ os.environ["ALLOWED_ORIGINS"] = "http://test.local"
 os.environ["MONGO_URI"] = "mongodb://127.0.0.1:27017/urbanaana_test"
 # The root .env's DSN would otherwise report test requests to the live Sentry project.
 os.environ["SENTRY_DSN"] = ""
+# Real keys in the repo .env must not switch on the bot check in tests.
+os.environ["TURNSTILE_SITE_KEY"] = ""
+os.environ["TURNSTILE_SECRET_KEY"] = ""
+os.environ["CONTACT_DAILY_CAP"] = "100"
 
 from app.config import get_settings
 

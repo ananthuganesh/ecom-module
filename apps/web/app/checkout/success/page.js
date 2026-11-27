@@ -137,7 +137,7 @@ function SuccessContent() {
 
 export default function OrderSuccessPage() {
   return (
-    <main className="min-h-screen bg-[#F9F9F5]">
+    <main className="min-h-screen bg-white">
       <section className="flex min-h-screen items-center justify-center px-4 py-24">
         <div className="w-full max-w-lg">
           <Suspense

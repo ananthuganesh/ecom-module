@@ -1,7 +1,8 @@
 import "./globals.css";
-import { Inter, Geist, Lato, Archivo_Black, Noto_Sans_Malayalam } from "next/font/google";
+import { Inter, Geist, Archivo_Narrow, Noto_Sans_Malayalam } from "next/font/google";
 import GtmClient from "@/components/GtmClient";
 import MetaPixel from "@/components/MetaPixel";
+import ClarityClient from "@/components/ClarityClient";
 import { metaPixelBootstrap, normalizeMetaPixelId } from "@/lib/metaPixel";
 import TrackingUser from "@/components/TrackingUser";
 import CustomerSessionSync from "@/components/CustomerSessionSync";
@@ -23,17 +24,9 @@ const geistHeading = Geist({
 });
 
 /* Storefront-only fonts */
-const lato = Lato({
-  weight: ["400", "700", "900"],
+const archivoNarrow = Archivo_Narrow({
   subsets: ["latin"],
-  variable: "--font-lato",
-  display: "swap",
-});
-
-const archivoBlack = Archivo_Black({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-archivo-black",
+  variable: "--font-archivo-narrow",
   display: "swap",
 });
 
@@ -84,6 +77,8 @@ export default function RootLayout({ children }) {
   const gtmId = resolveGtmId();
   // Same id the API sends Conversions API events to. The pixel must not also
   // be loaded by a GTM tag, or every event is counted twice.
+  // Microsoft Clarity. Baked in at build (storefront pages are prerendered).
+  const clarityId = process.env.NEXT_PUBLIC_CLARITY_ID || process.env.CLARITY_PROJECT_ID || "";
   const metaPixelId = normalizeMetaPixelId(
     process.env.NEXT_PUBLIC_META_PIXEL_ID || process.env.META_PIXEL_ID
   );
@@ -92,7 +87,7 @@ export default function RootLayout({ children }) {
     <html
       lang="en-IN"
       suppressHydrationWarning
-      className={`${inter.variable} ${geistHeading.variable} ${lato.variable} ${archivoBlack.variable} ${notoMalayalam.variable}`}
+      className={`${inter.variable} ${geistHeading.variable} ${archivoNarrow.variable} ${notoMalayalam.variable}`}
     >
       <head>
         <link rel="icon" href="/urban/favicon.png" />
@@ -110,6 +105,7 @@ export default function RootLayout({ children }) {
       <body className="font-sans" suppressHydrationWarning>
         <GtmClient gtmId={gtmId} />
         <MetaPixel pixelId={metaPixelId} />
+        <ClarityClient projectId={clarityId} />
         <TrackingUser />
         <CustomerSessionSync />
         <AttributionCapture />
