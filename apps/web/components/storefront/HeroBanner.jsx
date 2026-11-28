@@ -28,14 +28,24 @@ function HeroSlideImage({ slide, portrait, alt = "", first = false }) {
     } = getImageProps({ ...IMAGE_COMMON, ...eager, alt, src: slide.mobileSrc });
     return (
       <picture>
-        <source media={HERO_DESKTOP_MEDIA} srcSet={desktop} sizes={IMAGE_COMMON.sizes} />
+        <source
+          media={HERO_DESKTOP_MEDIA}
+          srcSet={desktop}
+          sizes={IMAGE_COMMON.sizes}
+        />
         {/* eslint-disable-next-line jsx-a11y/alt-text -- alt comes from getImageProps */}
         <img {...rest} srcSet={mobile} className="object-cover object-center" />
       </picture>
     );
   }
   return (
-    <Image {...IMAGE_COMMON} {...eager} src={slide.src} alt={alt} className="object-cover object-center" />
+    <Image
+      {...IMAGE_COMMON}
+      {...eager}
+      src={slide.src}
+      alt={alt}
+      className="object-cover object-center"
+    />
   );
 }
 
@@ -44,14 +54,21 @@ const HeroBanner = ({ slides }) => {
   const heroSlides = slides?.length ? slides : HERO_SLIDES;
   // `prev` is the page being wiped over; null until the first change so the
   // opening slide appears without an animation.
-  const [{ page, dir, prev }, setNav] = useState({ page: 0, dir: 1, prev: null });
-  const wrap = (p) => ((p % heroSlides.length) + heroSlides.length) % heroSlides.length;
+  const [{ page, dir, prev }, setNav] = useState({
+    page: 0,
+    dir: 1,
+    prev: null,
+  });
+  const wrap = (p) =>
+    ((p % heroSlides.length) + heroSlides.length) % heroSlides.length;
   const idx = wrap(page);
   const slide = heroSlides[idx];
   const prevSlide = prev === null ? null : heroSlides[wrap(prev)];
   const link = resolveBannerLink(slide.href, { siteUrl: getSiteUrl() });
   // Desktop 1920 × 800; phones 1080 × 1620 once every slide has mobile art.
   const portrait = heroUsesMobileArt(heroSlides);
+  // One banner: no autoplay, no wipe, no dots.
+  const slideshow = heroSlides.length > 1;
 
   const paginate = useCallback((newDir) => {
     setNav((s) => ({ page: s.page + newDir, dir: newDir, prev: s.page }));
@@ -63,9 +80,10 @@ const HeroBanner = ({ slides }) => {
   };
 
   useEffect(() => {
+    if (!slideshow) return undefined;
     const t = setInterval(() => paginate(1), AUTO_MS);
     return () => clearInterval(t);
-  }, [paginate, page]);
+  }, [paginate, page, slideshow]);
 
   return (
     <section
@@ -75,9 +93,15 @@ const HeroBanner = ({ slides }) => {
       } md:aspect-[1920/800] md:max-h-[82vh]`}
     >
       {/* Warm the upcoming slide so the wipe never reveals an unloaded image. */}
-      {heroSlides.length > 1 ? (
-        <div className="pointer-events-none absolute inset-0 opacity-0" aria-hidden>
-          <HeroSlideImage slide={heroSlides[wrap(page + 1)]} portrait={portrait} />
+      {slideshow ? (
+        <div
+          className="pointer-events-none absolute inset-0 opacity-0"
+          aria-hidden
+        >
+          <HeroSlideImage
+            slide={heroSlides[wrap(page + 1)]}
+            portrait={portrait}
+          />
         </div>
       ) : null}
 
@@ -94,10 +118,18 @@ const HeroBanner = ({ slides }) => {
         }`}
       >
         {/* The first slide is preloaded from app/page.js. */}
-        <HeroSlideImage slide={slide} portrait={portrait} alt={slide.alt} first={idx === 0} />
+        <HeroSlideImage
+          slide={slide}
+          portrait={portrait}
+          alt={slide.alt}
+          first={idx === 0}
+        />
       </div>
 
-      <div className="absolute inset-0 z-[1] bg-black/20 md:bg-black/25" aria-hidden />
+      <div
+        className="absolute inset-0 z-[1] bg-black/20 md:bg-black/25"
+        aria-hidden
+      />
 
       {/* Above the tint so the whole slide is tappable, below the dots (z-20)
           so switching slides still works. */}
@@ -121,50 +153,62 @@ const HeroBanner = ({ slides }) => {
 
       <h1 className="sr-only">Urban Aana</h1>
 
-      <div className="absolute bottom-0 left-1/2 z-20 flex -translate-x-1/2 md:bottom-2">
-        {heroSlides.map((item, i) => {
-          const active = i === idx;
-          return (
-            <button
-              key={item.src}
-              type="button"
-              aria-label={`Go to slide ${i + 1}`}
-              aria-current={active}
-              onClick={() => goTo(i)}
-              className="relative flex h-8 w-8 items-center justify-center md:h-10 md:w-7"
-            >
-              {active ? (
-                // Keyed on `page` so the ring restarts with each slide's timer.
-                <svg
-                  key={page}
-                  viewBox="0 0 20 20"
-                  className="absolute h-5 w-5 -rotate-90"
-                  aria-hidden
-                >
-                  <circle cx="10" cy="10" r={RING_R} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
-                  <circle
-                    cx="10"
-                    cy="10"
-                    r={RING_R}
-                    fill="none"
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeDasharray={RING_C}
-                    className="hero-dot-progress"
-                    style={{ "--ring-c": RING_C, animationDuration: `${AUTO_MS}ms` }}
-                  />
-                </svg>
-              ) : null}
-              <span
-                className={`block h-2.5 w-2.5 rounded-full transition-colors duration-300 ${
-                  active ? "bg-white" : "bg-white/45"
-                }`}
-              />
-            </button>
-          );
-        })}
-      </div>
+      {slideshow ? (
+        <div className="absolute bottom-0 left-1/2 z-20 flex -translate-x-1/2 md:bottom-2">
+          {heroSlides.map((item, i) => {
+            const active = i === idx;
+            return (
+              <button
+                key={item.src}
+                type="button"
+                aria-label={`Go to slide ${i + 1}`}
+                aria-current={active}
+                onClick={() => goTo(i)}
+                className="relative flex h-8 w-8 items-center justify-center md:h-10 md:w-7"
+              >
+                {active ? (
+                  // Keyed on `page` so the ring restarts with each slide's timer.
+                  <svg
+                    key={page}
+                    viewBox="0 0 20 20"
+                    className="absolute h-5 w-5 -rotate-90"
+                    aria-hidden
+                  >
+                    <circle
+                      cx="10"
+                      cy="10"
+                      r={RING_R}
+                      fill="none"
+                      stroke="rgba(255,255,255,0.3)"
+                      strokeWidth="1.5"
+                    />
+                    <circle
+                      cx="10"
+                      cy="10"
+                      r={RING_R}
+                      fill="none"
+                      stroke="#fff"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeDasharray={RING_C}
+                      className="hero-dot-progress"
+                      style={{
+                        "--ring-c": RING_C,
+                        animationDuration: `${AUTO_MS}ms`,
+                      }}
+                    />
+                  </svg>
+                ) : null}
+                <span
+                  className={`block h-2.5 w-2.5 rounded-full transition-colors duration-300 ${
+                    active ? "bg-white" : "bg-white/45"
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </section>
   );
 };

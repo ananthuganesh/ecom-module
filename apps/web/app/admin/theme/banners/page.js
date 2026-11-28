@@ -32,8 +32,9 @@ export default function AdminBannersPage() {
   const [uploading, setUploading] = useState(false);
   const [dirty, setDirty] = useState(false);
   const fileRef = useRef(null);
-  const mobileFileRef = useRef(null);
-  const [mobileTarget, setMobileTarget] = useState(null);
+  // One hidden picker replaces either image of a banner: { index, field: "url" | "mobileUrl" }.
+  const replaceFileRef = useRef(null);
+  const [replaceTarget, setReplaceTarget] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,29 +113,33 @@ export default function AdminBannersPage() {
     }
   };
 
-  const pickMobileImage = (index) => {
-    setMobileTarget(index);
-    mobileFileRef.current?.click();
+  const pickImage = (index, field) => {
+    setReplaceTarget({ index, field });
+    replaceFileRef.current?.click();
   };
 
-  const handleMobileUpload = async (event) => {
+  const handleReplaceUpload = async (event) => {
     const file = event.target.files?.[0];
-    const index = mobileTarget;
+    const target = replaceTarget;
     event.target.value = "";
-    if (!file || index === null) return;
+    if (!file || !target) return;
     setUploading(true);
     try {
       const result = await adminMediaService.upload(file, "banner");
       const url = result?.url || result?.location || result?.path;
       if (url) {
-        update(index, { mobileUrl: url });
-        toast.success("Mobile image added — save to publish.");
+        update(target.index, { [target.field]: url });
+        toast.success(
+          target.field === "url"
+            ? "Desktop image replaced — save to publish."
+            : "Mobile image added — save to publish."
+        );
       }
     } catch (e) {
       toast.error(userErrorMessage(e, `Couldn’t upload ${file.name}`));
     } finally {
       setUploading(false);
-      setMobileTarget(null);
+      setReplaceTarget(null);
     }
   };
 
@@ -199,11 +204,11 @@ export default function AdminBannersPage() {
         onChange={handleUpload}
       />
       <input
-        ref={mobileFileRef}
+        ref={replaceFileRef}
         type="file"
         accept="image/*"
         hidden
-        onChange={handleMobileUpload}
+        onChange={handleReplaceUpload}
       />
 
       <div className="flex flex-col gap-3 px-4 pb-6">
@@ -256,20 +261,30 @@ export default function AdminBannersPage() {
 
               <div className="flex shrink-0 items-end gap-2">
                 <div className="flex flex-col gap-1">
-                  <div className="relative h-16 w-[154px] overflow-hidden rounded-md bg-muted">
+                  <button
+                    type="button"
+                    onClick={() => pickImage(index, "url")}
+                    disabled={uploading}
+                    className="group relative h-16 w-[154px] overflow-hidden rounded-md border border-transparent bg-muted hover:border-foreground/40 disabled:opacity-60"
+                    aria-label="Replace desktop image"
+                    title={`Replace desktop image (${DESKTOP_LABEL})`}
+                  >
                     <SafeImage
                       src={slide.url}
                       alt={slide.alt || "Desktop banner"}
                       fill
                       className="object-cover"
                     />
-                  </div>
+                    <span className="absolute inset-0 flex items-center justify-center gap-1 bg-black/45 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                      <Upload className="w-3 h-3" /> Replace
+                    </span>
+                  </button>
                   <span className="text-[11px] text-muted-foreground">Desktop</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <button
                     type="button"
-                    onClick={() => pickMobileImage(index)}
+                    onClick={() => pickImage(index, "mobileUrl")}
                     disabled={uploading}
                     className="relative flex h-16 w-[43px] items-center justify-center overflow-hidden rounded-md border border-dashed bg-muted text-muted-foreground hover:border-foreground/40 disabled:opacity-60"
                     aria-label={slide.mobileUrl ? "Replace mobile image" : "Add mobile image"}

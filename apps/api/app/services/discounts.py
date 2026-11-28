@@ -754,3 +754,4 @@ def summary_text(coupon: Coupon) -> str:
         target = "collections" if (coupon.appliesTo or "products") == "collections" else "products"
         return f"{base} on selected {target}"
     return f"{base} on order"
+

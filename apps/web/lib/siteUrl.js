@@ -1,3 +1,4 @@
+import { fitTitle } from "./seoTitle.js";
 /**
  * Public site origin for SEO, sitemap, and absolute OG URLs.
  */
@@ -66,7 +67,7 @@ export function productCanonicalPath(product) {
 /** Full document title. Use with `title: { absolute }` so the root template is not applied twice. */
 export function productDocumentTitle(product) {
   const custom = String(product?.metaTitle || "").trim();
-  if (custom) return custom;
+  if (custom) return fitTitle(custom);
   const name =
     String(product?.productName || product?.name || "Product").trim() ||
     "Product";

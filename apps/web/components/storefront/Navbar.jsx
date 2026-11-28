@@ -21,6 +21,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Heart } from "@/components/icons";
 
 const CartDrawer = dynamic(() => import("./CartDrawer"), { ssr: false });
+const LoginBottomSheet = dynamic(() => import("@/components/auth/LoginBottomSheet"), { ssr: false });
+
+/** Phones sign in on a sheet over the current page; wider screens use /login. Matches the sheet's md:hidden. */
+function signInOnSheet() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
 const SearchPopularProducts = dynamic(() => import("./SearchPopularProducts"), { ssr: false });
 const SearchProductGrid = dynamic(() => import("./SearchProductGrid"), { ssr: false });
 
@@ -34,7 +40,7 @@ const MENU_LINKS = [
   { href: "/contact", label: "Contact Us" },
 ];
 
-function DrawerAccountCard({ onClose }) {
+function DrawerAccountCard({ onClose, onLogin }) {
   const userInfo = useAuthStore((s) => s.userInfo);
   const logout = useAuthStore((s) => s.logout);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -183,7 +189,13 @@ function DrawerAccountCard({ onClose }) {
       <div className="mt-3">
         <Link
           href="/login"
-          onClick={onClose}
+          onClick={(e) => {
+            onClose();
+            if (onLogin && signInOnSheet()) {
+              e.preventDefault();
+              onLogin();
+            }
+          }}
           className="flex h-10 w-full items-center justify-center rounded-md bg-[#222222] text-[13px] font-semibold text-white transition-colors hover:bg-black"
         >
           Login
@@ -216,6 +228,15 @@ const Navbar = () => {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [loginSheetOpen, setLoginSheetOpen] = useState(false);
+  // Mounted from the first open (loads its code only then) and kept so it can animate closed.
+  const [loginSheetUsed, setLoginSheetUsed] = useState(false);
+  useEffect(() => {
+    if (loginSheetOpen) setLoginSheetUsed(true);
+  }, [loginSheetOpen]);
+  // From the drawer: open on the next tick so the drawer's scroll unlock runs first
+  // and the sheet's own body lock wins.
+  const openLoginSheet = () => window.setTimeout(() => setLoginSheetOpen(true), 0);
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -399,7 +420,7 @@ const Navbar = () => {
             ) : (
               <button
                 type="button"
-                onClick={() => setIsMobileMenuOpen(true)}
+                onClick={() => (signInOnSheet() ? setLoginSheetOpen(true) : setIsMobileMenuOpen(true))}
                 className={navBtnClass}
                 aria-label="Account"
               >
@@ -623,7 +644,7 @@ const Navbar = () => {
               </div>
 
               <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-                <DrawerAccountCard onClose={closeMenu} />
+                <DrawerAccountCard onClose={closeMenu} onLogin={openLoginSheet} />
               </div>
             </motion.aside>
           </>
@@ -631,6 +652,13 @@ const Navbar = () => {
       </AnimatePresence>
 
       <CartDrawer />
+      {loginSheetUsed || loginSheetOpen ? (
+        <LoginBottomSheet
+          open={loginSheetOpen}
+          onClose={() => setLoginSheetOpen(false)}
+          onSuccess={() => setLoginSheetOpen(false)}
+        />
+      ) : null}
     </>
   );
 };

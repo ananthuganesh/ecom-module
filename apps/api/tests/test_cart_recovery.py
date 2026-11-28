@@ -25,7 +25,7 @@ async def _row(**fields) -> AbandonedCheckout:
 
 @pytest.mark.usefixtures("db")
 async def test_guest_cart_with_someone_elses_email_does_not_sign_them_in():
-    """Anyone can save a guest cart with any email and their own phone, then get the WhatsApp link."""
+    """Anyone can save a guest cart with any email and their own phone, then get the recovery link."""
     victim = User(name="Victim", email="victim@example.com")
     await victim.insert()
     row = await _row(guestId="g1", customerDetails={"email": "victim@example.com", "phone": "9000000009"})

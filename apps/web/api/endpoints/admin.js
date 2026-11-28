@@ -48,12 +48,6 @@ const productColors = {
   base: "/admin/product-colors",
 };
 
-const aisensy = {
-  settings: "/admin/aisensy/settings",
-  syncCustomers: "/admin/aisensy/sync-customers",
-  syncCatalog: "/admin/aisensy/sync-catalog",
-};
-
 const taxClasses = {
   base: "/admin/tax-classes",
   byId: (id) => `/admin/tax-classes/${id}`,
@@ -78,7 +72,6 @@ export const adminEndpoints = {
   categories,
   collections,
   productColors,
-  aisensy,
   taxClasses,
   companyProfile,
   stock,

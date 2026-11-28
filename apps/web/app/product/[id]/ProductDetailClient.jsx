@@ -3,6 +3,8 @@
 import { formatINR } from "@/utils/formatINR";
 import {
   CaretIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CloseIcon,
   RulerIcon,
 } from "@/components/icons/storeIcons";
@@ -46,6 +48,7 @@ import { getProductSizeOptions } from "@/utils/productSizes";
 import { sanitizeProductHtml } from "@/utils/sanitizeProductHtml";
 import { resolveCardBadge } from "@/utils/urbanProductAdapter";
 import { productBreadcrumbs } from "@/lib/productJsonLd";
+import { orderProductImages, productImageAlt } from "@/lib/productGallery";
 
 const stockFor = (item, fallback = 0) => Number(item?.stock ?? item?.quantity ?? fallback ?? 0);
 
@@ -80,14 +83,15 @@ function toSentenceCase(value) {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-export default function ProductDetailPage({ initialProduct = null }) {
+export default function ProductDetailPage({ initialProduct = null, initialSimilar = [] }) {
   const params = useParams();
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
   const cartItems = useCartStore((state) => state.cartItems);
   const addRecentlyViewed = useRecentlyViewedStore((state) => state.addProduct);
   const [product, setProduct] = useState(initialProduct);
-  const [similarProducts, setSimilarProducts] = useState([]);
+  // Server-rendered (page.js) so the links are in the HTML; fetched here only as a fallback.
+  const [similarProducts, setSimilarProducts] = useState(initialSimilar);
   // Similar Products is dropped while Recently Viewed is showing, to keep the page short.
   const [recentlyViewedVisible, setRecentlyViewedVisible] = useState(false);
   const [loading, setLoading] = useState(!initialProduct);
@@ -201,6 +205,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
           return base;
         };
 
+        // The server already rendered this product's related list.
+        if (hadInitial && initialSimilar.length && initialProduct?._id === data._id) return;
+
         let related = [];
         try {
           if (productGroup) {
@@ -270,37 +277,12 @@ export default function ProductDetailPage({ initialProduct = null }) {
     }
     return product.variants?.[0] || null;
   }, [product, selectedSize]);
-  const images = useMemo(() => {
-    if (!product) return [];
-
-    const ordered = [];
-    const pushUnique = (url) => {
-      const src = String(url || "").trim();
-      if (!src || ordered.includes(src)) return;
-      ordered.push(src);
-    };
-
-    // All photos in order: product media, then each variant's images.
-    for (const url of product.thumbnails || []) pushUnique(url);
-    for (const url of product.images || []) pushUnique(url);
-    for (const variant of product.variants || []) {
-      if (variant?.isDeleted) continue;
-      for (const url of variant.images || []) pushUnique(url);
-    }
-
-    // If the selected variant has a photo, put that photo first — that's the only change.
-    const selectedPhotos = (
-      selectedSizeData?.images ||
-      selectedVariant?.images ||
-      []
-    )
-      .map((url) => String(url || "").trim())
-      .filter(Boolean);
-    const lead = selectedPhotos[0];
-    if (!lead || !ordered.includes(lead)) return ordered;
-
-    return [lead, ...ordered.filter((url) => url !== lead)];
-  }, [product, selectedSizeData, selectedVariant]);
+  // Same order the server preloads from (lib/productGallery.js); the selected
+  // variant's photo leads.
+  const images = useMemo(
+    () => orderProductImages(product, selectedSizeData?.images || selectedVariant?.images || []),
+    [product, selectedSizeData, selectedVariant]
+  );
 
   useEffect(() => {
     setActiveImageIndex(0);
@@ -358,19 +340,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
     return () => window.clearTimeout(t);
   }, [product?._id, selectedSize, images.length, mobileGalleryLoops]);
 
-  const scrollMobileGalleryTo = (index) => {
-    const el = mobileGalleryRef.current;
-    if (!el) return;
-    const width = el.clientWidth || 0;
-    if (!width) return;
-    const slide = mobileGalleryLoops ? index + 1 : index;
-    mobileGalleryScrollLock.current = true;
-    el.scrollTo({ left: slide * width, behavior: "smooth" });
-    window.setTimeout(() => {
-      mobileGalleryScrollLock.current = false;
-    }, 320);
-  };
-
   const settleMobileGalleryLoop = () => {
     const el = mobileGalleryRef.current;
     if (!el || !mobileGalleryLoops) return;
@@ -416,6 +385,14 @@ export default function ProductDetailPage({ initialProduct = null }) {
       el.removeEventListener("scroll", onScroll);
     };
   }, [mobileGalleryLoops, images.length, product?._id, selectedSize]);
+
+  // Arrow buttons move one photo, like a swipe; the loop clones handle wrap-around.
+  const stepMobileGallery = (dir) => {
+    const el = mobileGalleryRef.current;
+    const width = el?.clientWidth || 0;
+    if (!width) return;
+    el.scrollBy({ left: dir * width, behavior: "smooth" });
+  };
 
   const handleMobileGalleryScroll = () => {
     if (mobileGalleryScrollLock.current) return;
@@ -665,6 +642,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
         </div>
       ) : null}
 
+
       <div className="mt-6 pt-1">
         <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
           Information
@@ -812,8 +790,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
       {/* No bottom padding here: room for the mobile sticky bar is added under the
           footer (body:has([data-sticky-cta]) in globals.css), so there's no gap above it. */}
       <section className="w-full px-4 py-5 md:px-4 md:py-8 lg:px-8 lg:py-10">
-        {/* Same crumbs as the BreadcrumbList structured data (lib/productJsonLd.js) */}
-        <nav aria-label="Breadcrumb" className="mb-4 text-[11px] font-medium text-gray-400 md:mb-5">
+        {/* Same crumbs as the BreadcrumbList structured data (lib/productJsonLd.js).
+            Desktop only; on phones the photo starts right under the header. */}
+        <nav aria-label="Breadcrumb" className="mb-5 hidden text-[11px] font-medium text-gray-400 lg:block">
           <ol className="flex min-w-0 items-center">
             {breadcrumbs.map((crumb, i) => {
               const last = i === breadcrumbs.length - 1;
@@ -842,13 +821,14 @@ export default function ProductDetailPage({ initialProduct = null }) {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,0.7fr)] lg:gap-8 xl:gap-10">
           {/* Gallery */}
           <div className="space-y-2.5">
-            {/* Mobile — swipeable main gallery + square thumbs */}
-            <div className="space-y-2 lg:hidden">
+            {/* Mobile — full-bleed swipeable gallery (dots show position; no thumbnails).
+                Negative margins cancel the section padding so photos run edge to edge. */}
+            <div className="-mx-4 -mt-5 md:-mt-8 lg:hidden">
               <div className="relative">
                 <div
                   ref={mobileGalleryRef}
                   onScroll={handleMobileGalleryScroll}
-                  className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain rounded-lg"
+                  className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
                   style={{ WebkitOverflowScrolling: "touch" }}
                 >
                   {mobileGallerySlides.length > 0 ? (
@@ -860,11 +840,8 @@ export default function ProductDetailPage({ initialProduct = null }) {
                         >
                           <SafeImage
                             src={resolveImageUrl(image)}
-                            alt={`${title} ${realIndex + 1}`}
+                            alt={productImageAlt({ title, productType, url: image, index: realIndex })}
                             fill
-                            priority={
-                              slideIndex === (mobileGalleryLoops ? 1 : 0)
-                            }
                             fetchPriority={
                               slideIndex === (mobileGalleryLoops ? 1 : 0)
                                 ? "high"
@@ -890,8 +867,30 @@ export default function ProductDetailPage({ initialProduct = null }) {
                 <WishlistButton
                   product={product}
                   iconSize={18}
-                  className="absolute top-2 right-2 z-20 inline-flex items-center justify-center text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+                  // Lined up with the page's 16px content edge, not the full-bleed photo edge.
+                  className="absolute top-4 right-4 z-20 inline-flex items-center justify-center text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
                 />
+
+                {images.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => stepMobileGallery(-1)}
+                      aria-label="Previous photo"
+                      className="absolute top-1/2 left-2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-transparent text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] active:scale-95"
+                    >
+                      <ChevronLeftIcon size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => stepMobileGallery(1)}
+                      aria-label="Next photo"
+                      className="absolute top-1/2 right-2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-transparent text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] active:scale-95"
+                    >
+                      <ChevronRightIcon size={18} />
+                    </button>
+                  </>
+                ) : null}
 
                 {images.length > 1 ? (
                   <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center gap-1.5">
@@ -908,38 +907,6 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   </div>
                 ) : null}
               </div>
-              {images.length > 1 ? (
-                <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-                  {images.map((image, index) => {
-                    const active = index === activeImageIndex;
-                    return (
-                      <button
-                        key={`m-${image}-${index}`}
-                        type="button"
-                        onClick={() => {
-                          setActiveImageIndex(index);
-                          scrollMobileGalleryTo(index);
-                        }}
-                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md ${
-                          active
-                            ? "border border-[#b5b9be]"
-                            : "border border-gray-200"
-                        }`}
-                        aria-label={`View image ${index + 1}`}
-                        aria-current={active ? "true" : undefined}
-                      >
-                        <SafeImage
-                          src={resolveImageUrl(image)}
-                          alt=""
-                          fill
-                          className="object-cover"
-                          sizes="64px"
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
 
             {/* Desktop — sticky first image + scrolling stack (shared 3:4 ratio) */}
@@ -949,9 +916,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
                   {images[0] ? (
                     <SafeImage
                       src={resolveImageUrl(images[0])}
-                      alt={`${title} 1`}
+                      alt={productImageAlt({ title, productType, url: images[0], index: 0 })}
                       fill
-                      priority
+                      loading="eager"
                       fetchPriority="high"
                       sizes="50vw"
                       className="object-cover"
@@ -966,9 +933,9 @@ export default function ProductDetailPage({ initialProduct = null }) {
                       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100">
                         <SafeImage
                           src={resolveImageUrl(images[0])}
-                          alt={`${title} 1`}
+                          alt={productImageAlt({ title, productType, url: images[0], index: 0 })}
                           fill
-                          priority
+                          loading="eager"
                           fetchPriority="high"
                           sizes="42vw"
                           className="object-cover"
@@ -986,7 +953,7 @@ export default function ProductDetailPage({ initialProduct = null }) {
                       >
                         <SafeImage
                           src={resolveImageUrl(image)}
-                          alt={`${title} ${index + 2}`}
+                          alt={productImageAlt({ title, productType, url: image, index: index + 1 })}
                           fill
                           sizes="28vw"
                           className="object-cover"

@@ -73,9 +73,18 @@ def _site_url() -> str:
 
 
 def _absolute(url: str | None) -> str | None:
-    from app.services.aisensy import absolute_http_url
-
-    return absolute_http_url(url, base=_site_url())
+    """Razorpay needs absolute http(s) URLs for product url / image_url."""
+    raw = str(url or "").strip()
+    if not raw:
+        return None
+    if re.match(r"^https?://", raw, flags=re.I):
+        return raw
+    root = _site_url()
+    if not root:
+        return None
+    if not re.match(r"^https?://", root, flags=re.I):
+        root = f"https://{root}"
+    return f"{root}{raw}" if raw.startswith("/") else f"{root}/{raw}"
 
 
 async def line_items(order: Order) -> list[dict[str, Any]]:

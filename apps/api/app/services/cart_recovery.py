@@ -89,39 +89,21 @@ def admin_checkout_dict(checkout: AbandonedCheckout, *, site: str | None = None)
 
     last = dict(getattr(checkout, "recoveryLastResult", None) or {})
     email_ch = last.get("email") if isinstance(last.get("email"), dict) else None
-    wa_ch = last.get("whatsapp") if isinstance(last.get("whatsapp"), dict) else None
 
     email_status = _channel_status(email_ch)
     email_sent_at = last.get("emailSentAt")
     if not email_sent_at and email_ch and email_ch.get("ok"):
         email_sent_at = last.get("at") or getattr(checkout, "recoverySentAt", None)
 
-    # Legacy flat WhatsApp-only recoveryLastResult (manual send-recovery)
-    wa_status = _channel_status(wa_ch)
-    wa_sent_at = last.get("whatsappSentAt")
-    if wa_status is None and email_ch is None and wa_ch is None:
-        flat = _channel_status(last)
-        if flat:
-            wa_status = flat
-            if flat == "sent":
-                wa_sent_at = wa_sent_at or getattr(checkout, "recoverySentAt", None)
 
     if email_status is None and email_sent_at:
         email_status = "sent"
-    if wa_status is None and wa_sent_at:
-        wa_status = "sent"
 
     data["emailStatus"] = email_status
     data["emailSentAt"] = (
         email_sent_at.isoformat()
         if hasattr(email_sent_at, "isoformat")
         else email_sent_at
-    )
-    data["whatsappStatus"] = wa_status
-    data["whatsappSentAt"] = (
-        wa_sent_at.isoformat()
-        if hasattr(wa_sent_at, "isoformat")
-        else wa_sent_at
     )
     return data
 

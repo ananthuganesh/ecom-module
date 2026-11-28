@@ -114,9 +114,8 @@ async def test_fallback_booking_clears_earlier_attempts(fake_dtdc, monkeypatch):
     async def no_notify(*_a, **_k):
         return None
 
-    from app.services import aisensy, email_resend, erp_ops
+    from app.services import email_resend, erp_ops
 
-    monkeypatch.setattr(aisensy, "notify_order_event_once", no_notify)
     monkeypatch.setattr(email_resend, "notify_order_email_once", no_notify)
     monkeypatch.setattr(erp_ops, "ensure_order_invoice_safe", no_notify)
     fake_dtdc(

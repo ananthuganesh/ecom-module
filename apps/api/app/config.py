@@ -51,9 +51,6 @@ class Settings(BaseSettings):
     razorpay_live_key_secret: str = ""
     razorpay_webhook_secret: str = ""
 
-    aisensy_api_key: str = ""
-    aisensy_project_id: str = ""
-    aisensy_project_api_key: str = ""
 
     r2_bucket: str = ""
     r2_access_key_id: str = ""

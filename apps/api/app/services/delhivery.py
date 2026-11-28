@@ -505,10 +505,8 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
     except Exception:
         pass
     try:
-        from app.services import aisensy as aisensy_svc
         from app.services import email_resend as email_svc
 
-        await aisensy_svc.notify_order_event_once("orderShipped", order, user)
         await email_svc.notify_order_email_once("SHIPPED", order, user)
     except Exception as exc:  # noqa: BLE001
         print(f"[Notify] orderShipped: {exc}")
@@ -708,11 +706,9 @@ async def track_consignment(order: Order) -> dict:
             pass
         if mapped == "Delivered" and prev != "Delivered":
             try:
-                from app.services import aisensy as aisensy_svc
                 from app.services import email_resend as email_svc
 
                 user = await User.get(order.customerId) if order.customerId else None
-                await aisensy_svc.notify_order_event_once("orderDelivered", order, user)
                 await email_svc.notify_order_email_once("DELIVERED", order, user)
             except Exception as exc:  # noqa: BLE001
                 print(f"[Notify] orderDelivered: {exc}")

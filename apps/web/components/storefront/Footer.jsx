@@ -67,14 +67,14 @@ const Footer = () => {
               </a>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="-ml-2 flex items-center gap-1">
               {SOCIAL_LINKS.map((item) => (
                 <a
                   key={item.label}
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-9 h-9 rounded-full border border-white/25 flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:bg-brand-red"
+                  className="flex h-9 w-9 items-center justify-center opacity-80 transition-opacity duration-200 hover:opacity-100"
                   aria-label={item.label}
                   title={item.label}
                 >

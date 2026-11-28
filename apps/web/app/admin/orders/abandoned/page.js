@@ -20,7 +20,6 @@ import {
   createAbandonedColumns,
   emailStatus,
   recoveryStatus,
-  whatsappStatus,
 } from "./columns";
 import { abandonedListKey, useAdminAbandonedStore } from "@/store/useAdminAbandonedStore";
 
@@ -71,11 +70,6 @@ function mapCheckoutToRow(checkout) {
       checkout.recoveryLastResult?.emailSentAt ||
       null,
     emailStatus: checkout.emailStatus || null,
-    whatsappSentAt:
-      checkout.whatsappSentAt ||
-      checkout.recoveryLastResult?.whatsappSentAt ||
-      null,
-    whatsappStatus: checkout.whatsappStatus || null,
   };
 }
 
@@ -279,7 +273,6 @@ export default function AbandonedCheckoutsPage() {
       "Phone",
       "Recovery",
       "Email status",
-      "WhatsApp",
       "Items",
       "Total",
       "Recovery URL",
@@ -299,7 +292,6 @@ export default function AbandonedCheckoutsPage() {
         Phone: c.phone || "",
         Recovery: recoveryStatus(item),
         "Email status": emailStatus(item),
-        WhatsApp: whatsappStatus(item),
         Items: itemCount || items.length || 0,
         Total: Number(item.totalAmount || 0).toFixed(2),
         "Recovery URL": item.recoveryUrl || "",

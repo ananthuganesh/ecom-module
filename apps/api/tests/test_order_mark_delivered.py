@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.documents import AdminAccount, Order, OrderItem, Role
 from app.main import create_app
 from app.security import create_access_token
-from app.services import aisensy, email_resend, erp_ops
+from app.services import email_resend, erp_ops
 from app.services.shipment_status_sync import is_open_for_track
 
 
@@ -19,10 +19,6 @@ def sent(monkeypatch):
     """Record customer notifications and invoice calls instead of hitting providers."""
     calls: list[tuple] = []
 
-    async def _wa(event, order, user=None):
-        calls.append(("whatsapp", event, str(order.id)))
-        return {}
-
     async def _email(kind, order, user=None):
         calls.append(("email", kind, str(order.id)))
         return {}
@@ -30,7 +26,6 @@ def sent(monkeypatch):
     async def _invoice(order, *, actor=None, context=""):
         calls.append(("invoice", context, str(order.id)))
 
-    monkeypatch.setattr(aisensy, "notify_order_event_once", _wa)
     monkeypatch.setattr(email_resend, "notify_order_email_once", _email)
     monkeypatch.setattr(erp_ops, "ensure_invoice_on_fulfillment", _invoice)
     return calls
@@ -80,7 +75,6 @@ async def test_marks_in_transit_awb_order_delivered_and_stops_tracking(sent):
     assert stored.transactionDetails["manualDelivery"]["by"] == "ops@example.com"
     assert not is_open_for_track(stored)
     oid = str(order.id)
-    assert ("whatsapp", "orderDelivered", oid) in sent
     assert ("email", "DELIVERED", oid) in sent
     assert ("invoice", "admin_mark_delivered", oid) in sent
 
@@ -95,7 +89,7 @@ async def test_second_call_is_a_no_op(sent):
     assert first.status_code == 200, first.text
     assert second.status_code == 200
     assert second.json()["deliveryResult"] == {"changed": False, "alreadyDelivered": True}
-    assert sum(1 for c in sent if c[0] == "whatsapp") == 1
+    assert sum(1 for c in sent if c[0] == "email") == 1
 
 
 @pytest.mark.usefixtures("db")

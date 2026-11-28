@@ -275,12 +275,9 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
         print(f"[Conversions] purchase: {exc}")
 
     try:
-        from app.services import aisensy as aisensy_svc
         from app.services import email_resend as email_svc
 
         notify_user = user or (await User.get(order.customerId) if order.customerId else None)
-        await aisensy_svc.notify_order_event_once("orderPlaced", order, notify_user)
-        await aisensy_svc.notify_order_event_once("orderPaid", order, notify_user)
         await email_svc.notify_order_email_once("CONFIRMED", order, notify_user)
         await email_svc.notify_staff_new_order(order, notify_user)
     except Exception as exc:

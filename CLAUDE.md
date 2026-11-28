@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Urban Aana — an Indian D2C streetwear store. Monorepo: Next.js storefront + admin panel (`apps/web`), FastAPI backend (`apps/api`), MongoDB Atlas. Payments via Razorpay, shipping via DTDC/Shipsy, WhatsApp via AiSensy, media on Cloudflare R2, transactional email via Resend.
+Urban Aana — an Indian D2C streetwear store. Monorepo: Next.js storefront + admin panel (`apps/web`), FastAPI backend (`apps/api`), MongoDB Atlas. Payments via Razorpay, shipping via DTDC/Shipsy, media on Cloudflare R2, transactional email via Resend.
 
 ## Commands
 
@@ -45,7 +45,7 @@ Browser → Next.js (`:3000`) → rewrite `/api/*` and `/uploads/*` → `INTERNA
 
 ### API (`apps/api`)
 
-`app/main.py:create_app()` mounts every router and is what tests instantiate with `create_app(with_lifespan=False)`. The lifespan starts four long-running background loops that only exist in the real process: abandoned-cart WhatsApp recovery (`services/aisensy`), stock reservation sweeper, DTDC status sync, and the monthly report mailer.
+`app/main.py:create_app()` mounts every router and is what tests instantiate with `create_app(with_lifespan=False)`. The lifespan starts four long-running background loops that only exist in the real process: abandoned-order marking + abandoned-cart recovery email (`services/abandoned_recovery`), stock reservation sweeper, DTDC status sync, and the monthly report mailer.
 
 Layering is `routers/` (HTTP + permissions) → `services/` (all business logic and third-party integrations) → `documents/` (Beanie models). `app/documents/__init__.py` is a single file holding all 26 Document models plus `ALL_DOCUMENTS`, which `db.init_db()` feeds to `init_beanie`. Add a new model there **and** to `ALL_DOCUMENTS`, or its indexes never get built.
 

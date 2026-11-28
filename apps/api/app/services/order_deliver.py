@@ -117,11 +117,9 @@ async def mark_order_delivered(
 
     notified = False
     try:
-        from app.services import aisensy as aisensy_svc
         from app.services import email_resend as email_svc
 
         user = await User.get(order.customerId) if order.customerId else None
-        await aisensy_svc.notify_order_event_once("orderDelivered", order, user)
         await email_svc.notify_order_email_once("DELIVERED", order, user)
         notified = True
     except Exception as exc:

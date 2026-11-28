@@ -21,10 +21,9 @@ def quiet_payments(monkeypatch):
     for name in ("ensure_stock_for_payment", "apply_order_commitments", "process_full_order_flow"):
         monkeypatch.setattr(payments, name, noop)
     monkeypatch.setattr(payments, "_upgrade_guest_customer_from_order", noop)
-    from app.services import aisensy, conversions, email_resend, erp_ops
+    from app.services import conversions, email_resend, erp_ops
 
     monkeypatch.setattr(conversions, "send_purchase", noop)
-    monkeypatch.setattr(aisensy, "notify_order_event_once", noop)
     monkeypatch.setattr(email_resend, "notify_order_email_once", noop)
     monkeypatch.setattr(email_resend, "notify_staff_new_order", noop)
     monkeypatch.setattr(erp_ops, "ensure_order_invoice_safe", noop)

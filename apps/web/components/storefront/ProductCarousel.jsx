@@ -124,7 +124,7 @@ export default function ProductCarousel({
         <div className="mt-5 flex justify-center px-4 md:mt-6">
           <Link
             href={viewAllHref}
-            className="text-[13px] font-medium uppercase tracking-[0.12em] text-black underline underline-offset-4 transition-colors hover:text-brand-red"
+            className="text-[11px] font-medium uppercase tracking-[0.12em] text-black underline underline-offset-4 transition-colors hover:text-brand-red"
           >
             View all
           </Link>

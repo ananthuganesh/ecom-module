@@ -38,8 +38,11 @@ export function merchantReturnPolicy() {
     returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
     merchantReturnDays: RETURN_WINDOW_DAYS,
     returnMethod: "https://schema.org/ReturnByMail",
-    // The store books the return pickup; the original delivery charge is not refunded.
-    returnFees: "https://schema.org/FreeReturn",
+    // Matches /return-refund §7.3: size / change-of-mind returns may cost the
+    // customer return shipping; damaged, defective or wrong items are free.
+    returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
+    customerRemorseReturnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
+    itemDefectReturnFees: "https://schema.org/FreeReturn",
     merchantReturnLink: absoluteUrl("/return-refund"),
   };
 }

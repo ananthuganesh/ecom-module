@@ -1817,21 +1817,17 @@ async def order_status(order_id: str, body: dict, _: OrdersWriter):
         pass
     if new_status == "delivered" and prev_status != "delivered":
         try:
-            from app.services import aisensy as aisensy_svc
             from app.services import email_resend as email_svc
 
             user = await User.get(order.customerId) if order.customerId else None
-            await aisensy_svc.notify_order_event_once("orderDelivered", order, user)
             await email_svc.notify_order_email_once("DELIVERED", order, user)
         except Exception as exc:
             print(f"[Notify] admin delivered: {exc}")
     if new_status == "shipped" and prev_status != "shipped":
         try:
-            from app.services import aisensy as aisensy_svc
             from app.services import email_resend as email_svc
 
             user = await User.get(order.customerId) if order.customerId else None
-            await aisensy_svc.notify_order_event_once("orderShipped", order, user)
             await email_svc.notify_order_email_once("SHIPPED", order, user)
         except Exception as exc:
             print(f"[Notify] admin shipped: {exc}")
@@ -2370,13 +2366,6 @@ async def abandoned(
     )
 
     site = cart_recovery.recovery_site_base()
-    try:
-        from app.services import aisensy as aisensy_svc
-
-        cfg = await aisensy_svc.get_settings()
-        site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
-    except Exception:
-        pass
 
     # Enrich Customer column from User when checkout details are thin/empty.
     user_oids: list[ObjectId] = []
@@ -2434,13 +2423,6 @@ async def abandoned_recovery_link(checkout_id: str, _: AdminUser):
         await checkout.save()
 
     site = cart_recovery.recovery_site_base()
-    try:
-        from app.services import aisensy as aisensy_svc
-
-        cfg = await aisensy_svc.get_settings()
-        site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
-    except Exception:
-        pass
 
     url = cart_recovery.recovery_cart_url(checkout, site=site)
     if not url:
@@ -2459,13 +2441,6 @@ async def abandoned_checkout_detail(checkout_id: str, _: AdminUser):
         raise HTTPException(status_code=404, detail="Abandoned checkout not found")
 
     site = cart_recovery.recovery_site_base()
-    try:
-        from app.services import aisensy as aisensy_svc
-
-        cfg = await aisensy_svc.get_settings()
-        site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
-    except Exception:
-        pass
 
     data = cart_recovery.admin_checkout_dict(checkout, site=site)
     details = dict(data.get("customerDetails") or {}) if isinstance(data.get("customerDetails"), dict) else {}
@@ -2485,23 +2460,8 @@ async def abandoned_checkout_detail(checkout_id: str, _: AdminUser):
     return data
 
 
-@router.get("/aisensy/settings")
-async def aisensy_settings(_: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    return aisensy_svc.public_settings(await aisensy_svc.get_settings())
 
 
-@router.put("/aisensy/settings")
-async def save_aisensy_settings(body: dict, _: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    if any(str(body.get(k) or "").strip() for k in ("apiKey", "projectApiKey")):
-        raise HTTPException(
-            status_code=400,
-            detail="AiSensy keys are configured via AISENSY_API_KEY / AISENSY_PROJECT_API_KEY in the API environment.",
-        )
-    return await aisensy_svc.save_prefs(body or {})
 
 
 @router.get("/ga4/report")
@@ -2514,86 +2474,15 @@ async def ga4_report(
     return ga4_svc.fetch_report(range_)
 
 
-@router.post("/aisensy/sync-customers")
-async def aisensy_sync_customers(_: AdminUser):
-    from app.services import aisensy as aisensy_svc
-    from app.services.customers import customer_mongo_filter
-
-    store = await aisensy_svc.get_settings()
-    client = aisensy_svc.project_client_from_cfg(store)
-    if not client.configured and not store.get("projectApiKey"):
-        raise HTTPException(
-            status_code=400,
-            detail="Set AISENSY_PROJECT_ID and AISENSY_PROJECT_API_KEY in the API environment to sync contacts.",
-        )
-
-    users = await User.find(customer_mongo_filter()).to_list()
-    imported = 0
-    errors = 0
-    for u in users:
-        phone = getattr(u, "phone", None)
-        if not phone:
-            continue
-        result = await aisensy_svc.create_contact(
-            name=u.name or "Customer",
-            phone=phone,
-            email=getattr(u, "email", None),
-            tags=["urban-aana", "customer"],
-        )
-        if result.get("ok"):
-            imported += 1
-        elif not result.get("skipped"):
-            errors += 1
-
-    s = await Setting.find_one(Setting.key == "aisensy")
-    prefs = dict(s.value) if s and isinstance(s.value, dict) else {}
-    prefs["lastSyncedAt"] = datetime.utcnow().isoformat()
-    prefs["lastSyncCount"] = imported
-    # Never persist secrets into DB
-    prefs.pop("apiKey", None)
-    prefs.pop("projectApiKey", None)
-    prefs.pop("projectId", None)
-    if s:
-        s.value = prefs
-        await s.save()
-    else:
-        await Setting(key="aisensy", value=prefs).insert()
-
-    return {
-        **aisensy_svc.public_settings(await aisensy_svc.get_settings()),
-        "imported": imported,
-        "errors": errors,
-    }
 
 
-@router.post("/aisensy/sync-catalog")
-async def aisensy_sync_catalog(_: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    store = await aisensy_svc.get_settings()
-    client = aisensy_svc.project_client_from_cfg(store)
-    if not client.configured:
-        raise HTTPException(
-            status_code=400,
-            detail="Set AISENSY_PROJECT_ID and AISENSY_PROJECT_API_KEY to sync the WhatsApp catalog.",
-        )
-    result = await aisensy_svc.sync_catalog()
-    if result.get("skipped"):
-        raise HTTPException(status_code=400, detail="Project API is not configured.")
-    if result.get("ok") is False and not result.get("created"):
-        raise HTTPException(
-            status_code=502,
-            detail=result.get("error") or result.get("lastCatalogError") or "Catalog sync failed",
-        )
-    return result
 
 
 @router.post("/abandoned-checkouts/{checkout_id}/send-recovery")
 async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
-    """Send abandoned-cart recovery via WhatsApp and/or email; persist per-channel status."""
-    from app.services import aisensy as aisensy_svc
+    """Email the abandoned-cart recovery link now; persist the result."""
+    from app.services import abandoned_recovery
     from app.services import cart_recovery
-    from app.services import email_resend as email_svc
 
     if not ObjectId.is_valid(checkout_id):
         raise HTTPException(status_code=400, detail="Invalid checkout id")
@@ -2604,83 +2493,34 @@ async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
         raise HTTPException(status_code=400, detail="Checkout is no longer abandoned")
 
     details = dict(checkout.customerDetails or {})
-    has_phone = bool(str(details.get("phone") or "").strip())
-    has_email = bool(str(details.get("email") or "").strip())
-
-    wa_result: dict = {"skipped": True, "reason": "no_phone"}
-    email_result: dict = {"skipped": True, "reason": "no_email"}
-
-    if has_phone:
+    result: dict = {"skipped": True, "reason": "no_email"}
+    if str(details.get("email") or "").strip():
         try:
-            wa_result = await aisensy_svc.notify_abandoned(checkout)
+            result = await abandoned_recovery.send_recovery_email(checkout)
         except Exception as exc:
-            wa_result = {"ok": False, "error": str(exc)[:300]}
-
-    if has_email:
-        try:
-            await cart_recovery.ensure_recovery_token(checkout)
-            await checkout.save()
-            site = str(
-                os.environ.get("PUBLIC_WEB_URL")
-                or os.environ.get("NEXT_PUBLIC_SITE_URL")
-                or ""
-            ).rstrip("/")
-            token = checkout.recoveryToken
-            cart_link = (
-                f"{site}/cart/recover?token={token}" if site else f"/cart/recover?token={token}"
-            )
-            email_result = await email_svc.notify_abandoned_cart_email(
-                checkout, cart_link=cart_link
-            )
-        except Exception as exc:
-            email_result = {"ok": False, "error": str(exc)[:300]}
+            result = {"ok": False, "error": str(exc)[:300]}
 
     now = datetime.utcnow()
-    now_iso = now.isoformat()
     prev = dict(checkout.recoveryLastResult or {})
-    # Preserve prior successful channel timestamps if this attempt skipped/failed that channel
-    email_sent_at = (
-        now_iso
-        if email_result.get("ok")
-        else prev.get("emailSentAt")
-    )
-    wa_sent_at = (
-        now_iso
-        if wa_result.get("ok")
-        else prev.get("whatsappSentAt")
-    )
+    email_sent_at = now.isoformat() if result.get("ok") else prev.get("emailSentAt")
     checkout.recoveryLastResult = {
-        "whatsapp": {k: v for k, v in (wa_result or {}).items() if k != "response"},
-        "email": {k: v for k, v in (email_result or {}).items() if k != "response"},
+        "email": {k: v for k, v in (result or {}).items() if k != "response"},
         **({"emailSentAt": email_sent_at} if email_sent_at else {}),
-        **({"whatsappSentAt": wa_sent_at} if wa_sent_at else {}),
     }
-    if wa_result.get("ok") or email_result.get("ok"):
+    if result.get("ok"):
         checkout.recoverySentAt = now
     await checkout.save()
 
-    if wa_result.get("ok") or email_result.get("ok"):
+    if result.get("ok"):
         return {
             "ok": True,
-            "result": {
-                "whatsapp": checkout.recoveryLastResult.get("whatsapp"),
-                "email": checkout.recoveryLastResult.get("email"),
-            },
+            "result": {"email": checkout.recoveryLastResult.get("email")},
             "checkout": cart_recovery.admin_checkout_dict(checkout),
         }
-
-    reasons = []
-    if wa_result.get("skipped"):
-        reasons.append(f"whatsapp: {wa_result.get('reason')}")
-    elif wa_result.get("error"):
-        reasons.append(f"whatsapp: {wa_result.get('error')}")
-    if email_result.get("skipped"):
-        reasons.append(f"email: {email_result.get('reason')}")
-    elif email_result.get("error"):
-        reasons.append(f"email: {email_result.get('error')}")
+    reason = result.get("reason") if result.get("skipped") else result.get("error")
     raise HTTPException(
-        status_code=400 if (wa_result.get("skipped") or email_result.get("skipped")) else 502,
-        detail="Recovery not sent: " + ("; ".join(reasons) or "unknown"),
+        status_code=400 if result.get("skipped") else 502,
+        detail=f"Recovery not sent: email: {reason or 'unknown'}",
     )
 
 

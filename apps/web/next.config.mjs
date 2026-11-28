@@ -111,7 +111,6 @@ const nextConfig = {
       // Reels moved from Content to Store Theme.
       { source: "/admin/content/reels", destination: "/admin/theme/reels", permanent: false },
       { source: "/admin/theme", destination: "/admin/theme/banners", permanent: false },
-      { source: "/admin/integrations/aisensy", destination: "/admin/settings/integrations/aisensy", permanent: false },
       { source: "/admin/sales/invoices", destination: "/admin/orders", permanent: false },
       { source: "/admin/sales/returns", destination: "/admin/orders", permanent: false },
       { source: "/admin/sales/credit-notes", destination: "/admin/orders", permanent: false },
@@ -121,8 +120,8 @@ const nextConfig = {
       { source: "/admin/content/library", destination: "/admin/content", permanent: false },
       { source: "/admin/purchase", destination: "/admin/products/inventory", permanent: false },
       { source: "/admin/purchase/:path*", destination: "/admin/products/inventory", permanent: false },
-      { source: "/admin/marketing", destination: "/admin/settings/integrations/aisensy", permanent: false },
-      { source: "/admin/marketing/:path*", destination: "/admin/settings/integrations/aisensy", permanent: false },
+      { source: "/admin/marketing", destination: "/admin/settings/general", permanent: false },
+      { source: "/admin/marketing/:path*", destination: "/admin/settings/general", permanent: false },
       { source: "/admin/settings/user-roles", destination: "/admin/settings/users", permanent: false },
       { source: "/admin/settings/staff/admins", destination: "/admin/settings/users", permanent: false },
       { source: "/admin/settings/staff/managers", destination: "/admin/settings/users", permanent: false },

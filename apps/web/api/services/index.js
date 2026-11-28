@@ -23,7 +23,6 @@ export {
   adminCollectionService,
   adminProductColorService,
   adminShippingService,
-  adminAisensyService,
   abandonedCheckoutService,
   adminCouponService,
   adminTaxClassService,

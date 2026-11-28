@@ -49,21 +49,6 @@ function nestedChannel(result, key) {
   return nested && typeof nested === "object" ? nested : null;
 }
 
-export function whatsappStatus(row) {
-  const last = row?.recoveryLastResult;
-  const nested = channelFromResult(nestedChannel(last, "whatsapp"));
-  if (nested) return nested;
-  // Legacy flat WhatsApp-only payload from POST send-recovery
-  if (last && !nestedChannel(last, "whatsapp") && !nestedChannel(last, "email")) {
-    const flat = channelFromResult(last);
-    if (flat) return flat;
-  }
-  const stored = normalizeStoredStatus(row?.whatsappStatus);
-  if (stored) return stored;
-  if (row?.whatsappSentAt) return "Sent";
-  return "Not sent";
-}
-
 export function emailStatus(row) {
   const last = row?.recoveryLastResult;
   const nested = channelFromResult(nestedChannel(last, "email"));
@@ -262,21 +247,6 @@ export function createAbandonedColumns() {
       header: "Email",
       cell: ({ row }) => {
         const status = emailStatus(row.original);
-        return (
-          <AdminStatusText tone={channelTone(status)} dot>
-            {status}
-          </AdminStatusText>
-        );
-      },
-    },
-    {
-      id: "whatsapp",
-      size: 108,
-      meta: { className: "w-[108px]" },
-      accessorFn: (row) => whatsappStatus(row),
-      header: "WhatsApp",
-      cell: ({ row }) => {
-        const status = whatsappStatus(row.original);
         return (
           <AdminStatusText tone={channelTone(status)} dot>
             {status}

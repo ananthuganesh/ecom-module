@@ -11,8 +11,8 @@ from pymongo import ReturnDocument
 from app.documents import Order
 
 # Customers who leave Razorpay without paying → abandoned after this idle window.
-# Default 30m — aligned with STOCK_RESERVE_TTL_MINUTES. Separate from AiSensy
-# abandoned-cart WhatsApp delay (admin AiSensy abandonedMinutes, default 15).
+# Default 30m — aligned with STOCK_RESERVE_TTL_MINUTES. Separate from the
+# abandoned-cart email delay (abandoned_recovery.ABANDONED_MINUTES, 15).
 DEFAULT_ABANDONED_ORDER_MINUTES = 30
 ABANDONABLE_STATUSES = {"order placed"}
 PAID_LIKE = {"paid", "refunded", "partially_refunded", "refund_pending"}

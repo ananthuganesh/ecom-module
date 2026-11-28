@@ -23,7 +23,6 @@ import {
   TicketPercentIcon,
   UserGroupIcon,
   UserSettings01Icon,
-  WhatsappIcon,
 } from "@hugeicons/core-free-icons";
 
 function navIcon(icon, name) {
@@ -68,4 +67,3 @@ export const SettingsPolicies = navIcon(PolicyIcon, "SettingsPolicies");
 export const SettingsPayment = navIcon(CreditCardIcon, "SettingsPayment");
 export const SettingsEmailApi = navIcon(MailSend01Icon, "SettingsEmailApi");
 export const SettingsSeoMarketing = navIcon(SeoIcon, "SettingsSeoMarketing");
-export const SettingsWhatsapp = navIcon(WhatsappIcon, "SettingsWhatsapp");

@@ -66,12 +66,13 @@ const FAQ_ITEMS = [
   },
 ];
 
-export default function FaqSection({ className = "" }) {
-  const [openId, setOpenId] = useState(FAQ_ITEMS[0]?.id || null);
+/** FAQ accordion. `items` ({ id, question, answer }) defaults to the store FAQ (homepage). */
+export default function FaqSection({ className = "", items = FAQ_ITEMS, divider = true }) {
+  const [openId, setOpenId] = useState(items[0]?.id || null);
 
   return (
     <section
-      className={`w-full border-t border-gray-100 bg-white text-[#222222] ${className}`.trim()}
+      className={`w-full ${divider ? "border-t border-gray-100" : ""} bg-white text-[#222222] ${className}`.trim()}
     >
       <div className="mx-auto max-w-3xl px-4 py-14 md:px-6 md:py-20 lg:px-8">
         <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
@@ -79,9 +80,9 @@ export default function FaqSection({ className = "" }) {
         </h2>
 
         <div className="mt-10 md:mt-12">
-          {FAQ_ITEMS.map((item, index) => {
+          {items.map((item, index) => {
             const isOpen = openId === item.id;
-            const isLast = index === FAQ_ITEMS.length - 1;
+            const isLast = index === items.length - 1;
             return (
               <div
                 key={item.id}

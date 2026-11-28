@@ -14,7 +14,6 @@ export {
   adminProductColorService,
   shippingService,
   adminShippingService,
-  adminAisensyService,
   abandonedCheckoutService,
   couponService,
   reelsService,

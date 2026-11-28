@@ -6,7 +6,6 @@ import {
   SettingsPayment,
   SettingsEmailApi,
   SettingsSeoMarketing,
-  SettingsWhatsapp,
   Truck,
 } from "@/components/admin/LocalIcons";
 
@@ -20,7 +19,6 @@ export const SETTINGS_NAV = [
   { name: "Notifications", href: "/admin/settings/notifications", icon: SettingsBell },
   { name: "Payment", href: "/admin/settings/integrations/payment", icon: SettingsPayment },
   { name: "Email Marketing", href: "/admin/settings/integrations/email", icon: SettingsEmailApi },
-  { name: "Whatsapp Marketing", href: "/admin/settings/integrations/aisensy", icon: SettingsWhatsapp },
   { name: "Policies", href: "/admin/settings/policies", icon: SettingsPolicies },
 ];
 

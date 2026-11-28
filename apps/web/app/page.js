@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { getImageProps } from "next/image";
 import HeroBanner from "@/components/storefront/HeroBanner";
 import ProductCarousel from "@/components/storefront/ProductCarousel";
+import PhotoStrip from "@/components/storefront/PhotoStrip";
 import { HERO_LCP_SRC } from "@/components/storefront/heroSlides";
 import { fetchHeroSlides } from "@/lib/fetchHeroSlides";
 import { HERO_DESKTOP_MEDIA, HERO_MOBILE_MEDIA, heroUsesMobileArt } from "@/lib/heroArtDirection";
@@ -104,6 +105,7 @@ export default async function Home() {
       <InstagramReels />
       <TwoColumnImages />
       <TwoColumnVideos />
+      <PhotoStrip />
       <WhyUrbanAana />
       <FaqSection />
     </div>
