@@ -7,8 +7,10 @@ import { printPdfBlob } from "@/utils/printPdfBlob";
 import { adminOrderHref, formatOrderNumber } from "@/utils/formatOrderNumber";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
 import { unwrapPage } from "@/utils/unwrapPage";
-import { Download, Loader2, Printer, Search } from "lucide-react";
+import { Download, Loader2, Printer, Search } from "@/components/icons";
 import { toast } from "sonner";
+import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
+import { Truck } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminHeaderButton,
@@ -160,7 +162,7 @@ export default function AdminShipmentsPage() {
         const data = await adminOrderService.getAll(buildParams(pageNum));
         if (gen !== fetchGen.current) return;
         const { items, hasMore: more } = unwrapPage(data, { fallbackLimit: PAGE_SIZE });
-        const list = items.filter((o) => o.status !== "draft" && o.status !== "abandoned");
+        const list = items.filter((o) => o.status !== "abandoned");
         setOrders((prev) => {
           if (!append) return list;
           const seen = new Set(prev.map((o) => o._id));
@@ -302,10 +304,12 @@ export default function AdminShipmentsPage() {
         } catch {
           /* ignore */
         }
-        toast.error(detail);
+        toast.error(
+          userErrorMessage(detail, "No printable labels in this selection")
+        );
         return;
       }
-      await printPdfBlob(blob);
+      await printPdfBlob(blob, { autoPrint: true });
       const extra = [];
       if (skipped) extra.push(`${skipped} skipped`);
       if (errors) extra.push(`${errors} failed`);
@@ -317,19 +321,7 @@ export default function AdminShipmentsPage() {
       setRowSelection({});
       fetchPage(1, { append: false });
     } catch (error) {
-      let detail = error?.message || "Label print failed";
-      const data = error?.response?.data;
-      if (data instanceof Blob) {
-        try {
-          const parsed = JSON.parse(await data.text());
-          if (parsed?.detail) detail = String(parsed.detail);
-        } catch {
-          /* ignore */
-        }
-      } else if (typeof data?.detail === "string") {
-        detail = data.detail;
-      }
-      toast.error(detail);
+      toast.error(await userErrorFromAxios(error, "Couldn’t print labels"));
     } finally {
       setIsPrintingLabels(false);
       setIsBulkLoading(false);
@@ -337,7 +329,7 @@ export default function AdminShipmentsPage() {
   };
 
   return (
-    <AdminListLayout fill={false} title={pageTitle}>
+    <AdminListLayout fill={false} title={pageTitle} icon={Truck}>
       <DataTable
         columns={columns}
         data={displayOrders}
@@ -376,7 +368,7 @@ export default function AdminShipmentsPage() {
                 <button
                   type="button"
                   onClick={() => setRowSelection({})}
-                  className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                  className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                 >
                   Clear
                 </button>

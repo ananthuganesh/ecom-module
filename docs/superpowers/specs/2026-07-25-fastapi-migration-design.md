@@ -8,14 +8,14 @@
 ## Goals
 
 - Replace Express with FastAPI while keeping `/api/*` and `/uploads/*` path parity for Next.js rewrites.
-- Fix security defects during migration (no auth bypass, order ownership, payment binding, CORS allowlist, Shiprocket after payment).
+- Fix security defects during migration (no auth bypass, order ownership, payment binding, CORS allowlist, DTDC after payment).
 - Deliver pytest coverage for auth, catalog, orders, and payments.
 
 ## Non-goals
 
 - Rewriting Next.js storefront UI.
 - Migrating MongoDB to Postgres.
-- Porting unused Stripe checkout (Razorpay-only in FastAPI).
+- Razorpay-only payments.
 
 ## Architecture
 
@@ -30,7 +30,7 @@
 1. Users/auth/OTP (strict protect + adminOnly)  
 2. Public catalog + coupons/collections  
 3. Uploads + admin catalog/inventory/coupons  
-4. Orders with ownership; Shiprocket deferred until paid/COD  
+4. Orders with ownership; DTDC deferred until paid/COD  
 5. Razorpay create/verify/webhook (raw body)  
 6. Shipping, wallet, abandoned checkout, settings  
 7. Point Next to FastAPI; decommission Express entry in root scripts
@@ -42,4 +42,4 @@
 3. Order get/pay/track: owner or admin.  
 4. Payment verify: user owns order; txn binds to order.  
 5. CORS from `ALLOWED_ORIGINS` only in production.  
-6. Shiprocket after `paymentStatus=paid` or COD.
+6. DTDC after `paymentStatus=paid` or COD.

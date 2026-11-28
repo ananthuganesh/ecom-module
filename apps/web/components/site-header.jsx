@@ -1,55 +1,54 @@
 "use client";
 
-import { AlertCircle } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AdminOrderSearch from "@/components/admin/AdminOrderSearch";
+import AdminSaveBar from "@/components/admin/AdminSaveBar";
 import { NavUser } from "@/components/nav-user";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
 
-export function SiteHeader() {
+/**
+ * Admin top bar. Pages with the sidebar only use it below md (the sidebar
+ * carries the logo, search and account there); settings pages always use it.
+ */
+export function SiteHeader({ className = "" }) {
   const router = useRouter();
-  const userInfo = useAuthStore((s) => s.userInfo);
-  const logout = useAuthStore((s) => s.logout);
-  const saveBar = useProductSaveBarStore();
+  const userInfo = useAdminAuthStore((s) => s.userInfo);
+  const logout = useAdminAuthStore((s) => s.logout);
+  const saveBarActive = useProductSaveBarStore((s) => s.active);
 
   const handleLogout = () => {
+    if (useProductSaveBarStore.getState().blockNavigation()) return;
     logout();
     router.push("/admin/login");
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 z-50 flex h-14 w-full shrink-0 items-center gap-2 border-b border-white/10 bg-[#0a0a0a] text-white">
+    <header
+      className={`relative z-50 flex h-14 w-full shrink-0 items-center gap-2 bg-[#0a0a0a] text-white ${className}`}
+    >
       <div className="grid w-full grid-cols-[1fr_minmax(0,40rem)_1fr] items-center gap-3 px-4 lg:px-6">
-        <div />
+        <div className="flex min-w-0 items-center gap-3">
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex shrink-0 items-center"
+            aria-label="Urban Aana Admin"
+          >
+            <Image
+              src="/urban/logo-dark.png"
+              alt="Urban Aana"
+              width={110}
+              height={32}
+              priority
+              className="h-7 w-auto object-contain"
+            />
+          </Link>
+        </div>
         <div className="min-w-0">
-          {saveBar.active ? (
-            <div className="flex h-[38px] items-center justify-between gap-3 rounded-lg bg-[#303030] px-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-white" />
-                <p className="m-0 truncate text-[13px] font-medium text-white">
-                  Unsaved
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  disabled={saveBar.saving}
-                  onClick={() => saveBar.onDiscard?.()}
-                  className="h-7 cursor-pointer rounded-lg bg-[#1a1a1a] px-2.5 text-[12px] font-medium text-white hover:bg-[#0a0a0a] disabled:opacity-50"
-                >
-                  Discard
-                </button>
-                <button
-                  type="button"
-                  disabled={saveBar.saving}
-                  onClick={() => saveBar.onSave?.()}
-                  className="h-7 cursor-pointer rounded-lg bg-white px-2.5 text-[12px] font-medium text-[#303030] hover:bg-[#f1f1f1] disabled:opacity-50"
-                >
-                  {saveBar.saving ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </div>
+          {saveBarActive ? (
+            <AdminSaveBar />
           ) : (
             <AdminOrderSearch />
           )}

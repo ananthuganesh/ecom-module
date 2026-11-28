@@ -1,460 +1,171 @@
 /**
- * Product barcode label print — matches TSPL dual-label stock:
- * SIZE 100 mm, 40 mm | GAP 3 mm, 0 mm
- * Two identical panels side-by-side; Code 128 barcode.
+ * Print-ready product barcode label (50mm × 25mm).
+ * Supports 1 or 2 copies per sheet (2-up row).
+ * Barcode SVG is rendered in-app (no CDN) so it always appears in the print popup.
  */
 
-function esc(s) {
-  return String(s ?? "")
+import JsBarcode from "jsbarcode";
+
+export const BARCODE_LABEL_COPIES_OPTIONS = [1, 2];
+
+export function normalizeBarcodeCopies(value) {
+  const n = Number(value);
+  return BARCODE_LABEL_COPIES_OPTIONS.includes(n) ? n : 1;
+}
+
+export function variantLabel(variant) {
+  if (!variant || typeof variant !== "object") return "";
+  return [variant.color, variant.size, variant.customValue]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+/** Variants for barcode print UI; falls back to a single product-level row. */
+export function listProductVariants(product) {
+  const list = Array.isArray(product?.variants) ? product.variants : [];
+  if (list.length) return list;
+  return [
+    {
+      sku: product?.sku || "",
+      barcode: product?.barcode || "",
+      color: "",
+      size: "",
+      customValue: "",
+    },
+  ];
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
 
-function formatDom(d = new Date()) {
-  const months = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
+function formatMfgMonthYear(date = new Date()) {
+  return date.toLocaleString("en-US", { month: "long", year: "numeric" });
+}
+
+function formatMrp(product) {
+  const price = Number(product?.price ?? product?.salePrice ?? 0);
+  if (!Number.isFinite(price) || price <= 0) return "—";
+  return `₹${price.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} Incl of all tax`;
+}
+
+function resolveSize(variant, product) {
+  const fromVariant = String(variant?.size || "").trim();
+  if (fromVariant) return fromVariant;
+  const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
+  if (sizes.length === 1) return String(sizes[0]).trim() || "—";
+  return "—";
+}
+
+function resolveLabelSku(variant, product) {
+  const fromVariant = String(variant?.sku || "").trim();
+  if (fromVariant) return fromVariant;
+  return String(product?.sku || product?.productId || "").trim() || "—";
+}
+
+function resolveBarcodeCode(variant, product) {
+  const candidates = [
+    variant?.barcode,
+    variant?.sku,
+    product?.barcode,
+    product?.sku,
+    product?.productId,
   ];
-  return `${months[d.getMonth()]}, ${d.getFullYear()}`;
-}
-
-export function variantLabel(variant) {
-  if (!variant || typeof variant !== "object") return "";
-  return [variant.color, variant.size, variant.customValue].filter(Boolean).join(" / ");
-}
-
-export function resolveLabelSize(variant) {
-  if (!variant || typeof variant !== "object") return "";
-  return String(variant.size || "").trim();
-}
-
-function looksLikeObjectId(value) {
-  return /^[a-fA-F0-9]{24}$/.test(String(value || "").trim());
-}
-
-function categoryId(value) {
-  if (value == null || value === "") return "";
-  if (typeof value === "object") {
-    return String(value._id || value.id || "").trim();
+  for (const c of candidates) {
+    const v = String(c || "").trim();
+    if (v) return v;
   }
-  return String(value).trim();
-}
-
-function findCategoryName(categories, idOrDoc) {
-  if (!idOrDoc) return "";
-  if (typeof idOrDoc === "object") {
-    const direct = String(idOrDoc.name || idOrDoc.title || "").trim();
-    if (direct) return direct;
-  }
-  const id = categoryId(idOrDoc);
-  if (!id) return "";
-  const list = Array.isArray(categories) ? categories : [];
-  const match = list.find((c) => categoryId(c) === id);
-  return String(match?.name || match?.title || "").trim();
-}
-
-/** Resolve human-readable category (+ type) name. */
-export function resolveLabelCategory(product, categories = []) {
-  const parentName =
-    (product?.category && typeof product.category === "object"
-      ? String(product.category.name || product.category.title || "").trim()
-      : "") ||
-    (String(product?.category || "").trim() &&
-    !looksLikeObjectId(product.category)
-      ? String(product.category).trim()
-      : "") ||
-    findCategoryName(categories, product?.category);
-
-  const subName =
-    (product?.type && typeof product.type === "object"
-      ? String(product.type.name || product.type.title || "").trim()
-      : "") ||
-    (String(product?.type || "").trim() &&
-    !looksLikeObjectId(product.type)
-      ? String(product.type).trim()
-      : "") ||
-    findCategoryName(categories, product?.type);
-
-  if (parentName && subName) return `${parentName} / ${subName}`;
-  if (parentName) return parentName;
-  if (subName) return subName;
-
-  const named = String(product?.categoryName || "").trim();
-  if (named && !looksLikeObjectId(named)) return named;
-
   return "";
 }
 
-export function resolveBarcodeCode(variant, product) {
-  const fromVariant = String(variant?.barcode || variant?.sku || "").trim();
-  if (fromVariant) return fromVariant;
-  const fromProduct = String(product?.barcode || product?.sku || "").trim();
-  if (fromProduct) return fromProduct;
-  const id = product?._id != null ? String(product._id) : "";
-  return id ? id.slice(-8).toUpperCase() : "";
+function categoryNameById(categories, id) {
+  if (!id || !Array.isArray(categories)) return "";
+  const hit = categories.find((c) => String(c?._id) === String(id));
+  return String(hit?.name || "").trim();
 }
 
-export function resolveLabelSku(variant, product) {
-  const fromVariant = String(variant?.sku || "").trim();
-  if (fromVariant) return fromVariant;
-  const fromProduct = String(product?.sku || "").trim();
-  if (fromProduct) return fromProduct;
-  const id = product?._id != null ? String(product._id) : "";
-  return id ? id.slice(-8).toUpperCase() : "—";
-}
+function resolveCategoryLine(product, categories = []) {
+  const primary =
+    categoryNameById(categories, product?.primaryCategoryId) ||
+    String(product?.primaryCategoryName || "").trim() ||
+    String(product?.category || "").trim();
+  const secondary =
+    categoryNameById(categories, product?.secondaryCategoryId) ||
+    String(product?.secondaryCategoryName || "").trim() ||
+    String(product?.subcategory || "").trim();
 
-export function resolveLabelMrp(product, variant) {
-  const v = variant?.mrp ?? variant?.price ?? variant?.pricing?.mrp;
-  if (v != null && v !== "" && !Number.isNaN(Number(v))) return Number(v);
-  const p =
-    product?.pricing?.mrp ??
-    product?.mrp ??
-    product?.pricing?.sellingPrice ??
-    product?.price;
-  if (p != null && p !== "" && !Number.isNaN(Number(p))) return Number(p);
-  return null;
-}
-
-export function normalizeBarcodeCopies(raw, { min = 1, max = 200 } = {}) {
-  const n = Math.floor(Number(raw));
-  if (!Number.isFinite(n)) return min;
-  return Math.min(max, Math.max(min, n));
-}
-
-/** TSPL stock: SIZE 100mm, 40mm — two panels side by side. */
-export const LABEL_STOCK = {
-  pageWmm: 100,
-  pageHmm: 40,
-  /** Vertical gap between labels on the roll (GAP 3 mm, 0 mm). */
-  gapHmm: 3,
-  panelWmm: 50,
-};
-
-/**
- * Build print HTML for barcode labels.
- * Always landscape 100×40 mm with two panels per sheet (matches dual die-cut stock).
- * copies=1 → one sheet with the same label twice (identical pair).
- */
-export function buildProductBarcodeLabelHtml({
-  productName,
-  sizeText,
-  categoryText,
-  dom,
-  mrp,
-  sku,
-  barcode,
-  manufacturer = "Urban Aana",
-  copies = 1,
-}) {
-  const code = String(barcode || sku || "").trim();
-  const mrpText =
-    mrp != null
-      ? `₹${Number(mrp).toLocaleString("en-IN", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`
-      : "—";
-  const title = esc(productName || "Product Label");
-  const count = normalizeBarcodeCopies(copies);
-
-  const { pageWmm, pageHmm, gapHmm, panelWmm } = LABEL_STOCK;
-  const PAGE_W = `${pageWmm}mm`;
-  const PAGE_H = `${pageHmm}mm`;
-  const PANEL_W = `${panelWmm}mm`;
-  const LABEL_H = `${pageHmm}mm`;
-
-  const oneLabel = (i) => `<div class="label">
-    <div class="label-body">
-      <div class="name">${esc((productName || "Product").toUpperCase())}</div>
-      <div class="row-line">
-        <span class="pair"><b>Size:</b> ${esc(sizeText || "—")}</span>
-        <span class="pair"><b>MFG:</b> ${esc(dom || formatDom())}</span>
-      </div>
-      <div class="row"><b>MRP:</b> ${esc(mrpText)} Incl of all tax</div>
-      <div class="row"><b>Category:</b> ${esc(categoryText || "—")}</div>
-      <div class="row"><b>SKU:</b> ${esc(sku || "—")}</div>
-      <div class="barcode-wrap">
-        <svg class="barcode" id="barcode-${i}"></svg>
-        <div class="barcode-fallback err" hidden>—</div>
-      </div>
-      <div class="sku-line">${esc(sku || "—")}</div>
-      <div class="mfg">Manufactured by ${esc(manufacturer)}</div>
-    </div>
-  </div>`;
-
-  // Pair panels left/right. copies=1 → identical pair (matches TSPL dual print).
-  const slots = [];
-  if (count === 1) {
-    slots.push([0, 0]);
-  } else {
-    for (let i = 0; i < count; i += 2) {
-      slots.push([i, i + 1 < count ? i + 1 : null]);
-    }
+  if (primary && secondary && primary.toLowerCase() !== secondary.toLowerCase()) {
+    return `${primary} / ${secondary}`;
   }
+  return primary || secondary || "—";
+}
 
-  const labelsHtml = slots
-    .map(([a, b], rowIdx) => {
-      const left = oneLabel(rowIdx * 2);
-      const right =
-        b == null
-          ? `<div class="label label-empty"></div>`
-          : oneLabel(rowIdx * 2 + 1);
-      return `<div class="label-row">${left}${right}</div>`;
-    })
-    .join("\n");
+/** Render CODE128 as SVG markup in the current document (no popup CDN). */
+function buildBarcodeSvgMarkup(code) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  JsBarcode(svg, String(code), {
+    format: "CODE128",
+    width: 1.15,
+    height: 36,
+    displayValue: false,
+    margin: 0,
+    flat: true,
+  });
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.style.width = "100%";
+  svg.style.height = "9mm";
+  svg.style.maxHeight = "9mm";
+  svg.style.display = "block";
+  return svg.outerHTML;
+}
 
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${title}</title>
-  <style>
-    /* TSPL: SIZE ${pageWmm} mm, ${pageHmm} mm — landscape, never rotate */
-    @page {
-      size: ${PAGE_W} ${PAGE_H};
-      margin: 0;
-    }
-    @media print {
-      @page {
-        size: ${PAGE_W} ${PAGE_H};
-        margin: 0;
-      }
-      html, body {
-        width: ${PAGE_W} !important;
-        height: auto !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      .label-row {
-        page-break-after: always;
-        break-after: page;
-      }
-      .label-row:last-child {
-        page-break-after: auto;
-        break-after: auto;
-      }
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: ${PAGE_W};
-      background: #fff;
-      color: #000;
-      font-family: Arial, Helvetica, sans-serif;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    .label-row {
-      width: ${PAGE_W};
-      height: ${PAGE_H};
-      max-height: ${PAGE_H};
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      align-items: stretch;
-      justify-content: flex-start;
-      overflow: hidden;
-      /* Roll GAP ${gapHmm} mm between successive labels */
-      margin-bottom: ${gapHmm}mm;
-      page-break-after: always;
-      break-after: page;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    .label-row:last-child {
-      margin-bottom: 0;
-      page-break-after: auto;
-      break-after: auto;
-    }
-    .label {
-      width: ${PANEL_W};
-      min-width: ${PANEL_W};
-      max-width: ${PANEL_W};
-      height: ${LABEL_H};
-      max-height: ${LABEL_H};
-      padding: 1.8mm 2mm 1.4mm;
-      overflow: hidden;
-      display: flex;
-      align-items: stretch;
-      flex: 0 0 ${PANEL_W};
-      /* Keep content upright (landscape sheet, not rotated text) */
-      writing-mode: horizontal-tb;
-      text-orientation: mixed;
-      transform: none;
-    }
-    .label-empty {
-      width: ${PANEL_W};
-      min-width: ${PANEL_W};
-      height: ${LABEL_H};
-      flex: 0 0 ${PANEL_W};
-    }
-    .label-body {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      gap: 0.5mm;
-      overflow: hidden;
-    }
-    .name {
-      font-size: 8.5pt;
-      font-weight: 700;
-      line-height: 1.1;
-      max-height: 6.5mm;
-      overflow: hidden;
-      word-break: break-word;
-    }
-    .row-line {
-      display: flex;
-      flex-direction: row;
-      justify-content: space-between;
-      gap: 1mm;
-      font-size: 6.5pt;
-      line-height: 1.2;
-    }
-    .row {
-      font-size: 6.5pt;
-      line-height: 1.2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .row b, .pair b {
-      font-weight: 700;
-      margin-right: 0.6mm;
-    }
-    .pair {
-      flex: 1 1 50%;
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .barcode-wrap {
-      margin-top: auto;
-      width: 100%;
-      height: 11mm;
-      max-height: 11mm;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-    .barcode-wrap svg {
-      width: 100% !important;
-      max-width: 44mm;
-      height: 9mm !important;
-      max-height: 9mm !important;
-      display: block;
-      /* Bars must run vertically across a horizontal scan path */
-      transform: none !important;
-    }
-    .sku-line {
-      margin-top: 0.3mm;
-      font-size: 6.5pt;
-      line-height: 1.1;
-      text-align: center;
-      letter-spacing: 0.02em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .mfg {
-      margin-top: 0.2mm;
-      font-size: 5pt;
-      line-height: 1.1;
-      color: #222;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .err {
-      font-size: 5pt;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  ${labelsHtml}
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
-  <script>
-    (function () {
-      var code = ${JSON.stringify(code)};
-      function doPrint() {
-        setTimeout(function () { window.focus(); window.print(); }, 200);
-      }
-      function render() {
-        var nodes = document.querySelectorAll(".barcode");
-        for (var i = 0; i < nodes.length; i++) {
-          var svg = nodes[i];
-          var fallback = svg.parentNode.querySelector(".barcode-fallback");
-          if (!code) {
-            if (fallback) {
-              fallback.hidden = false;
-              fallback.textContent = "—";
-            }
-            continue;
-          }
-          try {
-            if (typeof JsBarcode === "undefined") throw new Error("JsBarcode missing");
-            // CODE128 ("128M" in TSPL) — flat, wide, short bars for 40mm height stock
-            JsBarcode(svg, code, {
-              format: "CODE128",
-              width: 1.2,
-              height: 34,
-              displayValue: false,
-              margin: 0,
-              flat: true
-            });
-            svg.removeAttribute("width");
-            svg.removeAttribute("height");
-            svg.style.width = "100%";
-            svg.style.height = "9mm";
-            svg.style.maxHeight = "9mm";
-            svg.style.transform = "none";
-          } catch (e) {
-            if (fallback) {
-              fallback.hidden = false;
-              fallback.textContent = code;
-            }
-          }
-        }
-        doPrint();
-      }
-      if (document.readyState === "complete") render();
-      else window.onload = render;
-    })();
-  <\/script>
-</body>
-</html>`;
+function buildLabelHtml({
+  brandName,
+  size,
+  mfg,
+  mrp,
+  category,
+  sku,
+  barcodeSvg,
+}) {
+  return `
+    <div class="label">
+      <div class="brand">${escapeHtml(brandName)}</div>
+      <div class="meta">
+        <div><strong>Size:</strong> ${escapeHtml(size)}</div>
+        <div><strong>MFG:</strong> ${escapeHtml(mfg)}</div>
+        <div><strong>MRP:</strong> ${escapeHtml(mrp)}</div>
+        <div><strong>Category:</strong> ${escapeHtml(category)}</div>
+        <div><strong>SKU:</strong> ${escapeHtml(sku)}</div>
+      </div>
+      <div class="barcode-wrap">${barcodeSvg}</div>
+      <div class="footer">
+        <div class="rule"></div>
+        <div class="mfg-by">Manufactured by Urban Aana</div>
+      </div>
+    </div>
+  `;
 }
 
 /**
- * @returns {Promise<{ ok: true, copies: number } | { ok: false, error: string }>}
+ * @param {object} opts
+ * @param {object} opts.product
+ * @param {object} [opts.variant]
+ * @param {array} [opts.categories]
+ * @param {1|2} [opts.copies]
  */
 export async function printProductBarcodeLabel({
   product,
-  variant,
-  copies = 1,
+  variant = null,
   categories: categoriesProp,
+  copies = 1,
 } = {}) {
   if (typeof window === "undefined") {
     return { ok: false, error: "Print is only available in the browser" };
@@ -467,7 +178,15 @@ export async function printProductBarcodeLabel({
     return { ok: false, error: "Unable to print barcode for this product" };
   }
 
-  // Open immediately (before await) so the browser does not block the popup
+  let barcodeSvg;
+  try {
+    barcodeSvg = buildBarcodeSvgMarkup(code);
+  } catch (err) {
+    console.error("Barcode render failed:", err);
+    return { ok: false, error: "Unable to generate barcode for this SKU" };
+  }
+
+  // Open immediately so the browser does not block the popup
   const w = window.open("", "_blank", "width=900,height=320");
   if (!w) {
     return { ok: false, error: "Allow pop-ups to print the barcode label" };
@@ -485,34 +204,138 @@ export async function printProductBarcodeLabel({
   }
 
   const count = normalizeBarcodeCopies(copies);
-  const html = buildProductBarcodeLabelHtml({
-    productName,
-    sizeText: resolveLabelSize(variant),
-    categoryText: resolveLabelCategory(product, categories),
-    dom: formatDom(),
-    mrp: resolveLabelMrp(product, variant),
+  const brandName =
+    String(product?.brand || product?.brandName || "KERALATHINAYI").trim() ||
+    "KERALATHINAYI";
+  const fields = {
+    brandName,
+    size: resolveSize(variant, product),
+    mfg: formatMfgMonthYear(),
+    mrp: formatMrp(product),
+    category: resolveCategoryLine(product, categories),
     sku,
-    barcode: code,
-    manufacturer: "Urban Aana",
-    copies: count,
-  });
+    barcodeSvg,
+  };
+
+  const oneLabel = () => buildLabelHtml(fields);
+
+  // Dual die-cut stock: always 2 × 50mm panels side-by-side (identical pair).
+  // copies=2 → one sheet with both panels; copies=1 still prints both (same label twice).
+  const sheetCount = Math.max(1, Math.ceil(count / 2));
+  const rowsHtml = Array.from({ length: sheetCount }, () => {
+    return `<div class="row">${oneLabel()}${oneLabel()}</div>`;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Barcode – ${escapeHtml(productName)}</title>
+  <style>
+    @page { size: 100mm 25mm; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .sheet { width: 100mm; }
+    .row {
+      width: 100mm;
+      height: 25mm;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      page-break-after: always;
+      break-after: page;
+    }
+    .row:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .label {
+      width: 50mm;
+      flex: 0 0 50mm;
+      max-width: 50mm;
+      height: 25mm;
+      padding: 1.2mm 1.6mm 1mm;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .brand {
+      font-size: 3.1mm;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      text-transform: uppercase;
+      margin-bottom: 0.5mm;
+    }
+    .meta {
+      font-size: 1.85mm;
+      line-height: 1.22;
+      flex: 0 0 auto;
+    }
+    .meta strong { font-weight: 700; }
+    .barcode-wrap {
+      margin-top: 0.6mm;
+      width: 100%;
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: stretch;
+      overflow: hidden;
+    }
+    .barcode-wrap svg {
+      width: 100% !important;
+      max-width: 100%;
+      height: 9mm !important;
+      max-height: 9mm !important;
+      display: block;
+    }
+    .footer {
+      margin-top: auto;
+      text-align: center;
+      padding-top: 0.4mm;
+    }
+    .rule {
+      width: 18mm;
+      height: 0;
+      border-top: 0.25mm solid #000;
+      margin: 0 auto 0.35mm;
+    }
+    .mfg-by {
+      font-size: 1.55mm;
+      line-height: 1.1;
+      font-weight: 500;
+    }
+    @media print {
+      html, body { width: 100mm; }
+      .sheet { width: 100mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">${rowsHtml}</div>
+  <script>
+    window.onload = function () {
+      setTimeout(function () {
+        window.focus();
+        window.print();
+      }, 120);
+    };
+  </script>
+</body>
+</html>`;
 
   w.document.open();
   w.document.write(html);
   w.document.close();
-  return { ok: true, copies: count };
-}
-
-export function listProductVariants(product) {
-  const list = Array.isArray(product?.variants) ? product.variants : [];
-  if (list.length) return list;
-  return [
-    {
-      sku: product?.sku || "",
-      barcode: product?.barcode || "",
-      color: "",
-      size: "",
-      customValue: "",
-    },
-  ];
+  return { ok: true, copies: sheetCount * 2 };
 }

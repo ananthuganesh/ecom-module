@@ -10,7 +10,7 @@ from app.documents import Order
 from app.services.stock import release_order_stock
 
 STOCK_RESERVE_TTL_MINUTES = 30
-PAID_LIKE = {"paid", "refunded", "partially_refunded", "pay_on_delivery"}
+PAID_LIKE = {"paid", "refunded", "partially_refunded", "refund_pending"}
 
 
 async def release_expired_stock_reservations(*, limit: int = 200) -> dict[str, Any]:
@@ -45,9 +45,23 @@ async def release_expired_stock_reservations(*, limit: int = 200) -> dict[str, A
         try:
             if await release_order_stock(order):
                 released += 1
+            # TTL exit without pay → abandoned cart (not an open order).
+            try:
+                from app.services.order_abandon import mark_order_abandoned
+
+                await mark_order_abandoned(
+                    order,
+                    reason="payment_reserve_ttl",
+                    release_stock=False,
+                )
+            except Exception as abandon_exc:
+                print(f"[Orders] Abandon after TTL release failed for {order.id}: {abandon_exc}")
         except Exception as exc:
             errors += 1
-            print(f"[Stock] Reserve TTL release failed for {order.id}: {exc}")
+            # reserved=0 is handled as noop now; keep noise down for transient races
+            msg = str(exc)
+            if "reserved 0" not in msg:
+                print(f"[Stock] Reserve TTL release failed for {order.id}: {exc}")
 
     return {"scanned": len(candidates), "released": released, "errors": errors}
 

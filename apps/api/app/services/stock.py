@@ -70,21 +70,36 @@ async def ensure_balance_seeded_from_product(
     warehouse_id: str,
     variant_sku: str = "",
 ) -> StockBalance:
-    """If warehouse balance is empty, copy opening qty from product/variant once."""
-    bal = await get_or_create_balance(product_id, warehouse_id, variant_sku)
+    """If warehouse balance is empty, copy opening qty from product/variant once.
+
+    Sold-out rows are quantity=0/reserved=0 with prior movements — never treat
+    those as "unseeded" or a later order will resurrect catalog qty.
+    """
+    sku = (variant_sku or "").strip()
+    bal = await get_or_create_balance(product_id, warehouse_id, sku)
     if int(bal.quantity or 0) > 0 or int(bal.reserved or 0) > 0:
+        return bal
+    prior = await StockMovement.find_one(
+        StockMovement.productId == product_id,
+        StockMovement.warehouseId == warehouse_id,
+        StockMovement.variantSku == sku,
+    )
+    if prior:
         return bal
     product = await Product.get(ObjectId(product_id)) if ObjectId.is_valid(product_id) else None
     if not product:
         return bal
-    sku = (variant_sku or "").strip()
     seed = 0
     if sku and product.variants:
         for v in product.variants:
             if (v.sku or "").strip() == sku:
                 seed = int(v.quantity or 0)
                 break
-    if seed <= 0:
+    if seed <= 0 and not sku:
+        # Variant products must not seed a blank-SKU product-level balance.
+        has_variant_skus = any((v.sku or "").strip() for v in (product.variants or []))
+        if has_variant_skus:
+            return bal
         seed = int(product.totalStock or 0)
         if seed <= 0 and product.variants:
             seed = sum(int(v.quantity or 0) for v in product.variants)
@@ -134,6 +149,66 @@ async def sync_product_stock(product_id: str) -> Product | None:
     product.updatedAt = datetime.utcnow()
     await product.save()
     return product
+
+
+async def apply_catalog_quantities_to_ledger(
+    product: Product,
+    *,
+    reason: str = "Product catalog quantity update",
+    created_by: str | None = None,
+) -> Product | None:
+    """Write variant Available counts onto the warehouse ledger.
+
+    Sales, payment capture, and inventory sync call sync_product_stock(), which
+    overwrites Product.variants[].quantity from StockBalance. The product form
+    used to save only the catalog copy — after a sell-out the ledger stayed at
+    0, so the next sync snapped Available back to 0.
+    """
+    if not product or not getattr(product, "id", None):
+        return product
+
+    wh = await ensure_default_warehouse()
+    wh_id = str(wh.id)
+    pid = str(product.id)
+    variants = list(product.variants or [])
+
+    sku_targets: list[tuple[str, int]] = []
+    seen: set[str] = set()
+    for variant in variants:
+        sku = (getattr(variant, "sku", None) or "").strip()
+        if not sku or sku in seen:
+            continue
+        seen.add(sku)
+        sku_targets.append((sku, max(0, int(getattr(variant, "quantity", 0) or 0))))
+
+    if sku_targets:
+        targets = sku_targets
+    else:
+        desired = max(0, int(product.totalStock or 0))
+        if desired <= 0 and variants:
+            desired = sum(max(0, int(getattr(v, "quantity", 0) or 0)) for v in variants)
+        targets = [("", desired)]
+
+    for sku, desired_available in targets:
+        bal = await get_or_create_balance(pid, wh_id, sku)
+        reserved = int(bal.reserved or 0)
+        unavailable = int(getattr(bal, "unavailable", 0) or 0)
+        desired_on_hand = desired_available + reserved + unavailable
+        current_on_hand = int(bal.quantity or 0)
+        delta = desired_on_hand - current_on_hand
+        if delta == 0:
+            continue
+        await apply_stock_change(
+            product_id=pid,
+            warehouse_id=wh_id,
+            quantity_delta=delta,
+            movement_type="adjustment",
+            variant_sku=sku,
+            reason=reason,
+            created_by=created_by,
+        )
+
+    return await Product.get(product.id)
 
 
 async def reserve_stock(
@@ -258,6 +333,9 @@ async def release_reserved_stock(
         on_hand = int(bal.quantity or 0)
         reserved = int(bal.reserved or 0)
         if reserved < qty:
+            # Already cleared (TTL race, prior release, or balance drift) — idempotent no-op.
+            if reserved <= 0:
+                return {"balance": bal, "movement": None, "noop": True}
             raise HTTPException(
                 status_code=400,
                 detail=f"Insufficient reserved stock to release (reserved {reserved})",
@@ -390,47 +468,6 @@ async def adjust_stock(
     )
 
 
-async def transfer_stock(
-    *,
-    product_id: str,
-    from_warehouse_id: str,
-    to_warehouse_id: str,
-    quantity: int,
-    variant_sku: str = "",
-    reason: str | None = None,
-    created_by: str | None = None,
-) -> dict:
-    qty = int(quantity)
-    if qty <= 0:
-        raise HTTPException(status_code=400, detail="transfer quantity must be positive")
-    if from_warehouse_id == to_warehouse_id:
-        raise HTTPException(status_code=400, detail="source and destination warehouses must differ")
-
-    out = await apply_stock_change(
-        product_id=product_id,
-        warehouse_id=from_warehouse_id,
-        quantity_delta=-qty,
-        movement_type="transfer_out",
-        variant_sku=variant_sku,
-        reason=reason or "Transfer out",
-        reference_type="warehouse",
-        reference_id=to_warehouse_id,
-        created_by=created_by,
-    )
-    inn = await apply_stock_change(
-        product_id=product_id,
-        warehouse_id=to_warehouse_id,
-        quantity_delta=qty,
-        movement_type="transfer_in",
-        variant_sku=variant_sku,
-        reason=reason or "Transfer in",
-        reference_type="warehouse",
-        reference_id=from_warehouse_id,
-        created_by=created_by,
-    )
-    return {"out": out, "in": inn}
-
-
 async def apply_sale(
     *,
     product_id: str,
@@ -511,10 +548,13 @@ async def release_order_stock(order) -> bool:
     """Release reserved stock if reserved and not yet applied."""
     details = dict(order.transactionDetails or {})
     if not details.get("stockReserved"):
+        # Still release coupon reservation when stock was never held.
+        await _release_coupon_reservation(order)
         return False
     if details.get("stockApplied"):
         return False
     if details.get("stockReleased"):
+        await _release_coupon_reservation(order)
         return False
 
     col = Order.get_pymongo_collection()
@@ -528,7 +568,11 @@ async def release_order_stock(order) -> bool:
         {"$set": {"transactionDetails.stockReleased": True, "updatedAt": datetime.utcnow()}},
     )
     if claim is None:
+        await _release_coupon_reservation(order)
         return False
+
+    details["stockReleased"] = True
+    order.transactionDetails = details
 
     wh = await ensure_default_warehouse()
     wh_id = str(wh.id)
@@ -567,8 +611,39 @@ async def release_order_stock(order) -> bool:
             {"_id": order.id},
             {"$set": {"transactionDetails.stockReleased": False, "updatedAt": datetime.utcnow()}},
         )
+        details["stockReleased"] = False
+        order.transactionDetails = details
         raise
+    await _release_coupon_reservation(order)
     return True
+
+
+async def _release_coupon_reservation(order) -> None:
+    """Return coupon usage reserved at checkout create if payment never finalized."""
+    details = dict(order.transactionDetails or {})
+    if not details.get("couponReserved"):
+        return
+    if details.get("couponApplied"):
+        return
+    if details.get("couponReleased"):
+        return
+    col = Order.get_pymongo_collection()
+    claim = await col.find_one_and_update(
+        {
+            "_id": order.id,
+            "transactionDetails.couponReserved": True,
+            "transactionDetails.couponApplied": {"$nin": [True]},
+            "transactionDetails.couponReleased": {"$nin": [True]},
+        },
+        {"$set": {"transactionDetails.couponReleased": True, "updatedAt": datetime.utcnow()}},
+    )
+    if claim is None:
+        return
+    code = str(getattr(order, "couponCode", None) or "").strip()
+    if code:
+        from app.services import discounts as discount_svc
+
+        await discount_svc.release_coupon_usage(code)
 
 
 async def reverse_commit_reserved_stock(
@@ -618,6 +693,35 @@ async def reverse_commit_reserved_stock(
     raise HTTPException(status_code=409, detail="Stock reverse conflict; retry")
 
 
+async def _reservation_held_on_ledger(order) -> bool:
+    """True when order flags and warehouse reserved qty still cover this order.
+
+    Flags alone are not enough: Razorpay modal dismiss used to release the
+    ledger hold then overwrite stockReleased, so payment thought the reserve
+    was still live and commit_reserved_stock failed (auto-refund).
+    """
+    details = dict(order.transactionDetails or {})
+    if details.get("stockApplied") or details.get("stockReleased") or not details.get("stockReserved"):
+        return False
+    wh = await ensure_default_warehouse()
+    wh_id = str(wh.id)
+    held_any = False
+    for item in order.items or []:
+        product_id = str(item.productId or "")
+        product = await Product.get(ObjectId(product_id)) if ObjectId.is_valid(product_id) else None
+        if not product:
+            return False
+        sku = _item_variant_sku(product, item)
+        qty = int(item.quantity or 0)
+        if qty <= 0:
+            continue
+        held_any = True
+        bal = await get_or_create_balance(product_id, wh_id, sku)
+        if int(bal.reserved or 0) < qty:
+            return False
+    return held_any
+
+
 async def ensure_stock_for_payment(order) -> None:
     """Guarantee a live soft-reserve before marking an order paid.
 
@@ -634,7 +738,7 @@ async def ensure_stock_for_payment(order) -> None:
     if details.get("stockApplied"):
         order.transactionDetails = details
         return
-    if details.get("stockReserved") and not details.get("stockReleased"):
+    if await _reservation_held_on_ledger(refreshed):
         order.transactionDetails = details
         return
 
@@ -736,8 +840,7 @@ async def restock_order_stock(order) -> bool:
 async def apply_order_commitments(order) -> bool:
     """Commit an eligible order's stock and coupon once after placement/payment."""
     payment_status = str(order.paymentStatus or "").lower()
-    payment_method = str(order.paymentMethod or "").lower()
-    if payment_status not in ("paid", "pay_on_delivery") and payment_method != "cod":
+    if payment_status != "paid":
         return False
 
     col = Order.get_pymongo_collection()
@@ -776,14 +879,28 @@ async def apply_order_commitments(order) -> bool:
                 if qty <= 0:
                     continue
                 if still_reserved:
-                    await commit_reserved_stock(
-                        product_id=product_id,
-                        warehouse_id=wh_id,
-                        quantity=qty,
-                        variant_sku=line_sku,
-                        order_id=str(order.id),
-                    )
-                    completed.append(("commit", product_id, line_sku, qty))
+                    try:
+                        await commit_reserved_stock(
+                            product_id=product_id,
+                            warehouse_id=wh_id,
+                            quantity=qty,
+                            variant_sku=line_sku,
+                            order_id=str(order.id),
+                        )
+                        completed.append(("commit", product_id, line_sku, qty))
+                    except HTTPException as commit_exc:
+                        # Hold was released (stale flags) — sell from on-hand if available.
+                        if commit_exc.status_code != 400 or "Insufficient reserved stock" not in str(
+                            commit_exc.detail
+                        ):
+                            raise
+                        await apply_sale(
+                            product_id=product_id,
+                            quantity=qty,
+                            variant_sku=line_sku,
+                            order_id=str(order.id),
+                        )
+                        completed.append(("sale", product_id, line_sku, qty))
                 else:
                     await apply_sale(
                         product_id=product_id,
@@ -838,14 +955,19 @@ async def apply_order_commitments(order) -> bool:
     )
     if coupon_claim is not None:
         coupon_code = str(order.couponCode or "").strip().upper()
-        if coupon_code:
+        details = dict((coupon_claim or {}).get("transactionDetails") or {})
+        # Preferred path: usage already reserved at order create — do not increment again.
+        if coupon_code and details.get("couponReserved"):
+            changed = True
+        elif coupon_code:
+            # Legacy orders without create-time reservation — claim now or fail closed.
             coupon_col = Coupon.get_pymongo_collection()
             claimed = await coupon_col.find_one_and_update(
                 {
                     "code": coupon_code,
                     "$expr": {
                         "$or": [
-                            {"$eq": [{"$ifNull": ["$usageLimit", None]}, None]},
+                            {"$lte": [{"$ifNull": ["$usageLimit", 0]}, 0]},  # null/0 = unlimited
                             {
                                 "$lt": [
                                     {"$ifNull": ["$usedCount", 0]},
@@ -858,7 +980,6 @@ async def apply_order_commitments(order) -> bool:
                 {"$inc": {"usedCount": 1}},
             )
             if claimed is None:
-                # Limit exhausted under concurrency — keep order paid/stocked but drop coupon flag for ops.
                 await col.update_one(
                     {"_id": order.id},
                     {
@@ -869,9 +990,29 @@ async def apply_order_commitments(order) -> bool:
                         }
                     },
                 )
-            else:
-                changed = True
+                raise HTTPException(
+                    status_code=409,
+                    detail="Discount usage limit reached",
+                )
+            changed = True
         else:
+            changed = True
+
+    # Automatic discounts have no code to reserve at checkout: count them once here.
+    auto_ids = [
+        ObjectId(str(d.get("id")))
+        for d in ((order.transactionDetails or {}).get("discounts") or [])
+        if isinstance(d, dict) and d.get("method") == "automatic" and ObjectId.is_valid(str(d.get("id")))
+    ]
+    if auto_ids:
+        auto_claim = await col.find_one_and_update(
+            {"_id": order.id, "transactionDetails.autoDiscountsCounted": {"$ne": True}},
+            {"$set": {"transactionDetails.autoDiscountsCounted": True, "updatedAt": now}},
+        )
+        if auto_claim is not None:
+            await Coupon.get_pymongo_collection().update_many(
+                {"_id": {"$in": auto_ids}}, {"$inc": {"usedCount": 1}}
+            )
             changed = True
 
     if changed:
@@ -887,40 +1028,150 @@ async def backfill_opening_from_products() -> int:
     existing = await StockBalance.find_all().limit(1).to_list()
     if existing:
         return 0
+    return await ensure_inventory_balances_for_catalog(seed_from_product=True)
+
+
+async def ensure_inventory_balances_for_catalog(*, seed_from_product: bool = True) -> int:
+    """Ensure every product/variant has a stock balance row in the default warehouse.
+
+    Inventory UI lists StockBalance docs only — products with no ledger row are invisible.
+    Creates missing rows; does not overwrite quantities on existing balances.
+    """
     wh = await ensure_default_warehouse()
+    wh_id = str(wh.id)
     products = await Product.find_all().to_list()
     created = 0
-    for p in products:
-        pid = str(p.id)
-        variants = p.variants or []
+
+    for product in products:
+        pid = str(product.id)
+        variants = product.variants or []
         sku_variants = [v for v in variants if (v.sku or "").strip()]
+
         if sku_variants:
-            for v in sku_variants:
-                qty = int(v.quantity or 0)
-                if qty <= 0:
-                    continue
-                await apply_stock_change(
-                    product_id=pid,
-                    warehouse_id=str(wh.id),
-                    quantity_delta=qty,
-                    movement_type="opening",
-                    variant_sku=(v.sku or "").strip(),
-                    reason="Opening balance from product",
-                    allow_negative=False,
+            for variant in sku_variants:
+                sku = (variant.sku or "").strip()
+                existing = await StockBalance.find_one(
+                    StockBalance.productId == pid,
+                    StockBalance.warehouseId == wh_id,
+                    StockBalance.variantSku == sku,
                 )
+                if existing:
+                    continue
+                qty = int(variant.quantity or 0) if seed_from_product else 0
+                if qty > 0:
+                    await apply_stock_change(
+                        product_id=pid,
+                        warehouse_id=wh_id,
+                        quantity_delta=qty,
+                        movement_type="opening",
+                        variant_sku=sku,
+                        reason="Ensure inventory row from product",
+                        allow_negative=False,
+                    )
+                else:
+                    await StockBalance(
+                        productId=pid,
+                        warehouseId=wh_id,
+                        variantSku=sku,
+                        quantity=0,
+                        reserved=0,
+                    ).insert()
                 created += 1
-        else:
-            qty = int(p.totalStock or 0)
+            continue
+
+        existing = await StockBalance.find_one(
+            StockBalance.productId == pid,
+            StockBalance.warehouseId == wh_id,
+            StockBalance.variantSku == "",
+        )
+        if existing:
+            continue
+        qty = 0
+        if seed_from_product:
+            qty = int(product.totalStock or 0)
             if qty <= 0 and variants:
                 qty = sum(int(v.quantity or 0) for v in variants)
-            if qty <= 0:
-                continue
+        if qty > 0:
             await apply_stock_change(
                 product_id=pid,
-                warehouse_id=str(wh.id),
+                warehouse_id=wh_id,
                 quantity_delta=qty,
                 movement_type="opening",
-                reason="Opening balance from product",
+                reason="Ensure inventory row from product",
+                allow_negative=False,
             )
-            created += 1
+        else:
+            await StockBalance(
+                productId=pid,
+                warehouseId=wh_id,
+                variantSku="",
+                quantity=0,
+                reserved=0,
+            ).insert()
+        created += 1
+
     return created
+
+
+async def cleanup_duplicate_inventory_rows() -> dict[str, int]:
+    """Merge duplicate balance keys and drop blank-SKU orphans beside real variant rows.
+
+    Only removes empty-SKU balances when the same product+warehouse already has at
+    least one non-empty variantSku balance. Products that only have a blank-SKU
+    row are kept (otherwise they vanish from Inventory).
+    """
+    from collections import defaultdict
+
+    rows = await StockBalance.find_all().to_list()
+    groups: dict[tuple[str, str, str], list] = defaultdict(list)
+    for row in rows:
+        key = (
+            str(row.productId or ""),
+            str(row.warehouseId or ""),
+            (row.variantSku or "").strip(),
+        )
+        groups[key].append(row)
+
+    merged = 0
+    for (product_id, warehouse_id, sku), items in groups.items():
+        if len(items) <= 1:
+            continue
+        keep = items[0]
+        for extra in items[1:]:
+            keep.quantity = int(keep.quantity or 0) + int(extra.quantity or 0)
+            keep.reserved = int(keep.reserved or 0) + int(extra.reserved or 0)
+            await extra.delete()
+            merged += 1
+        keep.productId = product_id
+        keep.warehouseId = warehouse_id
+        keep.variantSku = sku
+        keep.updatedAt = datetime.utcnow()
+        await keep.save()
+
+    rows = await StockBalance.find_all().to_list()
+    by_product_wh: dict[tuple[str, str], list] = defaultdict(list)
+    for row in rows:
+        by_product_wh[(str(row.productId or ""), str(row.warehouseId or ""))].append(row)
+
+    removed_orphans = 0
+    touched_products: set[str] = set()
+
+    for (product_id, _warehouse_id), items in by_product_wh.items():
+        # Only drop blank SKU when real variant ledger rows already exist.
+        has_variant_balance = any((b.variantSku or "").strip() for b in items)
+        if not has_variant_balance:
+            continue
+        for bal in items:
+            if (bal.variantSku or "").strip():
+                continue
+            # Never delete stocked blank rows — that made products vanish / lost qty.
+            if int(bal.quantity or 0) != 0 or int(bal.reserved or 0) != 0:
+                continue
+            await bal.delete()
+            removed_orphans += 1
+            touched_products.add(product_id)
+
+    for product_id in touched_products:
+        await sync_product_stock(product_id)
+
+    return {"merged": merged, "removedOrphans": removed_orphans}

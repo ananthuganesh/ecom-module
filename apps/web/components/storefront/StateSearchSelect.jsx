@@ -114,10 +114,10 @@ export default function StateSearchSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-center justify-between rounded-md border bg-white px-3 py-3 text-left text-[14px] focus:outline-none focus:ring-1 ${
+        className={`flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 text-left text-[14px] focus:outline-none focus:ring-1 ${
           error
             ? "border-red-400 focus:border-red-500 focus:ring-red-500"
-            : "border-gray-300 focus:border-[#1773b0] focus:ring-[#1773b0]"
+            : "border-gray-300 focus:border-[#222222] focus:ring-[#222222]"
         } ${value ? "text-gray-900" : "text-gray-400"}`}
       >
         <span className="truncate">{display}</span>
@@ -148,8 +148,8 @@ export default function StateSearchSelect({
                       type="button"
                       role="option"
                       aria-selected={selected}
-                      className={`w-full px-3 py-2 text-left text-[14px] hover:bg-[#f0f5ff] ${
-                        selected ? "bg-[#f0f5ff] font-medium text-[#1773b0]" : "text-gray-900"
+                      className={`w-full px-3 py-2 text-left text-[14px] hover:bg-[#F9F9F5] ${
+                        selected ? "bg-[#F9F9F5] font-medium text-black" : "text-gray-900"
                       }`}
                       onClick={() => {
                         onChange(state);

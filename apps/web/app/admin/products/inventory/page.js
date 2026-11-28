@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2 } from "@/components/icons";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminStockService } from "@/api";
 import {
   AdminListLayout,
@@ -10,6 +11,7 @@ import {
   AdminViewMenu,
   AdminHeaderButton,
 } from "@/components/admin/list";
+import { Package } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
 import { createInventoryColumns } from "./columns";
 
@@ -142,7 +144,7 @@ export default function ProductsInventoryPage() {
       setLoading(true);
       await fetchStock();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to adjust stock");
+      toast.error(userErrorMessage(error, "Couldn’t update stock"));
     } finally {
       setSaving(false);
     }
@@ -155,6 +157,8 @@ export default function ProductsInventoryPage() {
       <AdminListLayout
         fill={false}
         title="Inventory"
+        icon={Package}
+        description="Warehouse stock by SKU at Main Warehouse. Each row is one size. Click a row to adjust on-hand units — this is what orders sell from. Change photos, prices, or size options on the product page."
         metrics={
           <AdminMetricRow
             items={[
@@ -194,7 +198,7 @@ export default function ProductsInventoryPage() {
           infiniteScroll
           rowHeightClass="h-14"
           emptyTitle="No inventory rows found"
-          emptyDescription="Stock levels will appear here once products are tracked."
+          emptyDescription="Each product SKU gets a row here once it is tracked in the warehouse. Search by product name or SKU."
           pageSize={25}
           toolbar={
             selectedIds.length > 0 ? (
@@ -206,7 +210,7 @@ export default function ProductsInventoryPage() {
                   <button
                     type="button"
                     onClick={() => setRowSelection({})}
-                    className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                    className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                   >
                     Clear
                   </button>
@@ -232,7 +236,7 @@ export default function ProductsInventoryPage() {
                     type="search"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search and filter"
+                    placeholder="Search product or SKU"
                     className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder-gray-400 focus:border-border focus:outline-none"
                   />
                 </form>
@@ -257,6 +261,11 @@ export default function ProductsInventoryPage() {
               </h2>
               <p className="text-[13px] font-[500] text-muted-foreground mt-0.5 truncate">
                 {adjustRow.productName || "Product"}
+                {adjustRow.variantSku ? ` · ${adjustRow.variantSku}` : ""}
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                Sets physical units at Main Warehouse. Available for sale is on
+                hand minus committed (open orders).
               </p>
             </div>
             <div className="px-5 py-4 space-y-3">
@@ -264,6 +273,9 @@ export default function ProductsInventoryPage() {
                 <label className="text-[13px] font-medium text-foreground">
                   On hand
                 </label>
+                <p className="text-[12px] text-muted-foreground">
+                  Physical units at this location.
+                </p>
                 <input
                   type="number"
                   min={0}

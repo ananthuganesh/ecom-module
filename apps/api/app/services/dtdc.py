@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import unicodedata
 from datetime import datetime
 from typing import Any
 
@@ -11,6 +12,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 
 from app.documents import Order, Product, Setting, User, Warehouse
+from app.services.dtdc_est_cost import chargeable_weight_kg, order_unit_count
 
 # Customer integration host (same as Urban Aana). app.shipsy.in rejects these API keys.
 DTDC_BASE = "https://dtdcapi.shipsy.io"
@@ -82,6 +84,49 @@ def _addr_field(addr: dict, *keys: str, default: str = "") -> str:
     return default
 
 
+# Shipsy strips non-ASCII and rejects a line 1 that is left too short
+# ("remaining characters are insufficient"), e.g. a bare house number "30".
+_MIN_ADDRESS_LINE_1 = 10
+
+
+def _ascii_text(value: str) -> str:
+    # NFKD first so accented Latin keeps its base letter ("é" -> "e").
+    text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return " ".join(text.split()).strip(" ,")
+
+
+def _address_lines(
+    line1: str, line2: str, city: str = "", state: str = "", pincode: str = ""
+) -> tuple[str, str]:
+    """Fold line 2, then city, state and pincode into a too-short line 1 so DTDC accepts it."""
+    line1 = _ascii_text(line1)
+    line2 = _ascii_text(line2)
+    if len(line1) < _MIN_ADDRESS_LINE_1 and line2:
+        line1 = ", ".join(p for p in (line1, line2) if p)
+        line2 = ""
+    # City/state/pincode only top up a real street line; alone they can't be delivered to.
+    for extra in (city, state, pincode) if line1 else ():
+        if len(line1) >= _MIN_ADDRESS_LINE_1:
+            break
+        extra = _ascii_text(extra)
+        if extra and extra.lower() not in line1.lower():
+            line1 = ", ".join(p for p in (line1, extra) if p)
+    if len(line1) < _MIN_ADDRESS_LINE_1:
+        raise HTTPException(
+            status_code=400,
+            detail="Shipping address is too short for DTDC once non-English characters "
+            "are removed. Edit the order's address in English and try again.",
+        )
+    return line1, line2
+
+
+def _error_message(value: Any) -> str | None:
+    """DTDC sometimes nests the reason as {'message': ..., 'reason': ...}."""
+    if isinstance(value, dict):
+        return value.get("message") or value.get("reason") or None
+    return value or None
+
+
 async def _origin_details() -> dict[str, Any]:
     profile = {}
     s = await Setting.find_one(Setting.key == "company_profile")
@@ -102,8 +147,15 @@ async def _origin_details() -> dict[str, Any]:
     phone = (
         (os.environ.get("ORIGIN_PHONE") or "").strip()
         or profile.get("phone")
-        or "9999999999"
+        or ""
     )
+    phone_digits = "".join(ch for ch in str(phone) if ch.isdigit())
+    if len(phone_digits) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Origin phone required for DTDC (set company profile phone or ORIGIN_PHONE)",
+        )
+    phone = phone_digits[-10:]
     line1 = (
         (os.environ.get("ORIGIN_ADDRESS") or "").strip()
         or (wh.addressLine1 if wh and wh.addressLine1 else None)
@@ -145,12 +197,28 @@ async def _origin_details() -> dict[str, Any]:
 
 def _destination_details(order: Order, user: User | None) -> dict[str, Any]:
     addr = order.shippingAddress or {}
+    phone_raw = _addr_field(
+        addr, "phone", "contact", default=(user.phone if user else "") or ""
+    )
+    phone_digits = "".join(ch for ch in str(phone_raw) if ch.isdigit())
+    if len(phone_digits) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer phone required for DTDC shipment",
+        )
+    line1, line2 = _address_lines(
+        _addr_field(addr, "address", "street", "house", "line1"),
+        _addr_field(addr, "address2", "line2"),
+        _addr_field(addr, "city"),
+        _addr_field(addr, "state"),
+        _addr_field(addr, "postalCode", "pincode", "zipcode"),
+    )
     return {
         "name": _addr_field(addr, "name", default=(user.name if user else "") or "Customer"),
-        "phone": _addr_field(addr, "phone", "contact", default=(user.phone if user else "") or "9999999999")[:15],
+        "phone": phone_digits[-10:],
         "alternate_phone": "",
-        "address_line_1": _addr_field(addr, "address", "street", "house", "line1", default="Address"),
-        "address_line_2": _addr_field(addr, "address2", "line2"),
+        "address_line_1": line1,
+        "address_line_2": line2,
         "pincode": _addr_field(addr, "postalCode", "pincode", "zipcode"),
         "city": _addr_field(addr, "city"),
         "state": _addr_field(addr, "state"),
@@ -173,43 +241,84 @@ async def _package_defaults() -> dict[str, float]:
     }
 
 
+def _line_item_label(item: Any, product: Product | None, index: int) -> str:
+    """Human-readable line for DTDC product description (name + size/color + qty)."""
+    base = (
+        (getattr(item, "productName", None) or "").strip()
+        or (product.productName or product.name if product else None)
+        or f"Item-{index}"
+    )
+    variant_parts = [
+        p
+        for p in [
+            (getattr(item, "size", None) or "").strip(),
+            (getattr(item, "color", None) or "").strip(),
+        ]
+        if p
+    ]
+    label = str(base)
+    if variant_parts:
+        label = f"{label} ({' / '.join(variant_parts)})"
+    qty = int(getattr(item, "quantity", 1) or 1)
+    if qty > 1:
+        label = f"{label} x{qty}"
+    return label
+
+
 async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> dict[str, Any]:
     origin = await _origin_details()
     dest = _destination_details(order, user)
     dims = await _package_defaults()
-    is_cod = str(order.paymentMethod or "").lower() in ("cod",) or order.paymentStatus == "pay_on_delivery"
     invoice_no = order.invoiceNumber or order.orderNumber or str(order.id)
     invoice_date = (order.createdAt or datetime.utcnow()).strftime("%Y-%m-%d")
     declared = float(order.finalPrice or order.total or 0)
     customer_ref = str(order.orderNumber or order.id)[:40]
+    # Shipsy rejects reusing the same customer_reference_number after cancel.
+    cancelled = (order.transactionDetails or {}).get("dtdcCancelled")
+    if isinstance(cancelled, dict) and cancelled.get("reference_number"):
+        base = str(order.orderNumber or order.id)[:30]
+        stamp = datetime.utcnow().strftime("%m%d%H%M")
+        customer_ref = f"{base}-R{stamp}"[:40]
 
-    pieces = []
+    # One physical package per consignment (not one piece per line item).
+    # Mapping items → pieces caused "001 OF 002" labels for multi-product orders.
+    units = order_unit_count(order)
+    weight_kg = max(float(dims["weight"]), chargeable_weight_kg(units) or 0.0)
+
+    item_labels: list[str] = []
+    first_sku = customer_ref
     for i, item in enumerate(order.items or [], start=1):
         product = None
         if item.productId and ObjectId.is_valid(str(item.productId)):
             product = await Product.get(ObjectId(str(item.productId)))
-        name = (product.productName or product.name if product else None) or f"Item-{i}"
-        sku = (product.productId if product and product.productId else None) or str(item.productId or i)
-        pieces.append(
-            {
-                "description": str(name)[:120],
-                "declared_value": str(round(float(item.price or 0) * int(item.quantity or 1), 2)),
-                "weight": str(dims["weight"]),
-                "height": str(dims["height"]),
-                "length": str(dims["length"]),
-                "width": str(dims["width"]),
-                "weight_unit": "kg",
-                "dimension_unit": "cm",
-                "piece_product_code": str(sku)[:40],
-            }
-        )
+        item_labels.append(_line_item_label(item, product, i))
+        if i == 1:
+            first_sku = (
+                (product.productId if product and product.productId else None)
+                or str(item.productId or customer_ref)
+            )
+
+    description = ", ".join(item_labels) if item_labels else "Order"
+    description = description[:120]
+
+    piece = {
+        "description": description,
+        "declared_value": str(round(declared, 2)),
+        "weight": str(weight_kg),
+        "height": str(dims["height"]),
+        "length": str(dims["length"]),
+        "width": str(dims["width"]),
+        "weight_unit": "kg",
+        "dimension_unit": "cm",
+        "piece_product_code": str(first_sku)[:40],
+    }
 
     payload: dict[str, Any] = {
         "action_type": "single_pickup",
         "consignment_type": "forward",
         "movement_type": "forward",
         "load_type": cfg.get("loadType") or "NON-DOCUMENT",
-        "description": pieces[0]["description"] if pieces else "Order",
+        "description": description,
         "customer_code": cfg.get("customerCode"),
         "service_type_id": cfg.get("serviceTypeId") or DEFAULT_SERVICE_TYPES[0],
         "dimension_unit": "cm",
@@ -217,8 +326,8 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
         "width": str(dims["width"]),
         "height": str(dims["height"]),
         "weight_unit": "kg",
-        "weight": str(dims["weight"]),
-        "num_pieces": max(1, sum(int(i.quantity or 1) for i in (order.items or [])) or 1),
+        "weight": str(weight_kg),
+        "num_pieces": 1,
         "customer_reference_number": customer_ref,
         "declared_value": declared,
         "invoice_amount": str(declared),
@@ -227,28 +336,13 @@ async def build_softdata_payload(order: Order, user: User | None, cfg: dict) -> 
         "origin_details": origin,
         "destination_details": dest,
         "return_details": origin,
-        "pieces_detail": pieces or [
-            {
-                "description": "Order",
-                "declared_value": str(declared),
-                "weight": str(dims["weight"]),
-                "height": str(dims["height"]),
-                "length": str(dims["length"]),
-                "width": str(dims["width"]),
-                "weight_unit": "kg",
-                "dimension_unit": "cm",
-            }
-        ],
+        "pieces_detail": [piece],
     }
 
     # Leave reference_number empty so Shipsy/DTDC assigns AWB (common pattern);
     # if settings force a reference, use order id.
     if cfg.get("useOrderIdAsReference"):
         payload["reference_number"] = str(order.id)[:40]
-
-    if is_cod:
-        payload["cod_amount"] = str(declared)
-        payload["cod_collection_mode"] = "cash"
 
     gstin = ""
     company = await Setting.find_one(Setting.key == "company_profile")
@@ -273,17 +367,17 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
     if order.awb:
         raise HTTPException(status_code=400, detail="Shipment already created for this order")
 
-    payment_ok = (
-        str(order.paymentMethod or "").lower() == "cod"
-        or order.paymentStatus in ("paid", "pay_on_delivery")
-    )
+    payment_ok = order.paymentStatus in ("paid",)
     if not payment_ok:
-        raise HTTPException(status_code=400, detail="Order must be paid or COD before creating a shipment")
+        raise HTTPException(status_code=400, detail="Order must be paid before creating a shipment")
 
     base_payload = await build_softdata_payload(order, user, cfg)
     api_key = str(cfg["apiKey"])
     candidates = service_type_candidates()
     last_error = ""
+    # Every service type's rejection — the first (preferred) one is usually the
+    # real reason, and it used to be overwritten by the fallback's message.
+    attempts: list[dict[str, str]] = []
     data: dict[str, Any] = {}
     payload = base_payload
 
@@ -300,6 +394,7 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 data = resp.json() if resp.content else {}
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)[:500]
+                attempts.append({"serviceType": service_type, "error": last_error})
                 print(f"[DTDC] {service_type} request failed: {last_error}")
                 continue
 
@@ -334,12 +429,13 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 if isinstance(consignment, dict):
                     msg = consignment.get("message")
                 last_error = str(
-                    msg
-                    or data.get("message")
-                    or data.get("error")
+                    _error_message(msg)
+                    or _error_message(data.get("message"))
+                    or _error_message(data.get("error"))
                     or (resp.text if resp.status_code >= 400 else None)
                     or "DTDC create failed"
                 )[:500]
+                attempts.append({"serviceType": service_type, "error": last_error})
                 print(f"[DTDC] {service_type} failed: {last_error}")
                 continue
 
@@ -350,7 +446,6 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                 if isinstance(consignment, dict)
                 else None
             ) or data.get("courier_partner") or "DTDC"
-            order.shiprocketOrderId = None
             order.shippingStatus = "Awaiting Shipment"
             order.transactionDetails = {
                 **(order.transactionDetails or {}),
@@ -374,6 +469,7 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
                     "createdAt": datetime.utcnow().isoformat(),
                 },
                 "dtdcError": None,
+                "dtdcAttempts": None,
                 "dtdcServiceType": service_type,
             }
             from app.services.dtdc_est_cost import apply_dtdc_est_cost
@@ -388,26 +484,33 @@ async def create_consignment(order: Order, user: User | None = None) -> dict:
             except Exception:
                 pass
             try:
-                from app.services import aisensy as aisensy_svc
                 from app.services import email_resend as email_svc
 
-                await aisensy_svc.notify_order_event_once("orderShipped", order, user)
                 await email_svc.notify_order_email_once("SHIPPED", order, user)
             except Exception as exc:
                 print(f"[Notify] orderShipped: {exc}")
             return {**(data if isinstance(data, dict) else {}), "service_type_id": service_type}
 
+    failure = _attempts_summary(attempts) or "No applicable DTDC service types for this pincode pair"
     order.shippingStatus = "Shipping Sync Failed"
     order.transactionDetails = {
         **(order.transactionDetails or {}),
-        "dtdcError": last_error or "No applicable DTDC service types for this pincode pair",
+        "dtdcError": failure,
+        "dtdcAttempts": attempts,
         "dtdcTriedServices": candidates,
     }
     await order.save()
-    raise HTTPException(
-        status_code=502,
-        detail=last_error or "No applicable DTDC service types for this pincode pair",
-    )
+    raise HTTPException(status_code=502, detail=failure)
+
+
+def _attempts_summary(attempts: list[dict[str, str]]) -> str:
+    """One message naming each service type's reason; collapsed when they agree."""
+    errors = [a.get("error") or "" for a in attempts if a.get("error")]
+    if not errors:
+        return ""
+    if len(set(errors)) == 1:
+        return errors[0]
+    return "; ".join(f"{a['serviceType']}: {a['error']}" for a in attempts if a.get("error"))[:900]
 
 
 async def track_consignment(order: Order) -> dict:
@@ -429,6 +532,12 @@ async def track_consignment(order: Order) -> dict:
             raise HTTPException(status_code=502, detail=data.get("message") or resp.text or "Track failed")
 
     raw_status = _extract_track_status(data)
+    scan = _last_scan(data)
+    details = order.transactionDetails if isinstance(order.transactionDetails, dict) else {}
+    node = details.get("dtdc") if isinstance(details.get("dtdc"), dict) else {}
+    if scan and scan != node.get("lastScan"):
+        order.transactionDetails = {**details, "dtdc": {**node, "lastScan": scan}}
+        await order.save()
     mapped = map_dtdc_track_status(raw_status)
     prev = order.shippingStatus
     if mapped and can_apply_shipping_status(prev, mapped):
@@ -446,14 +555,42 @@ async def track_consignment(order: Order) -> dict:
             pass
         if mapped == "Delivered" and prev != "Delivered":
             try:
-                from app.services import aisensy as aisensy_svc
+                from app.services import email_resend as email_svc
 
                 user = await User.get(order.customerId) if order.customerId else None
-                await aisensy_svc.notify_order_event_once("orderDelivered", order, user)
+                await email_svc.notify_order_email_once("DELIVERED", order, user)
             except Exception as exc:
-                print(f"[AiSensy] orderDelivered: {exc}")
+                print(f"[Notify] orderDelivered: {exc}")
 
     return data
+
+
+def _last_scan(data: Any) -> dict | None:
+    """DTDC's wording for the newest event, e.g. "Undelivered — RECEIVER NOT AVAILABLE"."""
+    events = data.get("events") if isinstance(data, dict) else None
+    if not isinstance(events, list) or not events:
+        return None
+    dated = [e for e in events if isinstance(e, dict)]
+    if not dated:
+        return None
+    dated.sort(key=lambda e: e.get("event_time") or 0, reverse=True)
+    last = dated[0]
+    status = last.get("customer_update") or last.get("type")
+    if not status:
+        return None
+    at = ""
+    if isinstance(last.get("event_time"), (int, float)):
+        at = datetime.utcfromtimestamp(last["event_time"] / 1000).isoformat() + "Z"
+    remark = last.get("failure_reason") or last.get("notes") or ""
+    if not remark and str(last.get("type") or "").lower() != "delivered":
+        # A failed attempt is usually followed by "Reached At Hub"; keep its reason visible.
+        remark = next((e["failure_reason"] for e in dated if e.get("failure_reason")), "")
+    return {
+        "status": str(status),
+        "remark": str(remark),
+        "location": str(last.get("hub_name") or ""),
+        "at": at,
+    }
 
 
 def _extract_track_status(data: Any) -> str | None:
@@ -524,10 +661,21 @@ async def cancel_consignment(order: Order) -> dict:
                 detail=data.get("message") or data.get("failure_reason") or resp.text or "Cancel failed",
             )
 
+    # Clear AWB so admin can book a fresh softdata consignment (e.g. after payload fixes).
+    prev_dtdc = (order.transactionDetails or {}).get("dtdc")
+    order.awb = None
+    order.courier = None
     order.shippingStatus = "Cancelled"
     order.transactionDetails = {
         **(order.transactionDetails or {}),
+        "dtdc": None,
         "dtdcCancel": data,
+        "dtdcCancelled": {
+            "reference_number": str(ref),
+            "previous": prev_dtdc,
+            "cancelledAt": datetime.utcnow().isoformat(),
+            "response": data,
+        },
     }
     order.updatedAt = datetime.utcnow()
     await order.save()

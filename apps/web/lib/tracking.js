@@ -1,7 +1,11 @@
 /**
  * GA4-style ecommerce DataLayer helper for GTM.
- * Meta Pixel / GA tags are configured in GTM — not hardcoded here.
+ * GA tags are configured in GTM. The Meta Pixel is fired from code
+ * (lib/metaPixel.js) so its events carry value, content_ids and event_id.
  */
+
+// Relative rather than "@/lib/…" so the module also loads under node --test.
+import { trackMetaEvent } from "./metaPixel.js";
 
 export const TRACKING_CURRENCY = "INR";
 
@@ -11,20 +15,47 @@ function ensureDataLayer() {
   return window.dataLayer;
 }
 
+/**
+ * Signed-in customer id for GA4 `user_id`.
+ *
+ * The database id, never an email or phone — GA4 forbids personal data here.
+ * It matches the id the server sends with its purchase and refund events, so
+ * GA4 can join a shopper's visits across devices and to their orders.
+ */
+let trackingUserId = null;
+
+export function getTrackingUserId() {
+  return trackingUserId;
+}
+
+export function setTrackingUser(userId) {
+  const next = userId ? String(userId) : null;
+  if (next === trackingUserId) return;
+  trackingUserId = next;
+  const dl = ensureDataLayer();
+  if (!dl) return;
+  // An explicit null on sign-out, so a shared device stops attributing the
+  // next shopper's visits to the previous account.
+  dl.push({ event: "user_data", user_id: next });
+}
+
 export function toTrackingItem(raw, qty = 1) {
   if (!raw) return null;
-  const price = Number(
-    raw.price ?? raw.pricing?.sellingPrice ?? 0
-  );
+  const price = Number(raw.price ?? raw.pricing?.sellingPrice ?? 0);
   const quantity = Math.max(1, Number(raw.quantity ?? raw.qty ?? qty) || 1);
-  return {
+  const item = {
     item_id: String(raw.item_id || raw.productId || raw._id || raw.id || ""),
     item_name: String(raw.item_name || raw.productName || raw.name || "Product"),
     price,
     quantity,
-    item_category: raw.item_category || raw.category || undefined,
+    item_category: raw.item_category || raw.category?.name || raw.category || undefined,
     item_brand: raw.item_brand || raw.brand || "Urban Aana",
+    item_variant: raw.item_variant || [raw.size, raw.color].filter(Boolean).join(" / ") || undefined,
   };
+  if (raw.index != null && Number.isFinite(Number(raw.index))) {
+    item.index = Number(raw.index);
+  }
+  return item;
 }
 
 export function itemsValue(items = []) {
@@ -35,8 +66,8 @@ export function itemsValue(items = []) {
 }
 
 /**
- * @param {string} event - view_item | add_to_cart | begin_checkout | purchase
- * @param {{ currency?: string, value?: number, transaction_id?: string, items?: object[] }} ecommerce
+ * @param {string} event
+ * @param {{ currency?: string, value?: number, transaction_id?: string, coupon?: string, items?: object[], item_list_name?: string, item_list_id?: string }} ecommerce
  */
 export function pushEcommerceEvent(event, ecommerce = {}) {
   const dl = ensureDataLayer();
@@ -56,13 +87,31 @@ export function pushEcommerceEvent(event, ecommerce = {}) {
   if (ecommerce.transaction_id) {
     payload.transaction_id = String(ecommerce.transaction_id);
   }
+  if (ecommerce.coupon) {
+    payload.coupon = String(ecommerce.coupon);
+  }
+  if (ecommerce.item_list_name) {
+    payload.item_list_name = String(ecommerce.item_list_name);
+  }
+  if (ecommerce.item_list_id) {
+    payload.item_list_id = String(ecommerce.item_list_id);
+  }
+
+  // Meta deduplicates a browser event against the server's on event_id.
+  if (ecommerce.event_id) {
+    payload.event_id = String(ecommerce.event_id);
+  }
 
   // Clear previous ecommerce object (GA4 / GTM best practice)
   dl.push({ ecommerce: null });
   dl.push({
     event,
+    ...(trackingUserId ? { user_id: trackingUserId } : {}),
+    ...(ecommerce.event_id ? { event_id: String(ecommerce.event_id) } : {}),
     ecommerce: payload,
   });
+
+  trackMetaEvent(event, payload, payload.event_id);
 }
 
 export function trackViewItem(product) {
@@ -71,6 +120,35 @@ export function trackViewItem(product) {
   pushEcommerceEvent("view_item", {
     value: item.price,
     items: [item],
+  });
+}
+
+export function trackViewItemList(products = [], listName = "Catalog", listId = "catalog") {
+  const items = products
+    .slice(0, 40)
+    .map((p, index) => {
+      const item = toTrackingItem(p, 1);
+      if (!item) return null;
+      return { ...item, index };
+    })
+    .filter(Boolean);
+  if (!items.length) return;
+  pushEcommerceEvent("view_item_list", {
+    value: itemsValue(items),
+    items,
+    item_list_name: listName,
+    item_list_id: listId,
+  });
+}
+
+export function trackSelectItem(product, listName = "Catalog", listId = "catalog") {
+  const item = toTrackingItem(product, 1);
+  if (!item?.item_id) return;
+  pushEcommerceEvent("select_item", {
+    value: item.price,
+    items: [item],
+    item_list_name: listName,
+    item_list_id: listId,
   });
 }
 
@@ -83,29 +161,138 @@ export function trackAddToCart(product, qty = 1) {
   });
 }
 
-export function trackBeginCheckout(cartItems = []) {
+export function trackRemoveFromCart(product, qty = 1) {
+  const item = toTrackingItem(product, qty);
+  if (!item?.item_id) return;
+  pushEcommerceEvent("remove_from_cart", {
+    value: item.price * item.quantity,
+    items: [item],
+  });
+}
+
+export function trackViewCart(cartItems = []) {
   const items = cartItems.map((i) => toTrackingItem(i)).filter(Boolean);
   if (!items.length) return;
-  pushEcommerceEvent("begin_checkout", {
+  pushEcommerceEvent("view_cart", {
     value: itemsValue(items),
     items,
   });
 }
 
-export function trackPurchase({ transactionId, value, items = [] }) {
+export function trackBeginCheckout(cartItems = [], coupon = "") {
+  const items = cartItems.map((i) => toTrackingItem(i)).filter(Boolean);
+  if (!items.length) return;
+  pushEcommerceEvent("begin_checkout", {
+    value: itemsValue(items),
+    items,
+    coupon: coupon || undefined,
+  });
+}
+
+/** Site search — Meta Search / GA4 search. */
+export function trackSearch(searchTerm, products = []) {
+  const dl = ensureDataLayer();
+  const term = String(searchTerm || "").trim();
+  if (!dl || !term) return;
+  const items = products.map((p) => toTrackingItem(p, 1)).filter(Boolean);
+  const ecommerce = {
+    currency: TRACKING_CURRENCY,
+    value: Number(itemsValue(items).toFixed(2)),
+    items,
+  };
+  dl.push({ ecommerce: null });
+  dl.push({
+    event: "search",
+    search_term: term,
+    search_string: term,
+    ecommerce,
+  });
+  trackMetaEvent("search", { ...ecommerce, search_term: term });
+}
+
+/** Wishlist — call when a wishlist UI exists and user saves an item. */
+export function trackAddToWishlist(product) {
+  const item = toTrackingItem(product, 1);
+  if (!item?.item_id) return;
+  pushEcommerceEvent("add_to_wishlist", {
+    value: item.price,
+    items: [item],
+  });
+}
+
+export function trackAddShippingInfo(cartItems = [], shippingTier = "standard") {
+  const items = cartItems.map((i) => toTrackingItem(i)).filter(Boolean);
+  if (!items.length) return;
+  const dl = ensureDataLayer();
+  if (!dl) return;
+  dl.push({ ecommerce: null });
+  dl.push({
+    event: "add_shipping_info",
+    ecommerce: {
+      currency: TRACKING_CURRENCY,
+      value: Number(itemsValue(items).toFixed(2)),
+      shipping_tier: shippingTier,
+      items,
+    },
+  });
+}
+
+export function trackAddPaymentInfo(cartItems = [], paymentType = "razorpay") {
+  const items = cartItems.map((i) => toTrackingItem(i)).filter(Boolean);
+  if (!items.length) return;
+  const dl = ensureDataLayer();
+  if (!dl) return;
+  const ecommerce = {
+    currency: TRACKING_CURRENCY,
+    value: Number(itemsValue(items).toFixed(2)),
+    payment_type: paymentType,
+    items,
+  };
+  dl.push({ ecommerce: null });
+  dl.push({ event: "add_payment_info", ecommerce });
+  trackMetaEvent("add_payment_info", ecommerce);
+}
+
+export function trackSelectPromotion({
+  promotionId,
+  promotionName,
+  creativeName,
+  discount = 0,
+} = {}) {
+  const dl = ensureDataLayer();
+  if (!dl || !promotionId) return;
+  dl.push({ ecommerce: null });
+  dl.push({
+    event: "select_promotion",
+    ecommerce: {
+      currency: TRACKING_CURRENCY,
+      value: Number(Number(discount || 0).toFixed(2)),
+      items: [],
+      creative_name: creativeName || promotionName || String(promotionId),
+      promotion_id: String(promotionId),
+      promotion_name: String(promotionName || promotionId),
+    },
+  });
+}
+
+export function trackPurchase({ transactionId, value, items = [], coupon = "" }) {
   const mapped = items.map((i) => toTrackingItem(i)).filter(Boolean);
   if (!transactionId) return;
   pushEcommerceEvent("purchase", {
     transaction_id: transactionId,
+    // Same id the server sends to Meta, so the two purchases deduplicate.
+    event_id: transactionId,
     value: value != null ? value : itemsValue(mapped),
     items: mapped,
+    coupon: coupon || undefined,
   });
 }
 
+// Relative rather than "@/lib/…" so the module also loads under node --test.
 import {
   PURCHASE_EVENT_KEY,
   PURCHASE_FIRED_KEY,
-} from "@/lib/storageKeys";
+} from "./storageKeys.js";
 
 export function stashPurchaseEvent(payload) {
   if (typeof window === "undefined" || !payload?.transactionId) return;

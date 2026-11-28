@@ -1,56 +1,110 @@
 import math
 import re
-from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.deps import AdminUser, CurrentUser
+from app.deps import OptionalUser
 from app.documents import Product
 from app.serializers import product_dict
+from app.services import collection_rules
+from app.services import collections as collections_svc
+from app.services import product_sales
+from app.services.rate_limit import rate_limit_dependency
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
+_SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "2XL", "3XL", "4XL", "5XL"]
+_BADGE_LABELS = {
+    "new_arrival": "New Arrival",
+    "trending": "Trending",
+    "best_seller": "Best Seller",
+}
 
-class ReviewBody(BaseModel):
-    rating: int
-    comment: str = ""
+
+def _csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
 
 
-@router.get("")
-async def list_products(
-    pageSize: int = 40,
-    pageNum: int = 1,
+def _ci_values(values: list[str]) -> list[re.Pattern[str]]:
+    return [re.compile(f"^{re.escape(v)}$", re.I) for v in values]
+
+
+def _product_price(product: Product) -> float | None:
+    if product.pricing and product.pricing.sellingPrice is not None:
+        return float(product.pricing.sellingPrice)
+    if product.price is not None:
+        return float(product.price)
+    return None
+
+
+def _build_product_query(
+    *,
     keyword: str | None = None,
     category: str | None = None,
     stone: str | None = None,
     gender: str | None = None,
     brand: str | None = None,
     color: str | None = None,
+    size: str | None = None,
+    fit: str | None = None,
+    fabric: str | None = None,
+    badge: str | None = None,
     product: str | None = None,
     minPrice: float | None = None,
     maxPrice: float | None = None,
     priceRange: str | None = None,
-    sort: str | None = None,
-):
+) -> dict[str, Any]:
     query: dict[str, Any] = {}
+    ands: list[dict[str, Any]] = []
+
+    # Storefront catalog — never list drafts (sitemap, home, PLP).
+    query["status"] = {"$ne": "draft"}
+
     if keyword:
-        rx = {"$regex": keyword, "$options": "i"}
-        query["$or"] = [{"productName": rx}, {"product": rx}, {"description": rx}]
+        safe = re.escape(keyword.strip())[:120]
+        rx = {"$regex": safe, "$options": "i"}
+        ands.append({"$or": [{"productName": rx}, {"product": rx}, {"description": rx}]})
     if category:
-        query["category"] = category
+        cats = _csv(category)
+        if len(cats) == 1:
+            query["category"] = {"$regex": f"^{re.escape(cats[0])}$", "$options": "i"}
+        elif cats:
+            query["category"] = {"$in": _ci_values(cats)}
     if stone:
         query["stone"] = stone
     if gender:
-        query["gender"] = gender
+        query["gender"] = {"$regex": f"^{re.escape(gender.strip())}$", "$options": "i"}
     if brand:
-        brands = [b.strip() for b in brand.split(",")]
+        brands = _csv(brand)
         query["brand"] = {"$in": brands}
     if color:
-        colors = [c.strip() for c in color.split(",")]
-        query["variants.color"] = {"$in": [re.compile(f"^{re.escape(c)}$", re.I) for c in colors]}
+        colors = _csv(color)
+        color_rx = _ci_values(colors)
+        ands.append(
+            {
+                "$or": [
+                    {"variants.color": {"$in": color_rx}},
+                    {"colors": {"$in": color_rx}},
+                    {"color": {"$in": color_rx}},
+                ]
+            }
+        )
+    if size:
+        sizes = _csv(size)
+        query["variants.size"] = {"$in": _ci_values(sizes)}
+    if fit:
+        fits = _csv(fit)
+        query["fit"] = {"$in": _ci_values(fits)}
+    if fabric:
+        fabrics = _csv(fabric)
+        query["fabric"] = {"$in": _ci_values(fabrics)}
+    if badge:
+        badges = _csv(badge)
+        query["badge"] = {"$in": badges}
     if product:
         p = re.escape(product.strip())
         query["product"] = {"$regex": f"^{p}$", "$options": "i"}
@@ -70,14 +124,122 @@ async def list_products(
             price_q["$lte"] = final_max
         query["pricing.sellingPrice"] = price_q
 
-    sort_spec = [("createdAt", -1)]
+    if ands:
+        if query:
+            query = {"$and": [query, *ands]}
+        elif len(ands) == 1:
+            query = ands[0]
+        else:
+            query = {"$and": ands}
+    return query
+
+
+def _price_ranges(min_price: float, max_price: float) -> list[dict[str, str]]:
+    """Apparel-friendly buckets clipped to the live catalog range."""
+    candidates = [
+        ("Under ₹1,000", 0, 999),
+        ("₹1,000 – ₹1,499", 1000, 1499),
+        ("₹1,500 – ₹1,999", 1500, 1999),
+        ("₹2,000 & above", 2000, 100000),
+    ]
+    out: list[dict[str, str]] = []
+    for label, lo, hi in candidates:
+        if hi < min_price or lo > max_price:
+            continue
+        out.append({"label": label, "value": f"{lo}-{hi}"})
+    return out or [{"label": f"₹{int(min_price)} – ₹{int(max_price)}", "value": f"{int(min_price)}-{int(max_price)}"}]
+
+
+def _unique_sorted(values: list[str], *, size_order: bool = False) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    if size_order:
+        rank = {s.lower(): i for i, s in enumerate(_SIZE_ORDER)}
+        out.sort(key=lambda s: (rank.get(s.lower(), 100 + len(s)), s.upper()))
+    else:
+        out.sort(key=lambda s: s.lower())
+    return out
+
+
+@router.get("")
+async def list_products(
+    pageSize: int = Query(default=40, ge=1, le=100),
+    pageNum: int = Query(default=1, ge=1),
+    keyword: str | None = None,
+    category: str | None = None,
+    stone: str | None = None,
+    gender: str | None = None,
+    brand: str | None = None,
+    color: str | None = None,
+    size: str | None = None,
+    fit: str | None = None,
+    fabric: str | None = None,
+    badge: str | None = None,
+    product: str | None = None,
+    minPrice: float | None = None,
+    maxPrice: float | None = None,
+    priceRange: str | None = None,
+    collection: str | None = None,
+    sort: str | None = None,
+    _: None = Depends(rate_limit_dependency("products", limit=120)),
+):
+    query = _build_product_query(
+        keyword=keyword,
+        category=category,
+        stone=stone,
+        gender=gender,
+        brand=brand,
+        color=color,
+        size=size,
+        fit=fit,
+        fabric=fabric,
+        badge=badge,
+        product=product,
+        minPrice=minPrice,
+        maxPrice=maxPrice,
+        priceRange=priceRange,
+    )
+    rule_ids: list | None = None
+    if collection:
+        found = await collections_svc.by_slug(collection)
+        if found and collection_rules.clean_rule(found.rule):
+            # Automatic collection: its rule picks and orders the products;
+            # the shopper's filters still narrow that set.
+            rule_ids = await collection_rules.rule_product_ids(found)
+            query["_id"] = {"$in": rule_ids}
+        else:
+            # An unknown or hidden collection lists nothing rather than the whole catalog.
+            query["collections"] = str(found.id) if found else "__none__"
+
+    # Manual order first (admin drag-to-reorder), newest first within ties.
+    # Products with no position sort ahead, so a new arrival leads until placed.
+    sort_spec = [("sortOrder", 1), ("createdAt", -1)]
     if sort == "price_asc":
         sort_spec = [("pricing.sellingPrice", 1)]
     elif sort == "price_desc":
         sort_spec = [("pricing.sellingPrice", -1)]
 
-    total = await Product.find(query).count()
-    products = await Product.find(query).sort(sort_spec).skip(pageSize * (pageNum - 1)).limit(pageSize).to_list()
+    if rule_ids is not None and sort not in ("price_asc", "price_desc"):
+        # Keep the rule's ranking (newest / best-selling first). The set is
+        # capped at 100, so paging in memory is cheap.
+        rank = {pid: i for i, pid in enumerate(rule_ids)}
+        matched = await Product.find(query).to_list()
+        matched.sort(key=lambda p: rank.get(p.id, len(rank)))
+        total = len(matched)
+        start = pageSize * (pageNum - 1)
+        products = matched[start : start + pageSize]
+    else:
+        total = await Product.find(query).count()
+        products = await Product.find(query).sort(sort_spec).skip(pageSize * (pageNum - 1)).limit(pageSize).to_list()
     return {
         "products": [product_dict(p) for p in products],
         "page": pageNum,
@@ -88,8 +250,74 @@ async def list_products(
 
 @router.get("/featured")
 async def featured(limit: int = Query(default=4, le=12)):
-    products = await Product.find_all().sort([("createdAt", -1)]).limit(limit).to_list()
+    products = (
+        await Product.find({"status": {"$ne": "draft"}})
+        .sort([("sortOrder", 1), ("createdAt", -1)])
+        .limit(limit)
+        .to_list()
+    )
     return [product_dict(p) for p in products]
+
+
+@router.get("/filters")
+async def product_filters():
+    """Facet values derived from live catalog data."""
+    products = await Product.find({"status": {"$ne": "draft"}}).to_list()
+    sizes: list[str] = []
+    colors: list[str] = []
+    categories: list[str] = []
+    fits: list[str] = []
+    fabrics: list[str] = []
+    badges: list[str] = []
+    prices: list[float] = []
+
+    for product in products:
+        if product.category:
+            categories.append(str(product.category))
+        if product.fit:
+            fits.append(str(product.fit))
+        if product.fabric:
+            fabrics.append(str(product.fabric))
+        if product.badge:
+            badges.append(str(product.badge))
+        if product.color:
+            colors.append(str(product.color))
+        for col in product.colors or []:
+            if col:
+                colors.append(str(col))
+        for variant in product.variants or []:
+            if variant.color:
+                colors.append(str(variant.color))
+            if variant.size:
+                sizes.append(str(variant.size))
+        price = _product_price(product)
+        if price is not None:
+            prices.append(price)
+
+    unique_sizes = _unique_sorted(sizes, size_order=True)
+    unique_colors = _unique_sorted(colors)
+    unique_categories = _unique_sorted(categories)
+    unique_fits = _unique_sorted(fits)
+    unique_fabrics = _unique_sorted(fabrics)
+    unique_badges = _unique_sorted(badges)
+
+    min_price = min(prices) if prices else 0
+    max_price = max(prices) if prices else 0
+
+    return {
+        "sizes": unique_sizes,
+        "colors": unique_colors,
+        # Only expose multi-value facets so a single shared category/fit doesn't clutter UI.
+        "categories": unique_categories if len(unique_categories) > 1 else [],
+        "fits": unique_fits if len(unique_fits) > 1 else [],
+        "fabrics": unique_fabrics if len(unique_fabrics) > 1 else [],
+        "badges": [
+            {"value": b, "label": _BADGE_LABELS.get(b, b.replace("_", " ").title())}
+            for b in unique_badges
+        ],
+        "priceRanges": _price_ranges(min_price, max_price) if prices else [],
+        "price": {"min": min_price, "max": max_price},
+    }
 
 
 @router.get("/brands")
@@ -100,24 +328,90 @@ async def brands():
 
 @router.get("/colors")
 async def colors():
-    values = await Product.distinct("variants.color")
-    seen = set()
-    out = []
-    for c in values:
-        c = (c or "").strip()
-        if c and c.lower() not in seen:
-            seen.add(c.lower())
-            out.append(c)
-    return out
+    payload = await product_filters()
+    return payload["colors"]
 
 
 @router.get("/search/suggestions")
-async def suggestions(q: str = ""):
-    if not q:
+async def suggestions(
+    q: str = "",
+    _: None = Depends(rate_limit_dependency("product-search", limit=60)),
+):
+    needle = (q or "").strip()
+    if len(needle) < 1:
         return []
-    rx = {"$regex": q, "$options": "i"}
-    products = await Product.find({"$or": [{"productName": rx}, {"product": rx}]}).limit(8).to_list()
-    return [{"_id": str(p.id), "productName": p.productName or p.name, "slug": p.slug} for p in products]
+    safe = re.escape(needle)[:80]
+    rx = {"$regex": safe, "$options": "i"}
+    products = (
+        await Product.find(
+            {
+                "status": {"$ne": "draft"},
+                "$or": [
+                    {"productName": rx},
+                    {"name": rx},
+                    {"product": rx},
+                    {"slug": rx},
+                ],
+            }
+        )
+        .limit(8)
+        .to_list()
+    )
+    out = []
+    for p in products:
+        thumbs = list(p.thumbnails or [])
+        if not thumbs and p.variants:
+            for v in p.variants:
+                imgs = list(getattr(v, "images", None) or [])
+                if imgs:
+                    thumbs = [imgs[0]]
+                    break
+        price = None
+        if p.pricing and p.pricing.sellingPrice is not None:
+            price = float(p.pricing.sellingPrice)
+        elif p.price is not None:
+            price = float(p.price)
+        out.append(
+            {
+                "_id": str(p.id),
+                "productName": p.productName or p.name or p.product or "Product",
+                "slug": p.slug,
+                "thumbnails": thumbs[:1],
+                "price": price,
+                # For the search panel's product cards (sale price + strike-through).
+                "pricing": {
+                    "sellingPrice": price,
+                    "mrp": float(p.pricing.mrp) if p.pricing and p.pricing.mrp is not None else None,
+                },
+            }
+        )
+    return out
+
+
+@router.post("/{product_id}/stock-alerts", status_code=201)
+async def create_stock_alert(
+    product_id: str,
+    body: dict,
+    user: OptionalUser,
+    _: None = Depends(rate_limit_dependency("stock-alerts", limit=20)),
+):
+    """Ask to be emailed when a sold-out size is back in stock."""
+    from app.services import stock_alerts
+
+    return await stock_alerts.subscribe(
+        product_id,
+        email=(body or {}).get("email"),
+        size=(body or {}).get("size") or "",
+        user=user,
+    )
+
+
+async def _product_detail(product: Product) -> dict:
+    return {
+        **product_dict(product),
+        "soldThisWeek": await product_sales.sold_this_week(str(product.id)),
+        "collectionLinks": await collections_svc.links_for(product),
+    }
 
 
 @router.get("/slug/{slug}")
@@ -125,7 +419,7 @@ async def by_slug(slug: str):
     product = await Product.find_one(Product.slug == slug)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product_dict(product)
+    return await _product_detail(product)
 
 
 @router.get("/{product_id}")
@@ -135,53 +429,5 @@ async def by_id(product_id: str):
     product = await Product.get(ObjectId(product_id))
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product_dict(product)
+    return await _product_detail(product)
 
-
-@router.post("", status_code=201)
-async def create_product(body: dict, _: AdminUser):
-    data = {k: v for k, v in body.items() if k != "_id"}
-    if "type" not in data and "subcategory" in data:
-        data["type"] = data.get("subcategory")
-    data.pop("subcategory", None)
-    product = Product(**data)
-    product.createdAt = datetime.utcnow()
-    product.updatedAt = datetime.utcnow()
-    await product.insert()
-    return product_dict(product)
-
-
-@router.put("/{product_id}")
-async def update_product(product_id: str, body: dict, _: AdminUser):
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    data = dict(body)
-    if "type" not in data and "subcategory" in data:
-        data["type"] = data.get("subcategory")
-    data.pop("subcategory", None)
-    for k, v in data.items():
-        if k in ("_id", "id"):
-            continue
-        setattr(product, k, v)
-    product.updatedAt = datetime.utcnow()
-    await product.save()
-    return product_dict(product)
-
-
-@router.delete("/{product_id}")
-async def delete_product(product_id: str, _: AdminUser):
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    await product.delete()
-    return {"message": "Product removed"}
-
-
-@router.post("/{product_id}/reviews")
-async def add_review(product_id: str, body: ReviewBody, user: CurrentUser):
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    # Schema historically lacked reviews; acknowledge without breaking clients
-    return {"message": "Review submitted", "product": str(product.id), "user": str(user.id), "rating": body.rating}

@@ -1,200 +1,362 @@
 "use client";
 
-import {
-  ArrowIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon
-} from "@/components/icons/storeIcons";
-import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from "framer-motion";
+import FaqSection from "@/components/storefront/FaqSection";
+import PhotoStrip from "@/components/storefront/PhotoStrip";
+import ParallaxImage from "@/components/storefront/ParallaxImage";
+import {
+  ABOUT_FAQ,
+  FOUNDER_PROFILES,
+  SHOP_WITH_CONFIDENCE,
+  initials,
+} from "@/lib/aboutContent";
 
-import { motion, AnimatePresence } from "framer-motion";
+// Optimized WebP copies of the About shoot (public/images/about).
+const HERO_IMAGE = "/images/about/about-hero.webp";
+const WHO_IMAGE = "/images/about/about-who-we-are.webp";
+const NAME_IMAGE = "/images/about/about-the-name.webp";
 
-const aboutImages = [
-  { src: "/urban/about-1.jpg" },
-  { src: "/urban/about-2.jpg" },
-  { src: "/urban/about-3.jpg" },
-  { src: "/urban/about-4.jpg" },
-];
-
-const slideVariants = {
-  enter: (dir) => ({ x: dir > 0 ? "100%" : "-100%", opacity: 0 }),
-  center: { x: 0, opacity: 1, transition: { duration: 0.5, ease: [0.32, 0.72, 0, 1] } },
-  exit: (dir) => ({ x: dir > 0 ? "-100%" : "100%", opacity: 0, transition: { duration: 0.4 } }),
+const fadeUp = {
+  initial: { opacity: 0, y: 24 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-10% 0px" },
+  transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
 };
 
-function ImageCarousel() {
-  const [[page, dir], setPage] = useState([0, 0]);
-  const idx = ((page % aboutImages.length) + aboutImages.length) % aboutImages.length;
+const H2 =
+  "title-knewave text-2xl leading-none tracking-tight normal-case md:text-4xl";
+const BODY = "space-y-4 text-[15px] leading-relaxed text-gray-600 md:text-base";
+const Accent = () => <div className="h-1 w-12 bg-brand-red" />;
 
-  const paginate = useCallback((newDir) => setPage(([p]) => [p + newDir, newDir]), []);
-
-  useEffect(() => {
-    const t = setInterval(() => paginate(1), 4000);
-    return () => clearInterval(t);
-  }, [paginate]);
-
-  return (
-    <div className="relative w-full max-w-md mx-auto lg:mx-0">
-      <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gray-100 shadow-xl">
-        <AnimatePresence initial={false} custom={dir}>
-          <motion.div
-            key={page}
-            custom={dir}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            className="absolute inset-0"
-          >
-            <Image src={aboutImages[idx].src} alt="Urban Aana" fill className="object-cover object-top" />
-          </motion.div>
-        </AnimatePresence>
-
-        <button
-          onClick={() => paginate(-1)}
-          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-brand-red transition-all"
-          aria-label="Previous image"
-        >
-          <ChevronLeftIcon size={14} />
-        </button>
-        <button
-          onClick={() => paginate(1)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-brand-red transition-all"
-          aria-label="Next image"
-        >
-          <ChevronRightIcon size={14} />
-        </button>
-      </div>
-
-      <div className="flex justify-center gap-1.5 mt-3">
-        {aboutImages.map((_, i) => (
-          <div
-            key={i}
-            className={`h-1 rounded-full transition-all duration-300 ${
-              i === idx ? "w-6 bg-brand-red" : "w-1.5 bg-gray-200"
-            }`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const trustItems = [
-  {
-    jp: "一",
-    num: "1",
-    text: "Premium fabric — high-grade heavy GSM cotton built to last.",
-  },
-  {
-    jp: "二",
-    num: "2",
-    text: "Fast delivery — express shipping across India.",
-  },
-  {
-    jp: "三",
-    num: "3",
-    text: "Easy exchange — hassle-free returns when you need them.",
-  },
-  {
-    jp: "四",
-    num: "4",
-    text: "Secure pay — 100% safe checkout every time.",
-  },
+const WHAT_WE_MAKE = [
+  ["Oversized fit", "relaxed, comfortable, true to street style."],
+  [
+    "Culture-first design",
+    "Kerala's stories and symbols, reimagined in a minimal way.",
+  ],
+  ["Everyday quality", "soft cotton tees with a refined feel."],
+  [
+    "Made for the bold",
+    "for people who want clothes that say something without shouting.",
+  ],
 ];
 
+const BTN_PRIMARY =
+  "inline-flex items-center justify-center rounded-lg bg-[#171717] px-5 py-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-black";
+
+/** About page — copy from "Urban Aana: About Us Page (SEO Copy)". */
 const AboutSection = () => {
   return (
-    <section className="w-full bg-white py-6 md:py-10 font-sans overflow-hidden">
-      <div className="max-w-[1280px] mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center mb-16">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            className="order-1 lg:order-2"
+    <div className="w-full bg-white text-[#222222] font-[family-name:var(--font-archivo-narrow)]">
+      {/* Hero */}
+      <section className="relative isolate overflow-hidden">
+        <Image
+          src={HERO_IMAGE}
+          alt=""
+          fill
+          preload
+          fetchPriority="high"
+          sizes="100vw"
+          className="object-cover object-[center_12%]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30" />
+        {/* Phones: same 1080×1620 shape as the homepage mobile hero (height = 1.5 × width), never shorter than the text. */}
+        <div className="relative z-10 mx-auto flex min-h-[150vw] max-w-[1280px] flex-col justify-end px-6 pb-10 pt-16 md:min-h-[460px] md:px-10 md:pt-24 md:pb-16">
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="title-knewave max-w-3xl text-3xl leading-tight tracking-tight normal-case !text-white md:text-5xl"
           >
-            <ImageCarousel />
+            Urban Aana:{" "}
+            <span className="title-knewave-accent">
+              Kerala-Inspired Streetwear
+            </span>{" "}
+            from Thiruvananthapuram
+          </motion.h1>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="mt-5 max-w-2xl space-y-3 text-white/90"
+          >
+            <p className="text-lg font-semibold md:text-xl">
+              Where Style Meets Strength.
+            </p>
+            <p className="text-base leading-relaxed text-white/80 md:text-lg">
+              Urban Aana is a Kerala streetwear brand, born in
+              Thiruvananthapuram. We turn Kerala&apos;s culture and everyday
+              life into minimal oversized tees for people who wear their
+              identity with pride.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Who we are — text left, photo right (fills its half) */}
+      <section className="grid grid-cols-1 lg:grid-cols-2">
+        <motion.div
+          {...fadeUp}
+          className="order-2 flex items-center px-6 py-16 md:px-10 lg:order-1 lg:px-16 lg:py-24"
+        >
+          <div className="max-w-xl space-y-5">
+            <h2 className={H2}>
+              Who We <span className="title-knewave-accent">Are</span>
+            </h2>
+            <Accent />
+            <div className={BODY}>
+              <p>
+                Urban Aana is a Kerala streetwear brand built by three friends
+                from Thiruvananthapuram: Vipin VS, Amal V and Akarsh U. We
+                started with one belief: clothing is more than fashion. It is a
+                way to express who you are and to tell a story.
+              </p>
+              <p>
+                Every design draws from the spirit of Kerala and the energy of
+                modern urban culture, then strips it down to clean, minimal
+                streetwear that is easy to wear and hard to ignore.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+        <ParallaxImage
+          src={WHO_IMAGE}
+          alt="Urban Aana oversized tees worn in front of a Kerala temple"
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          className="order-1 aspect-[4/5] w-full lg:order-2 lg:aspect-auto lg:min-h-[640px]"
+        />
+      </section>
+
+      {/* The name — photo left (fills its half), text right */}
+      <section className="grid grid-cols-1 lg:grid-cols-2">
+        <ParallaxImage
+          src={NAME_IMAGE}
+          alt="Urban Aana oversized tee worn at a Kerala market with banana stalks"
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          className="aspect-[4/5] w-full lg:aspect-auto lg:min-h-[640px]"
+        />
+        <motion.div
+          {...fadeUp}
+          className="flex items-center px-6 py-16 md:px-10 lg:px-16 lg:py-24"
+        >
+          <div className="max-w-xl space-y-5">
+            <h2 className={H2}>
+              The Name: Urban +{" "}
+              <span className="title-knewave-accent">Aana</span>
+            </h2>
+            <Accent />
+            <div className={BODY}>
+              <p>
+                <strong className="text-[#222222]">Urban</strong> stands for
+                modern street fashion and lifestyle.{" "}
+                <strong className="text-[#222222]">Aana</strong>, the Malayalam
+                word for elephant, stands for strength, tradition and pride.
+              </p>
+              <p>
+                Put together, they carry our tagline:{" "}
+                <strong className="text-[#222222]">
+                  Where Style Meets Strength.
+                </strong>
+              </p>
+              <p>
+                The elephant is Kerala&apos;s own symbol, from temple festivals
+                to everyday life. We took it to the street.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* Founders — centred story, then one card per founder */}
+      <section id="founders" className="scroll-mt-24 bg-[#f6f6f4]">
+        <div className="mx-auto max-w-[1280px] px-6 py-16 md:px-10 md:py-24">
+          <motion.div
+            {...fadeUp}
+            className="mx-auto max-w-2xl space-y-5 text-center"
+          >
+            <h2 className={H2}>
+              Meet the <span className="title-knewave-accent">Founders</span>
+            </h2>
+            <div className="mx-auto h-1 w-12 bg-brand-red" />
+            <div className={BODY}>
+              <p>
+                We are three guys from Thiruvananthapuram who grew up with
+                Kerala&apos;s festivals, food, film and streets, and wanted to
+                see that culture on the clothes we wear. We could not find
+                streetwear that spoke for us, so we built it.
+              </p>
+            </div>
           </motion.div>
 
-          <div className="space-y-5 order-2 lg:order-1">
-            <h4 className="text-[12px] font-bold tracking-[0.2em] text-gray-400 uppercase">Our Identity</h4>
+          <ul className="mx-auto mt-12 grid max-w-4xl grid-cols-1 gap-6 sm:grid-cols-3">
+            {FOUNDER_PROFILES.map((founder) => (
+              <motion.li key={founder.name} {...fadeUp} className="text-center">
+                <div className="relative mx-auto aspect-[4/5] w-full max-w-[280px] overflow-hidden rounded-xl bg-[#e9e9e5]">
+                  {founder.photo ? (
+                    <Image
+                      src={founder.photo}
+                      alt={`${founder.name}, co-founder of Urban Aana`}
+                      fill
+                      loading="lazy"
+                      sizes="(max-width: 640px) 100vw, 280px"
+                      className="object-cover object-center"
+                    />
+                  ) : (
+                    // Placeholder until the founder's photo is added (lib/aboutContent.js).
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 flex items-center justify-center text-4xl font-semibold tracking-wide text-gray-400"
+                    >
+                      {initials(founder.name)}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-3 text-[16px] font-semibold text-[#222222]">
+                  {founder.name}
+                </p>
+                <p className="text-[13px] text-gray-500">Co-founder</p>
+              </motion.li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
-            <div className="space-y-1">
-              <h2 className="text-2xl md:text-4xl font-black tracking-tighter text-black uppercase leading-tight">
-                WE ARE <span className="text-brand-red">URBAN</span> AANA.
-              </h2>
-              <div className="w-12 h-1 bg-brand-red" />
-            </div>
-
-            <p className="text-gray-600 text-sm md:text-base leading-relaxed max-w-md">
-              Urban Aana blends modern city style with Kerala&apos;s cultural essence.
-              <span className="font-bold text-black ml-1">&ldquo;Aana&rdquo;</span> symbolizes strength and tradition.
-            </p>
-
+      {/* What we make */}
+      <section className="mx-auto max-w-[1280px] px-6 py-16 md:px-10 md:py-24">
+        <motion.div {...fadeUp} className="max-w-2xl space-y-5">
+          <h2 className={H2}>
+            What We <span className="title-knewave-accent">Make</span>
+          </h2>
+          <Accent />
+          <p className="text-[15px] leading-relaxed text-gray-600 md:text-base">
+            Minimal{" "}
             <Link
               href="/all-products"
-              className="group inline-flex items-center gap-2 px-6 py-3 bg-black text-white font-bold text-[12px] uppercase tracking-widest hover:bg-brand-red transition-all rounded-sm"
+              className="font-medium text-[#222222] underline underline-offset-4 hover:text-brand-red"
             >
-              Shop Now <ArrowIcon size={14} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </div>
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="relative max-w-4xl mx-auto mb-16 p-6 md:p-10 bg-black rounded-xl text-center overflow-hidden"
-        >
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-brand-red/50 rounded-tl-xl" />
-          <p className="text-lg md:text-xl font-bold text-white leading-snug">
-            &ldquo;Urban Aana is for those who express themselves without compromise.&rdquo;
-          </p>
-          <p className="mt-4 text-[12px] uppercase tracking-[0.3em] text-gray-500 font-bold">
-            — FOUNDER, <span className="text-red-500">URBAN AANA</span>
+              oversized Kerala t-shirts
+            </Link>{" "}
+            inspired by Kerala culture. Clean design, relaxed fit and a refined
+            feel, made for everyday streetwear across India.
           </p>
         </motion.div>
-      </div>
+        <ul className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {WHAT_WE_MAKE.map(([title, text]) => (
+            <li
+              key={title}
+              className="rounded-xl border border-gray-200 bg-white p-5 transition-all duration-300 ease-out hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_10px_24px_-12px_rgba(0,0,0,0.18)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            >
+              <p className="text-[15px] font-semibold text-[#222222]">
+                {title}
+              </p>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-gray-600">
+                {text}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-      {/* Trust / studies-style band */}
-      <div className="w-full mt-4 bg-[#F9F9F5] text-[#222222]">
-        <div className="max-w-7xl mx-auto px-6 py-14 md:py-20 flex flex-col items-center">
-          <h2 className="trust-title text-center text-[22pt] md:text-[40pt] leading-none max-w-4xl mx-auto normal-case">
-            What you get from wearing Urban Aana
+      {/* Mission */}
+      <section className="bg-[#121212]" style={{ color: "rgb(243, 241, 236)" }}>
+        <motion.div
+          {...fadeUp}
+          className="mx-auto max-w-[860px] px-6 py-16 text-center md:px-10 md:py-24"
+        >
+          <h2 className={`${H2} !text-[rgb(243,241,236)]`}>
+            Our <span className="title-knewave-accent">Mission</span>
           </h2>
+          <div className="mx-auto mt-4 h-1 w-12 bg-brand-red" />
+          <p className="mt-6 text-base leading-relaxed text-[rgb(243,241,236)]/80 md:text-lg">
+            To create quality, culturally inspired streetwear that blends
+            comfort, creativity and individuality.
+          </p>
+        </motion.div>
+      </section>
 
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-10 mt-14">
-            {trustItems.map((item) => (
-              <div key={item.num} className="w-full text-center flex flex-row xl:flex-col items-center">
-                <div className="flex justify-center items-center mb-0 xl:mb-6 shrink-0">
-                  <div className="relative w-16 h-16 2xl:w-20 2xl:h-20 border-2 border-brand-red rotate-[-3deg] flex items-center justify-center bg-brand-red">
-                    <span className="text-3xl font-black text-white leading-none">{item.jp}</span>
-                    <span className="trust-num absolute -bottom-8 -left-4 2xl:-left-6 text-[28pt] md:text-[48pt] leading-none font-black italic">
-                      {item.num}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[13pt] md:text-[15pt] font-medium text-[#222222] ml-5 xl:ml-0 mt-0 xl:mt-8 text-left xl:text-center leading-snug">
-                  {item.text}
-                </p>
-              </div>
-            ))}
+      {/* Shop with confidence */}
+      <section className="bg-[#f6f6f4]">
+        <motion.div
+          {...fadeUp}
+          className="mx-auto max-w-[860px] space-y-5 px-6 py-14 md:px-10 md:py-20"
+        >
+          <h2 className={H2}>
+            Shop with <span className="title-knewave-accent">Confidence</span>
+          </h2>
+          <Accent />
+          <p className="text-[15px] leading-relaxed text-gray-600 md:text-base">
+            {SHOP_WITH_CONFIDENCE}
+          </p>
+          <p className="text-[15px] text-gray-600 md:text-base">
+            Read our{" "}
+            <Link
+              href="/return-refund"
+              className="font-medium text-[#222222] underline underline-offset-4 hover:text-brand-red"
+            >
+              Returns &amp; Shipping policy
+            </Link>{" "}
+            or{" "}
+            <Link
+              href="/contact"
+              className="font-medium text-[#222222] underline underline-offset-4 hover:text-brand-red"
+            >
+              contact us
+            </Link>
+            .
+          </p>
+        </motion.div>
+      </section>
+
+      {/* Community + CTA */}
+      <section className="mx-auto max-w-[860px] px-6 py-16 text-center md:px-10 md:py-24">
+        <motion.div {...fadeUp} className="space-y-5">
+          <h2 className={H2}>
+            Join the Urban Aana{" "}
+            <span className="title-knewave-accent">Community</span>
+          </h2>
+          <div className="mx-auto h-1 w-12 bg-brand-red" />
+          <p className="text-[15px] leading-relaxed text-gray-600 md:text-base">
+            From Thiruvananthapuram to the rest of India, Urban Aana is for
+            everyone who carries Kerala with pride. Explore the collection,
+            follow us on{" "}
+            <a
+              href="https://www.instagram.com/urbanaana.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-[#222222] underline underline-offset-4 hover:text-brand-red"
+            >
+              Instagram @urbanaana.in
+            </a>{" "}
+            and wear the story.
+          </p>
+          <div className="pt-2">
+            <Link href="/all-products" className={BTN_PRIMARY}>
+              Shop Urban Aana Tees
+            </Link>
           </div>
+        </motion.div>
+      </section>
 
-          <Link
-            href="/all-products"
-            className="group mt-14 inline-flex items-center gap-2 rotate-[-2deg] bg-[#222222] border-2 border-[#222222] px-5 py-2 text-[14pt] md:text-[18pt] font-bold text-[#F9F9F5] transition-colors hover:bg-brand-red hover:border-brand-red"
-          >
-            Shop the drops
-            <ArrowIcon size={18} className="transition-transform group-hover:translate-x-1" />
-          </Link>
-        </div>
-      </div>
-    </section>
+      {/* Community photos — full width, edge to edge (shared with the homepage) */}
+      <PhotoStrip />
+
+      {/* FAQ — same component and design as the homepage FAQ */}
+      <FaqSection
+        divider={false}
+        items={ABOUT_FAQ.map(({ q, a }, i) => ({
+          id: `about-${i}`,
+          question: q,
+          answer: a,
+        }))}
+      />
+    </div>
   );
 };
 

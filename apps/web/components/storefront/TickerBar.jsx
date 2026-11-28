@@ -2,12 +2,12 @@
 
 import React from "react";
 
-const TickerBar = () => {
+function TickerList() {
   const items = [...Array(8)];
 
-  const TickerList = () => (
+  return (
     <div
-      className="flex items-center whitespace-nowrap shrink-0"
+      className="flex shrink-0 items-center whitespace-nowrap"
       style={{
         animation: "ticker 25s linear infinite",
         willChange: "transform",
@@ -20,7 +20,7 @@ const TickerBar = () => {
           style={{ height: "32px" }}
         >
           <span
-            className="w-[4px] h-[4px] rounded-full bg-brand-red shrink-0"
+            className="h-[4px] w-[4px] shrink-0 rounded-full bg-brand-red"
             style={{ marginTop: 0 }}
           />
           <span
@@ -30,7 +30,7 @@ const TickerBar = () => {
             അർബൻ ആന
           </span>
           <span
-            className="w-px bg-red-900/40 shrink-0"
+            className="w-px shrink-0 bg-red-900/40"
             style={{ height: "16px", display: "inline-block" }}
           />
           <span
@@ -43,9 +43,11 @@ const TickerBar = () => {
       ))}
     </div>
   );
+}
 
+const TickerBar = () => {
   return (
-    <div className="w-full overflow-hidden border-y border-white/[0.08] bg-black py-2 flex select-none">
+    <div className="flex w-full select-none overflow-hidden border-y border-white/[0.08] bg-black py-2">
       <TickerList />
       <TickerList />
 

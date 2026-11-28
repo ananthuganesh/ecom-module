@@ -1,11 +1,11 @@
-"""Shared ERP helpers — line totals, numbering, audit."""
+"""Shared ERP helpers — line totals, numbering."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from app.documents import AuditLog, LineItem, Role, Setting, TaxClass
-from app.services.gst import resolve_state_code, split_cgst_sgst_igst, taxable_and_tax, gst_rate_for_unit_price
+from app.documents import LineItem, Role, Setting, TaxClass
+from app.services.gst import gst_rate_for_line, resolve_state_code, split_cgst_sgst_igst, taxable_and_tax
 from app.services.variants import variant_sku
 
 
@@ -50,11 +50,15 @@ def build_line(
     inclusive: bool = True,
     variant_sku: str = "",
     hsn_code: str | None = None,
+    discount: float = 0,
 ) -> LineItem:
+    """One invoice line. ``discount`` comes off the line value before GST is split out."""
     qty = float(quantity or 0)
     price = float(unit_price or 0)
     rate = float(tax_rate or 0)
-    line_amount = qty * price
+    gross = qty * price
+    line_discount = round(min(max(float(discount or 0), 0.0), gross), 2)
+    line_amount = gross - line_discount
     taxable, tax = taxable_and_tax(line_amount, rate, inclusive=inclusive)
     return LineItem(
         productId=product_id,
@@ -63,11 +67,58 @@ def build_line(
         hsnCode=hsn_code,
         quantity=qty,
         unitPrice=price,
+        discountAmount=line_discount,
         taxRate=rate,
         taxableAmount=taxable,
         taxAmount=tax,
         totalAmount=round(taxable + tax, 2) if not inclusive else round(line_amount, 2),
     )
+
+
+def allocate_order_discount(order) -> list[float]:
+    """Spread the order-level coupon across item lines by value, to the paise.
+
+    Rounding drift lands on the last priced line so the shares sum exactly to
+    the discount (capped at the item total). Mirrors returns._line_refund.
+    """
+    lines = list(getattr(order, "items", None) or [])
+    # Orders priced by the discount resolver carry each line's exact share
+    # (a product discount belongs to its own items, not the whole cart).
+    details = getattr(order, "transactionDetails", None) or {}
+    exact = details.get("lineDiscounts") if isinstance(details, dict) else None
+    total = float(getattr(order, "discountAmount", 0) or getattr(order, "discount", 0) or 0)
+    if (
+        isinstance(exact, list)
+        and len(exact) == len(lines)
+        and total > 0
+        and abs(sum(float(x or 0) for x in exact) - total) < 0.011
+    ):
+        shares = [round(max(0.0, float(x or 0)), 2) for x in exact]
+        drift = round(total - sum(shares), 2)
+        if drift and shares:
+            last = max(i for i, v in enumerate(shares) if v > 0) if any(shares) else len(shares) - 1
+            shares[last] = round(shares[last] + drift, 2)
+        return shares
+    values = [
+        float(getattr(line, "price", 0) or 0) * float(getattr(line, "quantity", 0) or 0)
+        for line in lines
+    ]
+    gross = sum(values)
+    discount = float(getattr(order, "discountAmount", 0) or getattr(order, "discount", 0) or 0)
+    discount = round(min(max(discount, 0.0), gross), 2)
+    shares = [0.0] * len(lines)
+    if gross <= 0 or discount <= 0:
+        return shares
+
+    last = max(i for i, v in enumerate(values) if v > 0)
+    allocated = 0.0
+    for i, value in enumerate(values):
+        if i == last:
+            break
+        shares[i] = round(discount * value / gross, 2)
+        allocated += shares[i]
+    shares[last] = round(discount - allocated, 2)
+    return shares
 
 
 def summarize_lines(items: list[LineItem], seller_state: str, buyer_state: str) -> dict:
@@ -105,24 +156,6 @@ async def get_tax_rate(tax_class_id: str | None) -> float:
     return 0.0
 
 
-async def resolve_product_tax_rate(product) -> float:
-    """Apparel GST slab from product MRP (automatic)."""
-    pricing = getattr(product, "pricing", None) if product else None
-    mrp = float(getattr(pricing, "mrp", None) or 0) if pricing else 0.0
-    return gst_rate_for_unit_price(mrp)
-
-
-async def write_audit(*, actor, action: str, entity_type: str | None = None, entity_id: str | None = None, meta: dict | None = None):
-    await AuditLog(
-        actorId=str(actor.id) if actor else None,
-        actorEmail=getattr(actor, "email", None),
-        action=action,
-        entityType=entity_type,
-        entityId=entity_id,
-        meta=meta or {},
-    ).insert()
-
-
 DEFAULT_ROLES = [
     {
         "name": "Admin",
@@ -131,8 +164,8 @@ DEFAULT_ROLES = [
         "permissions": ["*"],
     },
     {
-        "name": "Sales",
-        "description": "Orders, invoices, customers",
+        "name": "Staff",
+        "description": "Store operations without user management",
         "isSystem": True,
         "permissions": [
             "admin.access",
@@ -141,74 +174,93 @@ DEFAULT_ROLES = [
             "invoices.read",
             "invoices.write",
             "customers.read",
-            "reports.read",
-            "analytics.read",
-        ],
-    },
-    {
-        "name": "Purchase",
-        "description": "Suppliers and purchase docs",
-        "isSystem": True,
-        "permissions": [
-            "admin.access",
-            "purchase.read",
-            "purchase.write",
-            "suppliers.read",
-            "suppliers.write",
+            "customers.write",
             "stock.read",
             "stock.write",
-        ],
-    },
-    {
-        "name": "Warehouse",
-        "description": "Stock and GRN",
-        "isSystem": True,
-        "permissions": [
-            "admin.access",
-            "stock.read",
-            "stock.write",
-            "purchase.read",
-            "warehouses.read",
-        ],
-    },
-    {
-        "name": "Finance",
-        "description": "Payments and reports",
-        "isSystem": True,
-        "permissions": [
-            "admin.access",
             "payments.read",
             "payments.write",
-            "invoices.read",
-            "purchase.read",
             "reports.read",
+            "analytics.read",
         ],
     },
 ]
 
 
-async def ensure_default_roles() -> list[Role]:
-    existing = await Role.find_all().to_list()
-    if not existing:
-        created = []
-        for row in DEFAULT_ROLES:
-            r = Role(**row)
-            await r.insert()
-            created.append(r)
-        return created
+ACTIVE_ROLE_NAMES = {row["name"] for row in DEFAULT_ROLES}
 
-    # Merge newly defined permissions onto system roles without removing custom grants.
+
+async def ensure_default_roles() -> list[Role]:
+    """Keep only Admin + Staff. Deletes every other role document."""
+    from app.documents import AdminAccount, User
+
+    existing = await Role.find_all().to_list()
     by_name = {r.name: r for r in existing}
+
+    # Purge anything that is not Admin or Staff.
+    for role in existing:
+        if role.name in ACTIVE_ROLE_NAMES:
+            continue
+        role_id = str(role.id)
+        accounts = await AdminAccount.find(AdminAccount.roleId == role_id).to_list()
+        for account in accounts:
+            account.roleId = None
+            account.updatedAt = datetime.utcnow()
+            await account.save()
+        # Legacy: clear stale roleIds left on customer docs
+        users = await User.find(User.roleId == role_id).to_list()
+        for user in users:
+            user.roleId = None
+            user.updatedAt = datetime.utcnow()
+            await user.save()
+        await role.delete()
+        by_name.pop(role.name, None)
+
+    # Ensure Admin + Staff exist and stay in sync.
     for row in DEFAULT_ROLES:
         role = by_name.get(row["name"])
-        if not role or not role.isSystem:
+        if not role:
+            role = Role(**row)
+            await role.insert()
+            by_name[role.name] = role
             continue
-        merged = list(dict.fromkeys([*(role.permissions or []), *row["permissions"]]))
-        if merged != list(role.permissions or []):
+        current = list(role.permissions or [])
+        if role.name != "Admin":
+            current = [p for p in current if p != "*"]
+        merged = list(dict.fromkeys([*current, *row["permissions"]]))
+        if role.name == "Admin":
+            merged = ["*"]
+        changed = (
+            merged != list(role.permissions or [])
+            or role.description != row["description"]
+            or not role.isSystem
+        )
+        if changed:
             role.permissions = merged
+            role.description = row["description"]
+            role.isSystem = True
             role.updatedAt = datetime.utcnow()
             await role.save()
-    return await Role.find_all().to_list()
+
+    admin_role = by_name.get("Admin")
+    staff_role = by_name.get("Staff")
+    active_ids = {str(r.id) for r in (admin_role, staff_role) if r}
+
+    # Keep AdminAccount roleIds healthy.
+    tagged = await AdminAccount.find_all().to_list()
+    for account in tagged:
+        rid = str(account.roleId or "").strip()
+        if account.isAdmin:
+            if admin_role and rid != str(admin_role.id):
+                account.roleId = str(admin_role.id)
+                account.updatedAt = datetime.utcnow()
+                await account.save()
+            continue
+        if rid and rid not in active_ids:
+            account.roleId = None
+            account.updatedAt = datetime.utcnow()
+            await account.save()
+
+    return [by_name[name] for name in ("Admin", "Staff") if name in by_name]
 
 
 async def company_profile() -> dict:
@@ -250,31 +302,23 @@ async def ensure_order_invoice(order, *, actor=None):
     customer_id = str(order.customerId) if order.customerId else None
     customer_name = None
     customer_gstin = None
-    customer_state = ""
+    user = None
     if customer_id and ObjectId.is_valid(customer_id):
         user = await User.get(ObjectId(customer_id))
         if user:
             customer_name = user.name
             customer_gstin = getattr(user, "gstin", None)
-            customer_state = resolve_state_code(
-                getattr(user, "stateCode", None),
-                getattr(user, "stateName", None),
-            )
 
     addr = order.shippingAddress or {}
-    customer_state = resolve_state_code(
-        customer_state,
-        addr.get("stateCode"),
-        addr.get("state"),
-        addr.get("stateName"),
-    )
+    customer_state = invoice_buyer_state(order, user)
     if not customer_name:
         customer_name = addr.get("name") or addr.get("fullName") or None
     if not customer_gstin:
         customer_gstin = addr.get("gstin") or addr.get("GSTIN") or None
 
     items: list[LineItem] = []
-    for oi in order.items or []:
+    discount_shares = allocate_order_discount(order)
+    for idx, oi in enumerate(order.items or []):
         product = None
         if oi.productId:
             try:
@@ -284,8 +328,10 @@ async def ensure_order_invoice(order, *, actor=None):
                 product = None
 
         if use_gst:
-            # Override tax class, else apparel slab from MRP
-            rate = await resolve_product_tax_rate(product)
+            # Apparel slab from the sale value per piece after the coupon share
+            # (≤ ₹2,500 → 5%), never from MRP.
+            sale_value = float(oi.price or 0) * float(oi.quantity or 0) - discount_shares[idx]
+            rate = gst_rate_for_line(sale_value, oi.quantity)
             inclusive = (product.priceTaxMode if product else "inclusive") != "exclusive"
         else:
             rate = 0.0
@@ -309,6 +355,7 @@ async def ensure_order_invoice(order, *, actor=None):
                 inclusive=inclusive,
                 variant_sku=sku,
                 hsn_code=product.hsnCode if product else None,
+                discount=discount_shares[idx],
             )
         )
 
@@ -335,6 +382,7 @@ async def ensure_order_invoice(order, *, actor=None):
         balanceDue=round(totals["grandTotal"] - amount_paid, 2),
         status=status if amount_paid < totals["grandTotal"] else "paid",
         isGstInvoice=use_gst,
+        couponCode=(order.couponCode or None) if any(discount_shares) else None,
         **totals,
     )
     await doc.insert()
@@ -343,14 +391,60 @@ async def ensure_order_invoice(order, *, actor=None):
     order.invoiceNumber = doc.number
     await order.save()
 
-    await write_audit(
-        actor=actor,
-        action="si.create",
-        entity_type="sales_invoice",
-        entity_id=str(doc.id),
-        meta={"orderId": str(order.id), "isGstInvoice": use_gst},
-    )
     return doc
+
+
+def invoice_buyer_state(order, user=None) -> str:
+    """Place-of-supply state code: the customer's profile state, else the delivery address."""
+    addr = order.shippingAddress or {}
+    return resolve_state_code(
+        getattr(user, "stateCode", None) if user else None,
+        getattr(user, "stateName", None) if user else None,
+        addr.get("stateCode"),
+        addr.get("state"),
+        addr.get("stateName"),
+    )
+
+
+async def refresh_invoice_place_of_supply(order) -> bool:
+    """Redo the CGST+SGST / IGST split after the delivery state changed.
+
+    Line amounts and the grand total don't depend on the state, so the same
+    invoice (and number) is kept; only the buyer state and the split move.
+    Returns True when the invoice was updated.
+    """
+    from bson import ObjectId
+
+    from app.documents import SalesInvoice, User
+
+    inv = None
+    if getattr(order, "invoiceId", None) and ObjectId.is_valid(str(order.invoiceId)):
+        inv = await SalesInvoice.get(ObjectId(order.invoiceId))
+    if inv is None:
+        inv = await SalesInvoice.find_one(SalesInvoice.orderId == str(order.id))
+    if inv is None or inv.status == "void":
+        return False
+
+    user = None
+    if order.customerId and ObjectId.is_valid(str(order.customerId)):
+        user = await User.get(ObjectId(str(order.customerId)))
+    buyer = invoice_buyer_state(order, user)
+    if buyer == (inv.customerStateCode or ""):
+        return False
+
+    seller = inv.sellerStateCode
+    if not seller:
+        company = await company_profile()
+        seller = resolve_state_code(company.get("stateCode"), company.get("stateName"))
+    totals = summarize_lines(list(inv.items or []), seller, buyer)
+    previous = inv.customerStateCode or "unknown"
+    inv.customerStateCode = buyer
+    inv.cgst, inv.sgst, inv.igst = totals["cgst"], totals["sgst"], totals["igst"]
+    stamp = datetime.utcnow().strftime("%Y-%m-%d")
+    note = f"Place of supply changed {previous} → {buyer or 'unknown'} on {stamp} (delivery address updated)."
+    inv.notes = f"{inv.notes}\n{note}" if inv.notes else note
+    await inv.save()
+    return True
 
 
 async def ensure_order_invoice_safe(order, *, actor=None, context: str = "") -> None:

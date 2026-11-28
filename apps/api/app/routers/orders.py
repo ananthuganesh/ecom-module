@@ -1,22 +1,45 @@
+import math
+import re
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
-from app.deps import AdminUser, CurrentUser
-from app.documents import AbandonedCheckout, Order, OrderItem, Product, Setting
-from app.serializers import remap_order
+from app.deps import AdminUser, CurrentUser, PaymentsWriter
+from app.documents import Order, OrderItem, Product, Setting, User
+from app.serializers import doc_to_dict, remap_order
 from app.services import erp_ops
 from app.services.attribution import sanitize_attribution
 from app.services.fulfillment import process_full_order_flow
+from app.services.order_address import OrderAddressBody
+from app.services.rate_limit import rate_limit_dependency
 from app.services.shipping_settings import get_shipping_settings, rate_for_zip
 from app.services.stock import apply_order_commitments, reserve_order_stock
 from app.services.store_settings import ensure_payment_method_enabled
 from app.services.variants import find_variant
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
+
+
+async def _max_order_number_seq(prefix: str, suffix: str) -> int:
+    """Highest numeric sequence already used in orders (keeps counter in sync)."""
+    col = Order.get_pymongo_collection()
+    pattern = f"^{re.escape(prefix)}(\\d+){re.escape(suffix)}$"
+    cursor = col.find({"orderNumber": {"$regex": pattern}}, {"orderNumber": 1})
+    highest = 0
+    async for row in cursor:
+        raw = str(row.get("orderNumber") or "")
+        match = re.match(pattern, raw)
+        if not match:
+            continue
+        try:
+            highest = max(highest, int(match.group(1)))
+        except ValueError:
+            continue
+    return highest
 
 
 async def _next_order_number() -> str:
@@ -29,21 +52,17 @@ async def _next_order_number() -> str:
     suffix = str(profile.get("orderSuffix") or "")
 
     col = Setting.get_pymongo_collection()
-    # Ensure counter exists and never starts below 999 (so first incr → 1000)
+    floor = max(999, await _max_order_number_seq(prefix, suffix))
+
+    # Ensure counter exists and never lags behind existing order numbers.
     existing = await col.find_one({"key": "seq_order_number"})
-    if not existing:
+    cur = int(((existing or {}).get("value") or {}).get("seq") or 0)
+    if not existing or cur < floor:
         await col.update_one(
             {"key": "seq_order_number"},
-            {"$set": {"value": {"seq": 999}}},
+            {"$set": {"value": {"seq": floor}}},
             upsert=True,
         )
-    else:
-        cur = int((existing.get("value") or {}).get("seq") or 0)
-        if cur < 999:
-            await col.update_one(
-                {"key": "seq_order_number"},
-                {"$set": {"value.seq": 999}},
-            )
 
     doc = await col.find_one_and_update(
         {"key": "seq_order_number"},
@@ -51,8 +70,38 @@ async def _next_order_number() -> str:
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
-    n = int((doc.get("value") or {}).get("seq") or 1000)
+    n = int((doc.get("value") or {}).get("seq") or (floor + 1))
     return f"{prefix}{n}{suffix}"
+
+
+async def assign_order_number(order: Order) -> str:
+    """Give a paid order its display number (UA1000…), exactly once.
+
+    Numbers are assigned on payment rather than at checkout so abandoned
+    checkouts don't leave gaps in the sequence. Safe to call repeatedly and
+    from concurrent verify/webhook paths: only the first write wins.
+    """
+    if order.orderNumber:
+        return order.orderNumber
+    col = Order.get_pymongo_collection()
+    for _attempt in range(5):
+        candidate = await _next_order_number()
+        try:
+            result = await col.update_one(
+                {"_id": order.id, "orderNumber": {"$not": {"$type": "string"}}},
+                {"$set": {"orderNumber": candidate}},
+            )
+        except DuplicateKeyError:
+            continue  # counter lagged behind an existing number; take the next one
+        if result.modified_count:
+            order.orderNumber = candidate
+            return candidate
+        # Someone else numbered it first; use theirs.
+        current = await col.find_one({"_id": order.id}, {"orderNumber": 1})
+        if current and current.get("orderNumber"):
+            order.orderNumber = current["orderNumber"]
+            return order.orderNumber
+    raise HTTPException(status_code=409, detail="Could not allocate order number")
 
 
 async def _next_order_url_id() -> str:
@@ -85,8 +134,56 @@ async def _next_order_url_id() -> str:
     return f"{n:012d}"
 
 
+SHIPPED_STATUSES = {"shipped", "out for delivery", "delivered"}
+_PUBLIC_COMPANY_KEYS = (
+    "legalName",
+    "tradeName",
+    "gstin",
+    "email",
+    "phone",
+    "website",
+    "siteUrl",
+    "logoUrl",
+    "addressLine1",
+    "addressLine2",
+    "city",
+    "stateName",
+    "stateCode",
+    "pincode",
+    "country",
+)
+
+
 def _is_owner(order: Order, user) -> bool:
     return str(order.customerId) == str(user.id) or bool(user.isAdmin)
+
+
+def _order_is_paid(order: Order) -> bool:
+    pay = str(order.paymentStatus or "").lower()
+    return bool(getattr(order, "isPaid", False)) or pay == "paid"
+
+
+def _order_is_shipped(order: Order) -> bool:
+    status = str(getattr(order, "orderStatus", None) or getattr(order, "status", None) or "").lower()
+    shipping = str(order.shippingStatus or "").lower()
+    return status in SHIPPED_STATUSES or shipping in SHIPPED_STATUSES
+
+
+async def _assert_deliverable(address: dict) -> None:
+    """Refuse an order to a pincode no carrier can serve, before payment.
+
+    Only a definite "no" blocks. An unknown answer (carrier API unreachable)
+    lets the order through, since checkout must not fail because of an outage.
+    """
+    from app.services import couriers
+
+    pin = address.get("pincode") or address.get("postalCode") or address.get("zipcode")
+    result = await couriers.deliverability(pin)
+    if result.get("deliverable") is False and result.get("pincode"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("reason") or "We don't deliver to this PIN code yet.",
+        )
 
 
 async def _storefront_shipping_price(address: dict) -> float:
@@ -102,9 +199,8 @@ async def _storefront_shipping_price(address: dict) -> float:
     return fee
 
 
-@router.post("", status_code=201)
-async def create_order(body: dict, user: CurrentUser):
-    order_items = body.get("orderItems") or []
+async def priced_order_items(order_items: list[dict]) -> list[OrderItem]:
+    """Order lines priced and stock-checked server-side; client prices are ignored."""
     if not order_items:
         raise HTTPException(status_code=400, detail="No order items")
 
@@ -115,8 +211,18 @@ async def create_order(body: dict, user: CurrentUser):
         if not product:
             raise HTTPException(status_code=404, detail=f"Product not found: {pid}")
         qty = int(oi.get("qty") or 1)
+        if qty <= 0 or qty > 50:
+            raise HTTPException(status_code=400, detail="Item quantity must be between 1 and 50")
         color = oi.get("color") or ""
         size = oi.get("size") or ""
+        # Only persist axes this product actually sells on its variants
+        from app.services.variants import product_variant_axes
+
+        axes = product_variant_axes(product)
+        if not axes.get("color"):
+            color = ""
+        if not axes.get("size"):
+            size = ""
         available = product.totalStock or 0
         variant = find_variant(product, color=color, size=size)
         if variant is not None:
@@ -138,8 +244,45 @@ async def create_order(body: dict, user: CurrentUser):
                 detail=f"{name} has no sellable price configured.",
             )
         price = correct
-        item = OrderItem(productId=product.id, color=color, size=size, quantity=qty, price=price)
+        thumb = (product.thumbnails[0] if product.thumbnails else None) or None
+        if not thumb and product.variants:
+            for v in product.variants:
+                imgs = getattr(v, "images", None) or []
+                if imgs:
+                    thumb = imgs[0]
+                    break
+        item = OrderItem(
+            productId=product.id,
+            productName=product.productName or product.name or product.product or "Product",
+            image=str(thumb or "") or None,
+            color=color,
+            size=size,
+            quantity=qty,
+            price=price,
+        )
         items.append(item)
+    return items
+
+
+@router.post("", status_code=201)
+async def create_order(
+    body: dict,
+    user: CurrentUser,
+    request: Request,
+    _: None = Depends(rate_limit_dependency("orders-create", limit=20)),
+):
+    return remap_order(await place_pending_order(body, user, request))
+
+
+async def place_pending_order(body: dict, user: User | None, request: Request) -> Order:
+    """Create an unpaid order and hold its stock.
+
+    `user` may be None only for Magic Checkout, where the shopper signs in with
+    their phone inside Razorpay's popup and the account is linked on payment.
+    """
+    if user is None and str(body.get("checkoutMode") or "").lower() != "magic":
+        raise HTTPException(status_code=401, detail="Not authorized, no token")
+    items = await priced_order_items(body.get("orderItems") or [])
 
     subtotal = sum(i.price * i.quantity for i in items)
     payment = str(body.get("paymentMethod") or "razorpay").lower()
@@ -147,39 +290,84 @@ async def create_order(body: dict, user: CurrentUser):
         payment = "razorpay"
     await ensure_payment_method_enabled(payment)
 
-    shipping_address = body.get("shippingAddress") or {}
-    delivery = await _storefront_shipping_price(shipping_address)
-    is_gift = bool(body.get("isGift"))
+    magic = str(body.get("checkoutMode") or "").lower() == "magic"
+    if magic:
+        from app.services import magic_checkout
+
+        if not await magic_checkout.is_enabled():
+            raise HTTPException(status_code=400, detail="Express checkout is currently unavailable")
+        # Address, delivery fee and coupon come from the Razorpay popup and are
+        # copied on at payment (magic_checkout.prepare_paid_order).
+        email = str(getattr(user, "email", None) or "").strip().lower()
+        shipping_address = {"email": email} if email else {}
+        delivery = 0.0
+    else:
+        shipping_address = body.get("shippingAddress") or {}
+        await _assert_deliverable(shipping_address)
+        delivery = await _storefront_shipping_price(shipping_address)
+    is_gift = bool(body.get("isGift")) and not magic
     gift_fee = 39 if is_gift else 0
-    discount = 0.0
+    from app.services import discounts as discount_svc
+
+    cart_lines = [
+        {"productId": str(i.productId), "price": float(i.price), "quantity": int(i.quantity)}
+        for i in items
+    ]
+    shopper = discount_svc.Shopper.of(
+        user, phone=shipping_address.get("phone"), email=shipping_address.get("email")
+    )
     applied = None
-    coupon_code = body.get("couponCode")
-    if coupon_code:
-        from app.services import discounts as discount_svc
-
-        cart_lines = [
-            {
-                "productId": str(i.productId),
-                "price": float(i.price),
-                "quantity": int(i.quantity),
-            }
-            for i in items
+    coupon_reserved = False
+    coupon_code = None if magic else (str(body.get("couponCode") or "").strip() or None)
+    # Automatic discounts always; one code on standard checkout. Magic Checkout
+    # gets its code and shipping discount from Razorpay's popup later.
+    resolution = await discount_svc.resolve(
+        cart_lines,
+        shopper=shopper,
+        code=coupon_code,
+        shipping_fee=None if magic else delivery,
+    )
+    if coupon_code and resolution.code_error:
+        raise HTTPException(status_code=resolution.code_status, detail=resolution.code_error)
+    line_discounts = list(resolution.line_discounts)
+    if magic:
+        # Razorpay prices each unit in whole paise: round each line's discount up
+        # to a whole paisa per unit so offer_price × quantity matches exactly.
+        line_discounts = [
+            (math.ceil(round(d * 100 / max(1, i.quantity), 6)) * max(1, i.quantity)) / 100 if d > 0 else 0.0
+            for d, i in zip(line_discounts, items)
         ]
-        coupon, discount = await discount_svc.validate_coupon(
-            str(coupon_code),
-            items=cart_lines,
-            subtotal=subtotal,
-        )
-        applied = coupon.code
+        line_discounts = [min(d, float(i.price) * i.quantity) for d, i in zip(line_discounts, items)]
+    discount = round(sum(line_discounts), 2)
+    shipping_discount = 0.0 if magic else round(min(resolution.shipping, delivery), 2)
+    code_applied = resolution.code_applied
+    if code_applied is not None:
+        if not await discount_svc.reserve_coupon_usage(code_applied.coupon.code):
+            raise HTTPException(status_code=400, detail="Discount usage limit reached")
+        coupon_reserved = True
+        applied = code_applied.coupon.code
+    applied_discounts = [a.as_dict() for a in resolution.applied]
+    if magic and applied_discounts:
+        # Rounded amounts are what the shopper is actually charged.
+        scale = discount / resolution.goods if resolution.goods else 1.0
+        for row in applied_discounts:
+            row["amount"] = round(float(row["amount"]) * scale, 2)
+    charged_delivery = round(max(0.0, delivery - shipping_discount), 2)
 
-    final_price = max(0.0, subtotal + delivery + gift_fee - discount)
+    final_price = max(0.0, subtotal + charged_delivery + gift_fee - discount)
     payment = "razorpay"
 
     attribution = sanitize_attribution(body.get("attribution"))
+    # Captured now: the payment webhook comes from Razorpay, not the shopper's
+    # browser, so this is the last point the analytics cookies are available.
+    from app.services.conversions import browser_context_from_request
+
+    browser_context = browser_context_from_request(request)
 
     order = Order(
-        customerId=user.id,
-        orderNumber=await _next_order_number(),
+        customerId=user.id if user else None,
+        # Assigned on payment (assign_order_number) so abandoned checkouts leave no gaps.
+        orderNumber=None,
         orderUrlId=await _next_order_url_id(),
         items=items,
         shippingAddress=shipping_address,
@@ -188,7 +376,7 @@ async def create_order(body: dict, user: CurrentUser):
         discount=discount,
         discountAmount=discount,
         finalPrice=final_price,
-        deliveryAmount=delivery,
+        deliveryAmount=charged_delivery,
         isGift=is_gift,
         giftFee=gift_fee,
         giftMessage=body.get("giftMessage") or "",
@@ -198,6 +386,25 @@ async def create_order(body: dict, user: CurrentUser):
         transactionDetails={
             "paymentMethod": payment,
             "paymentStatus": "pending",
+            **({"checkout": "magic"} if magic else {}),
+            **({"couponReserved": True} if coupon_reserved else {}),
+            **(
+                {
+                    "discounts": applied_discounts,
+                    "lineDiscounts": [round(d, 2) for d in line_discounts],
+                    "shippingDiscount": shipping_discount,
+                }
+                if applied_discounts
+                else {}
+            ),
+            **({"autoGoodsDiscount": discount} if magic else {}),
+            **({} if magic else {"deliveryFee": delivery}),
+            **(
+                {"guestId": str(body.get("guestId")).strip()}
+                if body.get("guestId")
+                else {}
+            ),
+            **({"browserContext": browser_context} if browser_context else {}),
         },
         shippingStatus="Payment Pending",
         attribution=attribution,
@@ -205,45 +412,74 @@ async def create_order(body: dict, user: CurrentUser):
     from app.services.dtdc_est_cost import apply_dtdc_est_cost
 
     apply_dtdc_est_cost(order)
-    await order.insert()
+    # Retry if a stale counter races another insert on unique orderUrlId.
+    for attempt in range(5):
+        try:
+            await order.insert()
+            break
+        except DuplicateKeyError:
+            if attempt >= 4:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Could not create order. Please try again.",
+                )
+            order.orderUrlId = await _next_order_url_id()
 
     try:
         await reserve_order_stock(order)
     except HTTPException:
+        if coupon_reserved and applied:
+            from app.services import discounts as discount_svc
+
+            await discount_svc.release_coupon_usage(applied)
         await order.delete()
         raise
     except Exception as exc:
+        if coupon_reserved and applied:
+            from app.services import discounts as discount_svc
+
+            await discount_svc.release_coupon_usage(applied)
         await order.delete()
-        raise HTTPException(status_code=400, detail=f"Could not reserve stock: {exc}") from exc
+        raise HTTPException(status_code=400, detail="Could not reserve stock") from exc
 
-    try:
-        await erp_ops.ensure_order_invoice(order, actor=user)
-    except Exception as exc:
-        print(f"[Checkout] Invoice create failed: {exc}")
+    # No invoice, number or "order placed" message yet: all of those happen on
+    # payment (_finalize_paid_order), so an abandoned checkout uses up nothing.
+    return order
 
-    try:
-        guest_id = body.get("guestId")
-        q: dict[str, Any] = {"status": "abandoned"}
-        if guest_id:
-            q["guestId"] = guest_id
-        else:
-            q["userId"] = user.id
-        abandoned = await AbandonedCheckout.find_one(q)
-        if abandoned:
-            abandoned.status = "converted"
-            abandoned.orderId = order.id
-            abandoned.lastActivityAt = datetime.utcnow()
-            await abandoned.save()
-    except Exception:
-        pass
 
-    return remap_order(order)
+_CUSTOMER_VISIBLE_PAID = {
+    "paid",
+    "refunded",
+    "partially_refunded",
+    "refund_pending",
+    "captured",
+    "authorized",
+}
+
+
+def _is_customer_visible_order(order: Order) -> bool:
+    """Account history: real orders only — not unpaid Razorpay exits / abandoned carts.
+
+    Matches admin Orders list: unpaid gateway checkouts live under Abandoned, not as
+    customer “Unpaid” orders.
+    """
+    status = str(order.status or "").strip().lower()
+    if status in {"abandoned", "draft"}:
+        return False
+    pay = str(
+        order.paymentStatus
+        or (order.transactionDetails or {}).get("paymentStatus")
+        or ""
+    ).strip().lower()
+    if status == "order placed" and pay not in _CUSTOMER_VISIBLE_PAID:
+        return False
+    return True
 
 
 @router.get("/myorders")
 async def my_orders(user: CurrentUser):
     orders = await Order.find(Order.customerId == user.id).sort([("createdAt", -1)]).to_list()
-    return [remap_order(o) for o in orders]
+    return [remap_order(o) for o in orders if _is_customer_visible_order(o)]
 
 
 def _trend(current: float, previous: float) -> str:
@@ -255,32 +491,139 @@ def _trend(current: float, previous: float) -> str:
     return f"{change:+.1f}%"
 
 
+_ITEM_QTY_EXPR = {
+    "$reduce": {
+        "input": {"$ifNull": ["$items", []]},
+        "initialValue": 0,
+        "in": {"$add": ["$$value", {"$ifNull": ["$$this.quantity", 1]}]},
+    }
+}
+
+_CHANNEL_KEYS = (
+    ("direct", "Direct"),
+    ("instagram", "Instagram"),
+    ("facebook", "Facebook"),
+    ("others", "Others"),
+)
+
+
+def _channel_bucket(source: str) -> str:
+    s = str(source or "direct").strip().lower()
+    if not s or s in {"direct", "(direct)", "none", "n/a", "(none)"}:
+        return "direct"
+    if "instagram" in s or s in {"ig"}:
+        return "instagram"
+    if "facebook" in s or s in {"fb", "meta"} or "fbclid" in s:
+        return "facebook"
+    return "others"
+
+
+async def _channel_stats(collection, match: dict) -> list[dict]:
+    rows = await collection.aggregate(
+        [
+            {"$match": match},
+            {
+                "$group": {
+                    "_id": {"$ifNull": ["$attribution.lastTouch.source", "direct"]},
+                    "orders": {"$sum": 1},
+                    "revenue": {"$sum": {"$ifNull": ["$finalPrice", 0]}},
+                    "quantity": {"$sum": _ITEM_QTY_EXPR},
+                }
+            },
+            {"$sort": {"revenue": -1}},
+        ]
+    ).to_list(None)
+    return [
+        {
+            "source": str(row.get("_id") or "direct"),
+            "orders": int(row.get("orders") or 0),
+            "revenue": round(float(row.get("revenue") or 0), 2),
+            "quantity": int(row.get("quantity") or 0),
+        }
+        for row in rows
+    ]
+
+
+def _bucket_channel_performance(current: list[dict], previous: list[dict]) -> list[dict]:
+    empty = {"orders": 0, "revenue": 0.0, "quantity": 0}
+
+    def roll(rows: list[dict]) -> dict[str, dict]:
+        out = {key: dict(empty) for key, _ in _CHANNEL_KEYS}
+        for row in rows:
+            key = _channel_bucket(row.get("source"))
+            bucket = out[key]
+            bucket["orders"] += int(row.get("orders") or 0)
+            bucket["revenue"] += float(row.get("revenue") or 0)
+            bucket["quantity"] += int(row.get("quantity") or 0)
+        return out
+
+    cur = roll(current)
+    prev = roll(previous)
+    result = []
+    for key, label in _CHANNEL_KEYS:
+        c = cur[key]
+        p = prev[key]
+        result.append(
+            {
+                "key": key,
+                "label": label,
+                "orders": c["orders"],
+                "quantity": c["quantity"],
+                "revenue": round(c["revenue"], 2),
+                "change": _trend(c["revenue"], p["revenue"]),
+            }
+        )
+    return result
+
+
 @router.get("/stats")
 async def stats(
     _: AdminUser,
     range_: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d", alias="range"),
+    date_from: str | None = Query(None, alias="dateFrom"),
+    date_to: str | None = Query(None, alias="dateTo"),
 ):
-    """Paid-order analytics. Excludes draft, abandoned, and cancelled checkouts."""
+    """Paid-order analytics. Excludes abandoned and cancelled checkouts."""
     from app.documents import User
+    from app.services.pagination import _parse_day_start
 
     now = datetime.utcnow()
-    if range_ == "all":
+    custom_start = _parse_day_start(date_from)
+    custom_end = _parse_day_start(date_to or date_from)
+
+    if custom_start:
+        if custom_end is None or custom_end < custom_start:
+            custom_end = custom_start
+        current_start = custom_start
+        period_end = custom_end + timedelta(days=1)
+        days = max((period_end - current_start).days, 1)
+        previous_end = current_start
+        previous_start = current_start - timedelta(days=days)
+        range_key = "custom"
+        is_all = False
+    elif range_ == "all":
         days = None
         current_start = datetime(2000, 1, 1)
+        period_end = now + timedelta(days=1)
         previous_start = datetime(2000, 1, 1)
         previous_end = datetime(2000, 1, 1)
+        range_key = "all"
+        is_all = True
     else:
         days = int(range_.removesuffix("d"))
+        period_end = now
         current_start = now - timedelta(days=days)
         previous_start = current_start - timedelta(days=days)
         previous_end = current_start
+        range_key = range_
+        is_all = False
 
     # Real sales only — unpaid gateway exits / abandoned carts do not count
     eligible: dict[str, Any] = {
-        "status": {"$nin": ["draft", "abandoned", "cancelled"]},
+        "status": {"$nin": ["abandoned", "cancelled"]},
         "$or": [
-            {"paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-            {"transactionDetails.paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
+            {"paymentStatus": "paid"},
+            {"transactionDetails.paymentStatus": "paid"},
         ],
     }
     collection = Order.get_pymongo_collection()
@@ -301,29 +644,29 @@ async def stats(
         row = rows[0] if rows else {}
         return int(row.get("orders") or 0), round(float(row.get("revenue") or 0), 2)
 
-    if range_ == "all":
-        paid_orders, total_revenue = await period_totals(current_start, now + timedelta(days=1))
+    if is_all:
+        paid_orders, total_revenue = await period_totals(current_start, period_end)
         previous_paid_orders, previous_revenue = 0, 0.0
         date_match: dict[str, Any] = {}
     else:
-        paid_orders, total_revenue = await period_totals(current_start, now)
+        paid_orders, total_revenue = await period_totals(current_start, period_end)
         previous_paid_orders, previous_revenue = await period_totals(previous_start, previous_end)
-        date_match = {"createdAt": {"$gte": current_start, "$lt": now}}
+        date_match = {"createdAt": {"$gte": current_start, "$lt": period_end}}
 
     unpaid_match = {
-        "status": {"$ne": "draft"},
+        "status": {"$ne": "abandoned"},
         **date_match,
         "$nor": [
-            {"paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
-            {"transactionDetails.paymentStatus": {"$in": ["paid", "pay_on_delivery"]}},
+            {"paymentStatus": "paid"},
+            {"transactionDetails.paymentStatus": "paid"},
         ],
     }
-    all_orders = await collection.count_documents({"status": {"$ne": "draft"}, **date_match})
+    all_orders = await collection.count_documents({"status": {"$ne": "abandoned"}, **date_match})
     pending_orders = await collection.count_documents(unpaid_match)
-    total_orders = all_orders  # paid + pending (excludes drafts only)
+    total_orders = all_orders  # paid + pending (excludes abandoned)
 
     users = User.get_pymongo_collection()
-    # Customers who completed at least one paid/COD order (not abandoned-only accounts)
+    # Customers who completed at least one paid order (not abandoned-only accounts)
     paid_customer_ids = await collection.distinct(
         "customerId",
         eligible,
@@ -331,33 +674,78 @@ async def stats(
     paid_customer_ids = [cid for cid in paid_customer_ids if cid]
     total_customers = len(paid_customer_ids)
 
-    if range_ == "all":
+    if is_all:
         current_customers = total_customers
         previous_customers = 0
+        order_counts = await collection.aggregate(
+            [
+                {"$match": {**eligible, "customerId": {"$nin": [None, ""]}}},
+                {"$group": {"_id": "$customerId", "orders": {"$sum": 1}}},
+            ]
+        ).to_list(None)
+        new_customers = sum(1 for row in order_counts if int(row.get("orders") or 0) == 1)
+        returning_customers = sum(1 for row in order_counts if int(row.get("orders") or 0) > 1)
+        previous_new_customers = 0
+        previous_returning_customers = 0
     else:
-        current_ids = await collection.distinct(
-            "customerId",
-            {**eligible, "createdAt": {"$gte": current_start, "$lt": now}},
+        current_ids = [
+            cid
+            for cid in await collection.distinct(
+                "customerId",
+                {**eligible, "createdAt": {"$gte": current_start, "$lt": period_end}},
+            )
+            if cid
+        ]
+        previous_ids = [
+            cid
+            for cid in await collection.distinct(
+                "customerId",
+                {**eligible, "createdAt": {"$gte": previous_start, "$lt": previous_end}},
+            )
+            if cid
+        ]
+        current_customers = len(current_ids)
+        previous_customers = len(previous_ids)
+
+        async def first_time_vs_returning(period_ids: list, start: datetime) -> tuple[int, int]:
+            if not period_ids:
+                return 0, 0
+            returning_ids = [
+                cid
+                for cid in await collection.distinct(
+                    "customerId",
+                    {
+                        **eligible,
+                        "customerId": {"$in": period_ids},
+                        "createdAt": {"$lt": start},
+                    },
+                )
+                if cid
+            ]
+            returning = len(returning_ids)
+            return len(period_ids) - returning, returning
+
+        new_customers, returning_customers = await first_time_vs_returning(
+            current_ids, current_start
         )
-        previous_ids = await collection.distinct(
-            "customerId",
-            {**eligible, "createdAt": {"$gte": previous_start, "$lt": previous_end}},
+        previous_new_customers, previous_returning_customers = await first_time_vs_returning(
+            previous_ids, previous_start
         )
-        current_customers = len([c for c in current_ids if c])
-        previous_customers = len([c for c in previous_ids if c])
 
     # Keep registered store size available for analytics pages if needed
-    registered_customers = await users.count_documents({"isAdmin": {"$ne": True}})
+    from app.services.customers import customer_mongo_filter
+
+    registered_customers = await users.count_documents(customer_mongo_filter())
 
     avg = round(total_revenue / paid_orders, 2) if paid_orders else 0.0
     previous_avg = (
         round(previous_revenue / previous_paid_orders, 2) if previous_paid_orders else 0.0
     )
     series_days = days if days is not None else 30
-    series_start = now - timedelta(days=series_days) if range_ == "all" else current_start
+    series_start = current_start if not is_all else now - timedelta(days=series_days)
     daily_rows = await collection.aggregate(
         [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
+            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}},
             {
                 "$group": {
                     "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$createdAt"}},
@@ -389,7 +777,7 @@ async def stats(
 
     top_products = await collection.aggregate(
         [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
+            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}},
             {"$unwind": "$items"},
             {
                 "$group": {
@@ -403,6 +791,7 @@ async def stats(
                             ]
                         }
                     },
+                    "image": {"$first": "$items.image"},
                 }
             },
             {"$sort": {"revenue": -1, "quantity": -1}},
@@ -428,6 +817,22 @@ async def stats(
                     },
                     "quantity": 1,
                     "revenue": 1,
+                    "image": {
+                        "$ifNull": [
+                            "$image",
+                            {
+                                "$arrayElemAt": [
+                                    {
+                                        "$ifNull": [
+                                            {"$arrayElemAt": ["$product.thumbnails", 0]},
+                                            [],
+                                        ]
+                                    },
+                                    0,
+                                ]
+                            },
+                        ]
+                    },
                 }
             },
         ]
@@ -435,48 +840,39 @@ async def stats(
     for product in top_products:
         product["quantity"] = int(product.get("quantity") or 0)
         product["revenue"] = round(float(product.get("revenue") or 0), 2)
+        product["image"] = str(product.get("image") or "")
 
-    channels = await collection.aggregate(
-        [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
-            {
-                "$group": {
-                    "_id": {"$ifNull": ["$attribution.lastTouch.source", "direct"]},
-                    "orders": {"$sum": 1},
-                    "revenue": {"$sum": {"$ifNull": ["$finalPrice", 0]}},
-                }
-            },
-            {"$sort": {"revenue": -1}},
-        ]
-    ).to_list(None)
-    channels = [
-        {
-            "source": str(row.get("_id") or "direct"),
-            "orders": int(row.get("orders") or 0),
-            "revenue": round(float(row.get("revenue") or 0), 2),
-        }
-        for row in channels
-    ]
+    channels = await _channel_stats(
+        collection, {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}
+    )
+    if is_all:
+        current_perf_rows = await _channel_stats(
+            collection,
+            {**eligible, "createdAt": {"$gte": current_start, "$lt": period_end}},
+        )
+        previous_perf_rows: list[dict] = []
+    else:
+        current_perf_rows = channels
+        previous_perf_rows = await _channel_stats(
+            collection,
+            {**eligible, "createdAt": {"$gte": previous_start, "$lt": previous_end}},
+        )
+    channel_performance = _bucket_channel_performance(current_perf_rows, previous_perf_rows)
 
     location_rows = await collection.aggregate(
         [
-            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": now}}},
+            {"$match": {**eligible, "createdAt": {"$gte": series_start, "$lt": period_end}}},
             {
                 "$addFields": {
                     "locationKey": {
                         "$trim": {
                             "input": {
                                 "$ifNull": [
-                                    "$shippingAddress.state",
+                                    "$shippingAddress.city",
                                     {
                                         "$ifNull": [
-                                            "$shippingAddress.stateName",
-                                            {
-                                                "$ifNull": [
-                                                    "$shippingAddress.city",
-                                                    "Unknown",
-                                                ]
-                                            },
+                                            "$shippingAddress.district",
+                                            "Unknown",
                                         ]
                                     },
                                 ]
@@ -521,13 +917,13 @@ async def stats(
             )
         )
 
-    if range_ == "all":
+    if is_all:
         abandoned_orders = int(
             await collection.count_documents({"status": "abandoned"})
         )
         previous_abandoned = 0
     else:
-        abandoned_orders = await abandoned_count(current_start, now)
+        abandoned_orders = await abandoned_count(current_start, period_end)
         previous_abandoned = await abandoned_count(previous_start, previous_end)
 
     checkout_attempts = paid_orders + abandoned_orders
@@ -548,14 +944,18 @@ async def stats(
         "abandonedOrders": abandoned_orders,
         "abandonedRate": abandoned_rate,
         "totalRevenue": total_revenue,
+        "newCustomers": new_customers,
+        "returningCustomers": returning_customers,
+        # Distinct paying customers all-time (kept for analytics).
         "totalCustomers": total_customers,
         "registeredCustomers": registered_customers,
         "avgOrderValue": avg,
-        "range": range_,
+        "range": range_key,
         "trends": {
             "orders": _trend(paid_orders, previous_paid_orders),
             "revenue": _trend(total_revenue, previous_revenue),
-            "customers": _trend(current_customers, previous_customers),
+            "customers": _trend(new_customers, previous_new_customers),
+            "returningCustomers": _trend(returning_customers, previous_returning_customers),
             "avgValue": _trend(avg, previous_avg),
             "abandoned": _trend(abandoned_orders, previous_abandoned),
             "abandonedRate": _trend(abandoned_rate, previous_abandoned_rate),
@@ -564,12 +964,15 @@ async def stats(
             "paidOrders": previous_paid_orders,
             "revenue": previous_revenue,
             "customers": previous_customers,
+            "newCustomers": previous_new_customers,
+            "returningCustomers": previous_returning_customers,
             "abandonedOrders": previous_abandoned,
             "abandonedRate": previous_abandoned_rate,
         },
         "series": series,
         "topProducts": top_products,
         "channels": channels,
+        "channelPerformance": channel_performance,
         "byLocation": by_location,
     }
 
@@ -588,6 +991,33 @@ async def list_orders(
     return [remap_order(o) for o in orders]
 
 
+@router.get("/{order_id}/invoice")
+async def get_order_invoice(order_id: str, user: CurrentUser):
+    """Official sales invoice for the customer, only after the order has shipped."""
+    if not ObjectId.is_valid(order_id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not _is_owner(order, user):
+        raise HTTPException(status_code=403, detail="Not authorized to view this order")
+    if not _order_is_paid(order):
+        raise HTTPException(status_code=400, detail="Invoice is available after payment")
+    if not _order_is_shipped(order):
+        raise HTTPException(status_code=400, detail="Invoice is available after the order is shipped")
+
+    invoice = await erp_ops.ensure_order_invoice(order, actor=user)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    company = await erp_ops.company_profile()
+    return {
+        "order": remap_order(order),
+        "invoice": doc_to_dict(invoice),
+        "company": {key: company.get(key, "") for key in _PUBLIC_COMPANY_KEYS},
+    }
+
+
 @router.get("/{order_id}")
 async def get_order(order_id: str, user: CurrentUser):
     order = await Order.get(ObjectId(order_id))
@@ -598,44 +1028,93 @@ async def get_order(order_id: str, user: CurrentUser):
     return remap_order(order)
 
 
+@router.put("/{order_id}/shipping-address")
+async def change_shipping_address(
+    order_id: str,
+    body: OrderAddressBody,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("orders-address", limit=10)),
+):
+    """Customer changes where a paid order goes, until it is handed to the courier.
+
+    Same state only (the GST invoice is already issued). Body is either typed
+    address fields or ``{"addressId": "<saved address id>"}``.
+    """
+    from app.services.order_address import change_order_address
+
+    order = await Order.get(ObjectId(order_id)) if ObjectId.is_valid(order_id) else None
+    # Strictly the buyer's own order — not the legacy isAdmin flag.
+    if not order or str(order.customerId) != str(user.id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    result = await change_order_address(
+        order, body, actor="customer", actor_id=str(user.id), customer=user
+    )
+    payload = remap_order(order)
+    payload["addressResult"] = result
+    return payload
+
+
 @router.put("/{order_id}/pay")
-async def mark_paid(order_id: str, user: CurrentUser, body: dict | None = None):
-    """Admin-only manual mark paid. Customer payments must use /api/payments/verify."""
-    if not user.isAdmin:
-        raise HTTPException(status_code=403, detail="Only admin can manually mark orders paid")
+async def mark_paid(order_id: str, admin: PaymentsWriter, body: dict | None = None):
+    """Staff with payments.write only. Customer payments must use /api/payments/verify."""
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     from app.services.stock import ensure_stock_for_payment
 
     await ensure_stock_for_payment(order)
+    reason = str((body or {}).get("reason") or "admin_manual_mark_paid").strip()[:200]
+    await assign_order_number(order)
     order.paymentStatus = "paid"
-    order.transactionDetails = {**(order.transactionDetails or {}), "paymentStatus": "paid", **(body or {})}
+    # Whitelist only — never merge raw body (stock flags / inventory bypass).
+    order.transactionDetails = {
+        **(order.transactionDetails or {}),
+        "paymentStatus": "paid",
+        "markedPaidBy": str(admin.id),
+        "markedPaidReason": reason,
+    }
     order.updatedAt = datetime.utcnow()
     await order.save()
     await apply_order_commitments(order)
     try:
-        await process_full_order_flow(order, user)
-    except Exception:
-        pass
+        await process_full_order_flow(order, admin)
+    except Exception as exc:
+        print(f"[Orders] mark_paid fulfillment failed: {exc}")
     return remap_order(order)
 
 
 @router.post("/{order_id}/release-reservation")
 async def release_reservation(order_id: str, user: CurrentUser):
-    """Release soft-reserved stock when checkout is dismissed / payment abandoned."""
+    """Record Razorpay modal dismiss. Do not drop the stock hold.
+
+    UPI intent often closes the Razorpay modal while the customer is still
+    paying in GPay/PhonePe. Releasing here caused captured payments to
+    auto-refund (stock_commit_failed). Unpaid holds expire via the 30-minute TTL.
+    """
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     if not _is_owner(order, user):
         raise HTTPException(status_code=403, detail="Not authorized")
     pay = str(order.paymentStatus or "").lower()
-    if pay in {"paid", "refunded", "partially_refunded", "pay_on_delivery"}:
+    if pay in {"paid", "refunded", "partially_refunded"}:
         raise HTTPException(status_code=400, detail="Cannot release reservation for a paid order")
-    from app.services.stock import release_order_stock
 
-    released = await release_order_stock(order)
-    return {"success": True, "released": bool(released)}
+    now = datetime.utcnow()
+    await Order.get_pymongo_collection().update_one(
+        {
+            "_id": order.id,
+            "paymentStatus": {"$nin": ["paid", "refunded", "partially_refunded", "refund_pending"]},
+        },
+        {
+            "$set": {
+                "transactionDetails.paymentDismissedAt": now.isoformat(),
+                "transactionDetails.paymentDismissedReason": "razorpay_modal",
+                "updatedAt": now,
+            }
+        },
+    )
+    return {"success": True, "released": False, "abandoned": False}
 
 
 @router.put("/{order_id}/deliver")
@@ -646,6 +1125,7 @@ async def mark_delivered(order_id: str, _: AdminUser):
     order.isDelivered = True
     order.deliveredAt = datetime.utcnow()
     order.status = "delivered"
+    order.shippingStatus = "Delivered"
     await order.save()
     try:
         await erp_ops.ensure_invoice_on_fulfillment(order, context="mark_delivered")

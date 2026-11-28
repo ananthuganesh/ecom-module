@@ -2,17 +2,19 @@
 
 import React from "react";
 import Image from "next/image";
+import { orderMoneySummary } from "@/utils/orderMoneySummary";
 
 export default function Invoice({ order }) {
     if (!order) return null;
 
     const items = order.orderItems || order.items || [];
     const shipping = order.shippingAddress || {};
-    const totalPrice = order.totalPrice || order.finalPrice || 0;
-    const shippingPrice = order.shippingPrice || order.deliveryAmount || 0;
-    const taxPrice = order.taxPrice || 0;
-    const giftFee = order.isGift ? (order.giftFee || 39) : 0;
-    const subtotal = totalPrice - shippingPrice - taxPrice - giftFee;
+    const money = orderMoneySummary(order);
+    const totalPrice = money.total;
+    const shippingPrice = money.shipping;
+    const taxPrice = money.tax;
+    const giftFee = money.gift;
+    const subtotal = money.subtotal;
 
     return (
         <div className="invoice-container p-6 bg-white text-black font-sans leading-tight max-w-[800px] mx-auto hidden print:block">
@@ -51,7 +53,7 @@ export default function Invoice({ order }) {
             {order.isGift && order.giftMessage && (
                 <div className="mb-8 border border-gray-100 p-4 bg-gray-50">
                     <h3 className="text-[9px] uppercase tracking-widest font-black mb-2 border-b border-gray-200 pb-1">Gift Message</h3>
-                    <p className="text-xs font-serif italic text-gray-800">"{order.giftMessage}"</p>
+                    <p className="text-xs font-serif italic text-gray-800">&ldquo;{order.giftMessage}&rdquo;</p>
                 </div>
             )}
 
@@ -89,16 +91,16 @@ export default function Invoice({ order }) {
                         <span className="text-gray-400">Subtotal</span>
                         <span>₹{subtotal.toFixed(2)}</span>
                     </div>
+                    {money.discount > 0 && (
+                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
+                            <span className="text-gray-400">{money.discountLabel}</span>
+                            <span>−₹{money.discount.toFixed(2)}</span>
+                        </div>
+                    )}
                     <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                         <span className="text-gray-400">Shipping</span>
                         <span>₹{shippingPrice.toFixed(2)}</span>
                     </div>
-                    {taxPrice > 0 && (
-                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                            <span className="text-gray-400">Tax</span>
-                            <span>₹{taxPrice.toFixed(2)}</span>
-                        </div>
-                    )}
                     {order.isGift && (
                         <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                             <span className="text-gray-400">Gift Wrap</span>
@@ -109,6 +111,12 @@ export default function Invoice({ order }) {
                         <span>Total</span>
                         <span>₹{totalPrice.toFixed(2)}</span>
                     </div>
+                    {taxPrice > 0 && (
+                        <div className="flex justify-between text-[9px] font-bold uppercase tracking-widest text-gray-400">
+                            <span>Includes GST</span>
+                            <span>₹{taxPrice.toFixed(2)}</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

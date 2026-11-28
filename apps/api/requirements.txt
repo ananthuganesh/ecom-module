@@ -9,6 +9,7 @@ click==8.4.2
 dnspython==2.8.0
 email-validator==2.3.0
 fastapi==0.140.0
+sentry-sdk[fastapi]==2.66.1
 h11==0.16.0
 httpcore==1.0.9
 httptools==0.8.0
@@ -21,7 +22,7 @@ mongomock-motor==0.0.36
 motor==3.7.1
 packaging==26.2
 passlib==1.7.4
-Pillow==11.3.0
+Pillow==12.3.0
 pluggy==1.6.0
 pydantic==2.13.4
 pydantic-settings==2.14.2
@@ -47,6 +48,6 @@ uvloop==0.22.1
 watchfiles==1.2.0
 websockets==16.1.1
 boto3==1.42.59
-pypdf==6.9.2
+pypdf==6.18.1
 google-analytics-data==0.18.19
-google-genai>=2.3.0
+nh3==0.3.7

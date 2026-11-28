@@ -1,24 +1,31 @@
+import asyncio
 import csv
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
 import os
 import re
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
-from app.deps import AdminUser
+from app.deps import (
+    AdminUser,
+    CustomersReader,
+    CustomersWriter,
+    OrdersReader,
+    OrdersWriter,
+    PaymentsWriter,
+    RoleManager,
+)
 from app.config import get_settings
 from app.documents import (
     AbandonedCheckout,
     Address,
-    AiMediaJob,
     Brand,
     Category,
-    CollectionDoc,
     Coupon,
     Order,
     OrderItem,
@@ -28,11 +35,21 @@ from app.documents import (
     TaxClass,
     User,
     Variant,
-    Wallet,
 )
 from app.serializers import doc_to_dict, enrich_orders, remap_order, user_public
+from app.services import collections as collections_svc
+from app.services import customer_addresses as addr_svc
+from app.services.customer_addresses import AddressBody
+from app.services.order_address import OrderAddressBody
+from app.services import sale_pricing
 from app.services import erp_ops
-from app.services.stock import apply_order_commitments, reserve_order_stock
+from app.services.rate_limit import rate_limit_dependency
+from app.services.shipping_settings import get_shipping_settings as load_shipping_settings
+from app.services.stock import (
+    apply_catalog_quantities_to_ledger,
+    apply_order_commitments,
+    reserve_order_stock,
+)
 from app.services.store_settings import (
     get_notification_prefs,
     get_payment_methods,
@@ -45,8 +62,6 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "products"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-AI_UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "ai"
-AI_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
 HSN_RE = re.compile(r"^[0-9]{4,8}$")
@@ -77,76 +92,6 @@ DEFAULT_COMPANY_PROFILE = {
     "lowStockThreshold": 10,
     "orderPrefix": "#",
     "orderSuffix": "",
-}
-
-DEFAULT_SHIPPING_SETTINGS = {
-    "estimatedDeliveryEnabled": False,
-    "codFee": 0,
-    "profiles": [
-        {
-            "id": "default",
-            "name": "General profile",
-            "isDefault": True,
-            "appliesTo": "all_products",
-            "zones": [
-                {"name": "Local", "countries": ["India"], "rate": 0, "rateType": "flat"},
-                {"name": "Rest of India", "countries": ["India"], "rate": 49, "rateType": "flat"},
-            ],
-        }
-    ],
-    "packages": [
-        {"id": "box-1", "name": "Standard box", "lengthCm": 30, "widthCm": 20, "heightCm": 10, "weightKg": 0.5}
-    ],
-    "carrierAccounts": [],
-}
-
-INDIA_TAX_REGIONS = [
-    ("35", "Andaman and Nicobar Islands"),
-    ("37", "Andhra Pradesh"),
-    ("12", "Arunachal Pradesh"),
-    ("18", "Assam"),
-    ("10", "Bihar"),
-    ("04", "Chandigarh"),
-    ("22", "Chhattisgarh"),
-    ("26", "Dadra and Nagar Haveli and Daman and Diu"),
-    ("07", "Delhi"),
-    ("30", "Goa"),
-    ("24", "Gujarat"),
-    ("06", "Haryana"),
-    ("02", "Himachal Pradesh"),
-    ("01", "Jammu and Kashmir"),
-    ("20", "Jharkhand"),
-    ("29", "Karnataka"),
-    ("32", "Kerala"),
-    ("38", "Ladakh"),
-    ("31", "Lakshadweep"),
-    ("23", "Madhya Pradesh"),
-    ("27", "Maharashtra"),
-    ("14", "Manipur"),
-    ("17", "Meghalaya"),
-    ("15", "Mizoram"),
-    ("13", "Nagaland"),
-    ("21", "Odisha"),
-    ("34", "Puducherry"),
-    ("03", "Punjab"),
-    ("08", "Rajasthan"),
-    ("11", "Sikkim"),
-    ("33", "Tamil Nadu"),
-    ("36", "Telangana"),
-    ("16", "Tripura"),
-    ("09", "Uttar Pradesh"),
-    ("05", "Uttarakhand"),
-    ("19", "West Bengal"),
-]
-
-DEFAULT_TAX_SETTINGS = {
-    "country": "India",
-    "countryTaxRate": 9,
-    "regions": [
-        {"code": code, "name": name, "rate": 18, "taxName": "IGST", "taxType": "igst"}
-        for code, name in INDIA_TAX_REGIONS
-    ],
-    "overrides": [],
 }
 
 
@@ -217,15 +162,16 @@ async def _clear_other_defaults(except_id: ObjectId | None = None) -> None:
 
 @router.get("/users")
 async def admin_users(
-    _: AdminUser,
+    _: CustomersReader,
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=200),
 ):
+    from app.services.customers import customer_mongo_filter
     from app.services.pagination import parse_pagination
 
     sk, lim, _pg = parse_pagination(page=page, skip=skip, limit=limit)
-    users = await User.find_all().skip(sk).limit(lim).to_list()
+    users = await User.find(customer_mongo_filter()).skip(sk).limit(lim).to_list()
     user_ids = [u.id for u in users if u.id is not None]
     stats_by_id: dict[str, dict] = {}
     ship_by_id: dict[str, dict] = {}
@@ -233,7 +179,7 @@ async def admin_users(
         collection = Order.get_pymongo_collection()
         match = {
             "customerId": {"$in": user_ids},
-            "status": {"$nin": ["draft", "abandoned", "cancelled"]},
+            "status": {"$nin": ["abandoned", "cancelled"]},
         }
         stats_pipeline = [
             {"$match": match},
@@ -247,7 +193,7 @@ async def admin_users(
                                 {
                                     "$in": [
                                         {"$toLower": {"$ifNull": ["$paymentStatus", ""]}},
-                                        ["paid", "pay_on_delivery", "cod"],
+                                        ["paid"],
                                     ]
                                 },
                                 {"$ifNull": ["$finalPrice", {"$ifNull": ["$total", 0]}]},
@@ -275,6 +221,7 @@ async def admin_users(
                 stats_by_id[key] = {
                     "ordersCount": int(row.get("ordersCount") or 0),
                     "amountSpent": float(row.get("amountSpent") or 0),
+                    "abandonedCount": 0,
                 }
         except Exception:
             stats_by_id = {}
@@ -286,6 +233,32 @@ async def admin_users(
                     ship_by_id[str(row.get("_id"))] = ship
         except Exception:
             ship_by_id = {}
+
+        # Abandoned carts: open AbandonedCheckout rows only (checkout IDs, not order numbers).
+        abandoned_by_id: dict[str, int] = {}
+        try:
+            ac_coll = AbandonedCheckout.get_pymongo_collection()
+            ac_rows = await ac_coll.aggregate(
+                [
+                    {
+                        "$match": {
+                            "status": "abandoned",
+                            "userId": {"$in": user_ids},
+                        }
+                    },
+                    {"$group": {"_id": "$userId", "count": {"$sum": 1}}},
+                ]
+            ).to_list(length=None)
+            for row in ac_rows:
+                key = str(row.get("_id"))
+                abandoned_by_id[key] = int(row.get("count") or 0)
+        except Exception:
+            pass
+        for key, count in abandoned_by_id.items():
+            stats_by_id.setdefault(
+                key, {"ordersCount": 0, "amountSpent": 0.0, "abandonedCount": 0}
+            )
+            stats_by_id[key]["abandonedCount"] = int(count)
 
     def _ship_field(ship: dict, *keys: str) -> str:
         for key in keys:
@@ -354,8 +327,78 @@ async def admin_users(
     return [_enrich_customer(u) for u in users]
 
 
+async def _resolve_customer(user_id: str) -> User | None:
+    raw = str(user_id or "").strip()
+    if not raw:
+        return None
+    if len(raw) == 12 and raw.isdigit():
+        user = await User.find_one(User.customerUrlId == raw)
+        if user:
+            return user
+    if ObjectId.is_valid(raw):
+        return await User.get(ObjectId(raw))
+    return None
+
+
+async def _customer_stats(user: User) -> dict:
+    stats = {"ordersCount": 0, "amountSpent": 0.0, "abandonedCount": 0}
+    collection = Order.get_pymongo_collection()
+    rows = await collection.aggregate(
+        [
+            {
+                "$match": {
+                    "customerId": user.id,
+                    "status": {"$nin": ["abandoned", "cancelled"]},
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$customerId",
+                    "ordersCount": {"$sum": 1},
+                    "amountSpent": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$in": [
+                                        {
+                                            "$toLower": {
+                                                "$ifNull": ["$paymentStatus", ""]
+                                            }
+                                        },
+                                        ["paid"],
+                                    ]
+                                },
+                                {
+                                    "$ifNull": [
+                                        "$finalPrice",
+                                        {"$ifNull": ["$total", 0]},
+                                    ]
+                                },
+                                0,
+                            ]
+                        }
+                    },
+                }
+            },
+        ]
+    ).to_list(length=1)
+    if rows:
+        stats["ordersCount"] = int(rows[0].get("ordersCount") or 0)
+        stats["amountSpent"] = float(rows[0].get("amountSpent") or 0)
+    try:
+        ac_coll = AbandonedCheckout.get_pymongo_collection()
+        stats["abandonedCount"] = int(
+            await ac_coll.count_documents(
+                {"status": "abandoned", "userId": user.id}
+            )
+        )
+    except Exception:
+        pass
+    return stats
+
+
 @router.post("/users", status_code=201)
-async def admin_create_customer(body: dict, _: AdminUser):
+async def admin_create_customer(body: dict, _: CustomersWriter):
     """Create a storefront customer (not an admin). Used from Customers page only."""
     first_name = str(body.get("firstName") or "").strip()
     last_name = str(body.get("lastName") or "").strip()
@@ -429,26 +472,179 @@ async def admin_create_customer(body: dict, _: AdminUser):
 
 
 @router.get("/users/{user_id}")
-async def admin_user(user_id: str, _: AdminUser):
-    user = await User.get(ObjectId(user_id))
+async def admin_user(user_id: str, _: CustomersReader):
+    user = await _resolve_customer(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user_public(user)
+    stats = await _customer_stats(user)
+    data = user_public(user, stats=stats)
+    if not str(data.get("phone") or "").strip():
+        for addr in data.get("addresses") or []:
+            phone = str(
+                (addr or {}).get("phone")
+                or (addr or {}).get("contact")
+                or (addr or {}).get("mobile")
+                or ""
+            ).strip()
+            if phone:
+                data["phone"] = phone
+                break
+    if not str(data.get("phone") or "").strip():
+        collection = Order.get_pymongo_collection()
+        row = await collection.find_one(
+            {
+                "customerId": user.id,
+                "status": {"$nin": ["abandoned", "cancelled"]},
+            },
+            sort=[("createdAt", -1)],
+        )
+        if row:
+            ship = row.get("shippingAddress") or {}
+            details = (row.get("transactionDetails") or {}).get("customerDetails") or {}
+            phone = str(
+                ship.get("phone")
+                or ship.get("contact")
+                or ship.get("mobile")
+                or details.get("phone")
+                or ""
+            ).strip()
+            if phone:
+                data["phone"] = phone
+    return data
+
+
+@router.get("/users/{user_id}/neighbors")
+async def admin_user_neighbors(user_id: str, _: CustomersReader):
+    """Previous (newer) / next (older) customer for detail-page ↑ ↓ navigation."""
+    from app.services.customers import customer_mongo_filter
+
+    user = await _resolve_customer(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    created = user.createdAt or datetime.utcnow()
+    col = User.get_pymongo_collection()
+    base = customer_mongo_filter()
+
+    newer = await col.find_one(
+        {
+            **base,
+            "$or": [
+                {"createdAt": {"$gt": created}},
+                {"createdAt": created, "_id": {"$gt": user.id}},
+            ],
+        },
+        sort=[("createdAt", 1), ("_id", 1)],
+    )
+    older = await col.find_one(
+        {
+            **base,
+            "$or": [
+                {"createdAt": {"$lt": created}},
+                {"createdAt": created, "_id": {"$lt": user.id}},
+            ],
+        },
+        sort=[("createdAt", -1), ("_id", -1)],
+    )
+
+    def _nav(doc: dict | None) -> dict | None:
+        if not doc:
+            return None
+        url_id = doc.get("customerUrlId")
+        oid = str(doc.get("_id"))
+        return {
+            "_id": oid,
+            "name": doc.get("name"),
+            "customerUrlId": str(url_id) if url_id is not None else None,
+            "key": str(url_id).strip() if url_id not in (None, "") else oid,
+        }
+
+    return {"previous": _nav(newer), "next": _nav(older)}
 
 
 @router.get("/users/{user_id}/orders")
-async def admin_user_orders(user_id: str, _: AdminUser):
-    orders = await Order.find(Order.customerId == ObjectId(user_id)).to_list()
+async def admin_user_orders(user_id: str, _: OrdersReader):
+    user = await _resolve_customer(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    orders = await Order.find(Order.customerId == user.id).to_list()
     return await enrich_orders(orders)
 
 
-@router.delete("/users/{user_id}")
-async def delete_user(user_id: str, _: AdminUser):
-    user = await User.get(ObjectId(user_id))
+# ─── Customer address book (same rules as the customer's own account page) ───
+
+
+async def _customer_for_address_edit(user_id: str) -> User:
+    user = await _resolve_customer(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.isAdmin:
-        raise HTTPException(status_code=400, detail="Cannot delete admin")
+    return user
+
+
+async def _saved_customer_payload(user: User) -> dict:
+    await user.save()
+    return await admin_user(str(user.id), None)
+
+
+@router.post("/users/{user_id}/addresses", status_code=201)
+async def admin_add_customer_address(user_id: str, body: AddressBody, _: CustomersWriter):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.add_address(user, body)
+    return await _saved_customer_payload(user)
+
+
+@router.put("/users/{user_id}/addresses/{address_id}")
+async def admin_update_customer_address(
+    user_id: str, address_id: str, body: AddressBody, _: CustomersWriter
+):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.update_address(user, address_id, body)
+    return await _saved_customer_payload(user)
+
+
+@router.post("/users/{user_id}/addresses/{address_id}/default")
+async def admin_default_customer_address(user_id: str, address_id: str, _: CustomersWriter):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.make_default(user, address_id)
+    return await _saved_customer_payload(user)
+
+
+@router.delete("/users/{user_id}/addresses/{address_id}")
+async def admin_delete_customer_address(user_id: str, address_id: str, _: CustomersWriter):
+    user = await _customer_for_address_edit(user_id)
+    addr_svc.delete_address(user, address_id)
+    return await _saved_customer_payload(user)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, actor: RoleManager):
+    user = await _resolve_customer(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.isAdmin or (getattr(user, "roleId", None) and str(user.roleId).strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete Admin or Staff accounts from Customers",
+        )
+    if str(user.id) == str(actor.id):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    order_count = await Order.find(
+        {
+            "customerId": user.id,
+            "status": {"$nin": ["abandoned", "cancelled"]},
+        }
+    ).count()
+    if order_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete a customer who has orders.",
+        )
+    # Detach abandoned checkouts so we don't leave dangling userIds.
+    ac_col = AbandonedCheckout.get_pymongo_collection()
+    await ac_col.update_many(
+        {"userId": user.id},
+        {"$set": {"userId": None}},
+    )
     await user.delete()
     return {"message": "User removed"}
 
@@ -485,7 +681,7 @@ async def upload_image(
             "optimized": True,
             "format": "webp",
         }
-    name = f"{uuid4().hex}.webp"
+    name = r2_svc.safe_storage_name(webp_name, default_ext=".webp")
     dest = UPLOAD_DIR / name
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(webp_bytes)
@@ -505,12 +701,30 @@ async def admin_products(
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=200),
+    category: str | None = Query(default=None),
 ):
     from app.services.pagination import parse_pagination
     from app.services.product_url_id import ensure_product_url_id
 
     sk, lim, _pg = parse_pagination(page=page, skip=skip, limit=limit)
-    products = await Product.find_all().sort([("createdAt", -1)]).skip(sk).limit(lim).to_list()
+    query: dict[str, Any] = {}
+    cat = (category or "").strip()
+    if cat:
+        # Products store category as name or id string — accept either.
+        matches = [cat]
+        if ObjectId.is_valid(cat):
+            matches.append(cat)
+            cat_doc = await Category.get(ObjectId(cat))
+            if cat_doc and getattr(cat_doc, "name", None):
+                matches.append(str(cat_doc.name))
+        query["category"] = {"$in": list(dict.fromkeys(matches))}
+
+    # Same order as the storefront, so the list reflects the arrangement saved
+    # from it rather than appearing to revert after a reorder.
+    cursor = (
+        Product.find(query).sort([("sortOrder", 1), ("createdAt", -1)]).skip(sk).limit(lim)
+    )
+    products = await cursor.to_list()
     out = []
     for product in products:
         try:
@@ -648,23 +862,90 @@ async def admin_create_product(body: dict, _: AdminUser):
     from app.services.product_url_id import ensure_product_url_id
 
     data = _normalize_product_payload({k: v for k, v in body.items() if k not in ("_id", "id")})
+    sale_body = data.pop("sale", None)
     if "hsnCode" in data:
         data["hsnCode"] = _validate_hsn(data.get("hsnCode"))
     if data.get("priceTaxMode") and data["priceTaxMode"] not in ("inclusive", "exclusive"):
         raise HTTPException(status_code=400, detail="priceTaxMode must be inclusive or exclusive")
     product = Product(**data)
+    sale_pricing.finish_edit(product, (False, None), price_written=True, sale_body=sale_body)
     await product.insert()
     try:
         await ensure_product_url_id(product)
     except Exception:
         pass
+    await collections_svc.file_new_product(product)
     try:
         await _ensure_product_colors(
             getattr(product, "colors", None) or getattr(product, "color", None)
         )
     except Exception:
         pass
+    try:
+        product = await apply_catalog_quantities_to_ledger(product) or product
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     return doc_to_dict(product)
+
+
+@router.put("/products/reorder")
+async def reorder_products(body: dict, _: AdminUser):
+    """Set the storefront listing order from a full list of product ids.
+
+    Positions are assigned from the order given, so the client sends the whole
+    arrangement rather than a delta. Ids that no longer exist are ignored.
+    Must stay above /products/{product_id} or it is captured as an id.
+    """
+    raw = (body or {}).get("ids")
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="ids must be a non-empty list")
+
+    ids: list[ObjectId] = []
+    seen: set[str] = set()
+    for item in raw:
+        value = str(item or "").strip()
+        if not ObjectId.is_valid(value) or value in seen:
+            continue
+        seen.add(value)
+        ids.append(ObjectId(value))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No valid product ids")
+
+    collection = Product.get_pymongo_collection()
+    results = await asyncio.gather(
+        *[
+            collection.update_one({"_id": oid}, {"$set": {"sortOrder": position}})
+            for position, oid in enumerate(ids)
+        ]
+    )
+    return {
+        "ok": True,
+        "ordered": sum(1 for r in results if getattr(r, "matched_count", 0)),
+    }
+
+
+@router.get("/products/attribute-options")
+async def product_attribute_options(_: AdminUser):
+    """Distinct values already used for the free-text product attributes.
+
+    Lets a value typed on one product become a suggestion on the next, without
+    a separate options collection per attribute. Must stay above the
+    /products/{product_id} route or it is captured as an id.
+    """
+    fields = ("fit", "fabric", "neckType", "pattern", "sleeveType")
+    collection = Product.get_pymongo_collection()
+    out: dict[str, list[str]] = {}
+    for field in fields:
+        values = await collection.distinct(field)
+        cleaned = {
+            " ".join(str(v).split())
+            for v in values
+            if v is not None and str(v).strip()
+        }
+        out[field] = sorted(cleaned, key=str.lower)
+    return out
 
 
 @router.get("/products/{product_id}")
@@ -740,7 +1021,10 @@ async def admin_update_product(product_id: str, body: dict, _: AdminUser):
     product = await resolve_product(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    for k, v in _normalize_product_payload(body).items():
+    payload = _normalize_product_payload(body)
+    sale_body = payload.pop("sale", sale_pricing.UNSET)
+    sale_state = sale_pricing.begin_edit(product)
+    for k, v in payload.items():
         if k in ("_id", "id"):
             continue
         if k == "hsnCode":
@@ -748,6 +1032,7 @@ async def admin_update_product(product_id: str, body: dict, _: AdminUser):
         if k == "priceTaxMode" and v and v not in ("inclusive", "exclusive"):
             raise HTTPException(status_code=400, detail="priceTaxMode must be inclusive or exclusive")
         setattr(product, k, v)
+    sale_pricing.finish_edit(product, sale_state, price_written="pricing" in payload, sale_body=sale_body)
     product.updatedAt = datetime.utcnow()
     await product.save()
     try:
@@ -756,6 +1041,8 @@ async def admin_update_product(product_id: str, body: dict, _: AdminUser):
         )
     except Exception:
         pass
+    if "variants" in body or "totalStock" in body:
+        product = await apply_catalog_quantities_to_ledger(product) or product
     return doc_to_dict(product)
 
 
@@ -785,6 +1072,7 @@ async def bulk_products(body: dict, _: AdminUser):
             if not product:
                 continue
 
+            sale_state = sale_pricing.begin_edit(product)
             pricing = entry.get("pricing")
             if isinstance(pricing, dict):
                 pricing_update = _normalize_pricing(pricing)
@@ -820,31 +1108,52 @@ async def bulk_products(body: dict, _: AdminUser):
             if product.variants:
                 product.totalStock = sum(int(v.quantity or 0) for v in product.variants)
 
+            sale_pricing.finish_edit(
+                product,
+                sale_state,
+                # Blank values are dropped above, so only a real new price counts.
+                price_written=bool(pricing_update) and pricing_update.get("sellingPrice") is not None,
+            )
             product.updatedAt = datetime.utcnow()
             await product.save()
+            if entry.get("variants") is not None:
+                await apply_catalog_quantities_to_ledger(product)
             count += 1
         return {"updated": count}
 
     ids = body.get("ids") or []
     updates = body.get("updates") or {}
     count = 0
+    sale_body = updates.get("sale", sale_pricing.UNSET)
     for pid in ids:
         product = await Product.get(ObjectId(pid))
         if not product:
             continue
+        sale_state = sale_pricing.begin_edit(product)
         for k, v in updates.items():
+            if k in ("_id", "id", "sale", "productUrlId"):
+                continue
             setattr(product, k, v)
+        sale_pricing.finish_edit(
+            product, sale_state, price_written="pricing" in updates, sale_body=sale_body
+        )
         await product.save()
         count += 1
     return {"updated": count}
+
+
+_MAX_IMPORT_BYTES = 5 * 1024 * 1024
 
 
 @router.post("/products/import")
 async def import_products(_: AdminUser, file: UploadFile = File(...)):
     if not (file.filename or "").lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV file required")
+    raw = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=400, detail="CSV must be 5 MB or smaller")
     try:
-        content = (await file.read()).decode("utf-8-sig")
+        content = raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
 
@@ -895,6 +1204,60 @@ def _empty_awb_clause() -> dict[str, Any]:
     }
 
 
+def _exclude_incomplete_checkout_clause() -> dict[str, Any]:
+    """Hide unpaid online checkouts from the main Orders list.
+
+    Until payment succeeds, those rows belong under Abandoned carts — not Orders.
+    Draft orders stay hidden from both lists.
+    """
+    return {
+        "$nor": [
+            {
+                "status": "order placed",
+                "paymentStatus": {
+                    "$nin": [
+                        "paid",
+                        "Paid",
+                        "PAID",
+                        "captured",
+                        "authorized",
+                        "refunded",
+                        "partially_refunded",
+                        "refund_pending",
+                    ]
+                },
+            }
+        ]
+    }
+
+
+def _abandoned_cart_orders_clause() -> dict[str, Any]:
+    """Unpaid placed orders count as Abandoned carts until paid.
+
+    Draft orders are excluded — they are incomplete system rows, not carts.
+    """
+    return {
+        "$or": [
+            {"status": "abandoned"},
+            {
+                "status": "order placed",
+                "paymentStatus": {
+                    "$nin": [
+                        "paid",
+                        "Paid",
+                        "PAID",
+                        "captured",
+                        "authorized",
+                        "refunded",
+                        "partially_refunded",
+                        "refund_pending",
+                    ]
+                },
+            },
+        ]
+    }
+
+
 def _apply_order_view_filters(
     query: dict[str, Any],
     *,
@@ -931,6 +1294,7 @@ def _apply_order_view_filters(
                 }
             }
         )
+        extras.append(_exclude_incomplete_checkout_clause())
     elif view_key == "archived":
         extras.append(
             {
@@ -956,12 +1320,15 @@ def _apply_order_view_filters(
                         "delivered",
                         "returned",
                         "return",
-                        "draft",
                         "abandoned",
                     ]
                 }
             }
         )
+        extras.append(_exclude_incomplete_checkout_clause())
+    else:
+        # Default "all" — still hide unpaid payment-exit rows from the main table.
+        extras.append(_exclude_incomplete_checkout_clause())
 
     if hide_archived and view_key != "archived":
         extras.append({"archived": {"$ne": True}})
@@ -974,7 +1341,6 @@ def _apply_order_view_filters(
                         "delivered",
                         "returned",
                         "return",
-                        "draft",
                         "abandoned",
                     ]
                 }
@@ -992,29 +1358,40 @@ def _apply_order_view_filters(
 
 @router.get("/orders")
 async def admin_orders(
-    _: AdminUser,
+    _: OrdersReader,
     status: str | None = None,
     scope: str | None = None,
     shippingStatus: str | None = None,
     q: str | None = None,
     view: str | None = None,
     datePreset: str | None = None,
+    dateFrom: str | None = None,
+    dateTo: str | None = None,
     hideArchived: bool = Query(default=False),
     page: int = Query(default=1, ge=1),
     skip: int | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    from app.services.pagination import date_preset_filter, page_payload, parse_pagination
+    from app.services.pagination import (
+        date_bounds_filter,
+        date_preset_filter,
+        page_payload,
+        parse_pagination,
+    )
 
     sk, lim, pg = parse_pagination(page=page, skip=skip, limit=limit)
     query: dict[str, Any] = {}
     if status == "abandoned":
-        query["status"] = "abandoned"
+        # Until paid, every unpaid checkout/order is an Abandoned cart.
+        query.update(_abandoned_cart_orders_clause())
     else:
-        query["status"] = {"$nin": ["draft", "abandoned"]}
+        query["status"] = {"$nin": ["abandoned"]}
         if status:
             query["status"] = status
         if scope == "shipment":
+            # Unpaid checkouts start as "Payment Pending" but are abandoned carts,
+            # not shipments — same rule as the main Orders list.
+            query.update(_exclude_incomplete_checkout_clause())
             if shippingStatus:
                 query["shippingStatus"] = {
                     "$regex": f"^{re.escape(shippingStatus.strip())}$",
@@ -1036,7 +1413,9 @@ async def admin_orders(
                 query, view=view, hide_archived=hideArchived
             )
 
-    date_filter = date_preset_filter(datePreset, field="createdAt")
+    date_filter = date_bounds_filter(dateFrom, dateTo, field="createdAt")
+    if date_filter is None:
+        date_filter = date_preset_filter(datePreset, field="createdAt")
     if date_filter:
         query.update(date_filter)
 
@@ -1120,12 +1499,57 @@ async def admin_orders(
 
 
 @router.get("/orders/counts")
-async def admin_order_counts(_: AdminUser):
-    """Lightweight badge counts for admin nav (Shopify-style unfulfilled)."""
-    query: dict[str, Any] = {"status": {"$nin": ["draft", "abandoned"]}}
-    query = _apply_order_view_filters(query, view="unfulfilled", hide_archived=True)
-    unfulfilled = await Order.find(query).count()
-    return {"unfulfilled": int(unfulfilled or 0)}
+async def admin_order_counts(_: OrdersReader):
+    """Live queue counts for admin nav and dashboard Needs attention."""
+    not_abandoned = {"status": {"$nin": ["abandoned"]}}
+
+    pending_query = _apply_order_view_filters(
+        dict(not_abandoned), view="unfulfilled", hide_archived=True
+    )
+    pending_fulfillment = await Order.find(pending_query).count()
+
+    ready_to_ship = await Order.find(
+        {
+            "archived": {"$ne": True},
+            "shippingStatus": {"$regex": r"^ready\s*to\s*ship$", "$options": "i"},
+            "status": {
+                "$nin": [
+                    "abandoned",
+                    "cancelled",
+                    "canceled",
+                    "delivered",
+                    "returned",
+                    "return",
+                ]
+            },
+        }
+    ).count()
+
+    payment_failed = await Order.find(
+        {
+            "archived": {"$ne": True},
+            "status": {"$nin": ["abandoned", "cancelled", "canceled"]},
+            "$or": [
+                {"paymentStatus": {"$regex": r"fail", "$options": "i"}},
+                {"transactionDetails.paymentStatus": {"$regex": r"fail", "$options": "i"}},
+            ],
+        }
+    ).count()
+
+    return_requests = await Order.find(
+        {
+            "archived": {"$ne": True},
+            "status": {"$regex": r"^return requested$", "$options": "i"},
+        }
+    ).count()
+
+    return {
+        "unfulfilled": int(pending_fulfillment or 0),
+        "pendingFulfillment": int(pending_fulfillment or 0),
+        "readyToShip": int(ready_to_ship or 0),
+        "paymentFailed": int(payment_failed or 0),
+        "returnRequests": int(return_requests or 0),
+    }
 
 
 async def _build_order_items(raw_items: list) -> tuple[list[OrderItem], float]:
@@ -1165,7 +1589,7 @@ async def _build_order_items(raw_items: list) -> tuple[list[OrderItem], float]:
 
 
 @router.post("/orders", status_code=201)
-async def admin_create_order(body: dict, admin: AdminUser):
+async def admin_create_order(body: dict, admin: OrdersWriter):
     raw_items = body.get("items") or body.get("orderItems") or []
     items, subtotal = await _build_order_items(raw_items)
     delivery = float(body.get("deliveryAmount") or body.get("shippingPrice") or 0)
@@ -1258,7 +1682,7 @@ async def admin_create_order(body: dict, admin: AdminUser):
 
 
 @router.get("/orders/{order_id}")
-async def admin_order(order_id: str, _: AdminUser):
+async def admin_order(order_id: str, _: OrdersReader):
     from app.services.order_resolve import resolve_order
     from app.services import payment_instrument as pay_instrument
 
@@ -1273,7 +1697,7 @@ async def admin_order(order_id: str, _: AdminUser):
 
 
 @router.get("/orders/{order_id}/neighbors")
-async def admin_order_neighbors(order_id: str, _: AdminUser):
+async def admin_order_neighbors(order_id: str, _: OrdersReader):
     """Previous (newer) / next (older) order for detail-page ↑ ↓ navigation."""
     from app.services.order_resolve import resolve_order
 
@@ -1282,7 +1706,7 @@ async def admin_order_neighbors(order_id: str, _: AdminUser):
         raise HTTPException(status_code=404, detail="Order not found")
 
     created = order.createdAt or datetime.utcnow()
-    base = {"status": {"$nin": ["draft", "abandoned"]}}
+    base = {"status": {"$nin": ["abandoned"]}}
     col = Order.get_pymongo_collection()
 
     # Newer = previous in newest-first list (↑)
@@ -1324,11 +1748,14 @@ async def admin_order_neighbors(order_id: str, _: AdminUser):
 
 
 @router.patch("/orders/bulk-update")
-async def bulk_orders(body: dict, _: AdminUser):
+async def bulk_orders(body: dict, _: OrdersWriter):
     from app.services.fulfillment import apply_shipping_status_from_order_status
 
     ids = body.get("ids") or body.get("orderIds") or []
     status_val = body.get("status")
+    _refuse_return_status(status_val)
+    if str(status_val or "").strip().lower() == "delivered":
+        return await _bulk_mark_delivered(ids)
     count = 0
     for oid in ids:
         order = await Order.get(ObjectId(oid))
@@ -1344,14 +1771,41 @@ async def bulk_orders(body: dict, _: AdminUser):
     return {"updated": count}
 
 
+_RETURN_OWNED_STATUSES = {"return requested", "returned"}
+
+
+def _refuse_return_status(value) -> None:
+    """Return states follow the return request (pickup, receipt, restock); never set by hand."""
+    if str(value or "").strip().lower() in _RETURN_OWNED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail="Return status is set from the Returns page as the return progresses.",
+        )
+
+
 @router.patch("/orders/{order_id}/status")
-async def order_status(order_id: str, body: dict, _: AdminUser):
+async def order_status(order_id: str, body: dict, _: OrdersWriter):
     from app.services.fulfillment import apply_shipping_status_from_order_status
 
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     prev_status = (order.status or "").lower()
+    _refuse_return_status(body.get("status"))
+    # Dedicated cancel flow handles carrier cancel + restock + refund + archive + email.
+    # Kept identical to POST /orders/{id}/cancel so both routes behave the same.
+    if str(body.get("status") or "").lower() == "cancelled" and prev_status != "cancelled":
+        from app.services.order_cancel import cancel_order
+
+        result = await cancel_order(order, actor="admin", reason="admin_status_cancel")
+        payload = (await enrich_orders([order]))[0]
+        payload["cancelResult"] = result
+        return payload
+    if str(body.get("status") or "").strip().lower() == "delivered":
+        from app.services.order_deliver import mark_order_delivered
+
+        await mark_order_delivered(order, actor="admin")
+        return remap_order(order)
     if "status" in body:
         order.status = body["status"]
         apply_shipping_status_from_order_status(order, body["status"])
@@ -1361,38 +1815,137 @@ async def order_status(order_id: str, body: dict, _: AdminUser):
         await erp_ops.ensure_invoice_on_fulfillment(order, context=f"admin_status:{new_status}")
     except Exception:
         pass
-    if new_status == "cancelled" and prev_status != "cancelled":
-        try:
-            from app.services.stock import restock_order_stock
-
-            await restock_order_stock(order)
-        except Exception as exc:
-            print(f"[Admin] Stock restore on cancel failed for {order.id}: {exc}")
     if new_status == "delivered" and prev_status != "delivered":
         try:
-            from app.services import aisensy as aisensy_svc
             from app.services import email_resend as email_svc
 
             user = await User.get(order.customerId) if order.customerId else None
-            await aisensy_svc.notify_order_event_once("orderDelivered", order, user)
             await email_svc.notify_order_email_once("DELIVERED", order, user)
         except Exception as exc:
             print(f"[Notify] admin delivered: {exc}")
     if new_status == "shipped" and prev_status != "shipped":
         try:
-            from app.services import aisensy as aisensy_svc
             from app.services import email_resend as email_svc
 
             user = await User.get(order.customerId) if order.customerId else None
-            await aisensy_svc.notify_order_event_once("orderShipped", order, user)
             await email_svc.notify_order_email_once("SHIPPED", order, user)
         except Exception as exc:
             print(f"[Notify] admin shipped: {exc}")
     return remap_order(order)
 
 
+async def _bulk_mark_delivered(ids: list) -> dict:
+    from app.services.order_deliver import mark_order_delivered
+
+    count = 0
+    skipped: list[dict] = []
+    for oid in ids:
+        order = await Order.get(ObjectId(oid)) if ObjectId.is_valid(str(oid)) else None
+        if not order:
+            skipped.append({"id": str(oid), "reason": "Order not found"})
+            continue
+        try:
+            result = await mark_order_delivered(order, actor="admin_bulk")
+        except HTTPException as exc:
+            skipped.append({"id": str(oid), "orderNumber": order.orderNumber, "reason": exc.detail})
+            continue
+        if result.get("changed"):
+            count += 1
+    return {"updated": count, "skipped": skipped}
+
+
+@router.put("/orders/{order_id}/shipping-address")
+async def order_shipping_address(order_id: str, body: OrderAddressBody, admin: OrdersWriter):
+    """Change the delivery address before the courier is booked (any state; invoice follows)."""
+    from app.services.order_address import change_order_address
+    from app.services.order_resolve import resolve_order
+
+    order = await resolve_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    customer = None
+    if body.addressId and order.customerId and ObjectId.is_valid(str(order.customerId)):
+        customer = await User.get(ObjectId(str(order.customerId)))
+    actor_id = str(getattr(admin, "email", "") or getattr(admin, "id", "") or "admin")
+    result = await change_order_address(
+        order, body, actor="admin", actor_id=actor_id, customer=customer
+    )
+    payload = (await enrich_orders([order]))[0]
+    payload["addressResult"] = result
+    return payload
+
+
+@router.post("/orders/{order_id}/mark-delivered")
+async def order_mark_delivered(order_id: str, admin: OrdersWriter, body: dict | None = None):
+    """Manually mark delivered — e.g. the courier never reported the delivery.
+
+    Optional body: ``{"deliveredAt": "<ISO date>"}`` (defaults to now)."""
+    from app.services.order_deliver import mark_order_delivered, parse_delivered_at
+    from app.services.order_resolve import resolve_order
+
+    order = await resolve_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payload_body = body if isinstance(body, dict) else {}
+    delivered_at = parse_delivered_at(payload_body.get("deliveredAt"))
+    actor = str(getattr(admin, "email", "") or getattr(admin, "name", "") or "admin")
+    result = await mark_order_delivered(order, actor=actor, delivered_at=delivered_at)
+    payload = (await enrich_orders([order]))[0]
+    payload["deliveryResult"] = result
+    return payload
+
+
+@router.post("/orders/{order_id}/cancel")
+async def order_cancel(
+    order_id: str,
+    admin: OrdersWriter,
+    body: dict = None,
+):
+    """Cancel order: carrier cancel if AWB, restock, refund, archive, customer email."""
+    from app.services.order_cancel import cancel_order
+
+    _ = admin
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payload_body = body if isinstance(body, dict) else {}
+    reason = str(payload_body.get("reason") or "admin_cancel").strip() or "admin_cancel"
+    # Paid orders refund by default; pass refund=false to cancel without one.
+    refund = payload_body.get("refund")
+    result = await cancel_order(
+        order,
+        actor="admin",
+        reason=reason,
+        refund=True if refund is None else bool(refund),
+    )
+    payload = (await enrich_orders([order]))[0]
+    payload["cancelResult"] = result
+    return payload
+
+
+@router.post("/orders/{order_id}/refund")
+async def order_refund(
+    order_id: str,
+    admin: PaymentsWriter,
+    body: dict = None,
+):
+    """Razorpay refund after cancel. Full remaining amount."""
+    from app.services.razorpay_refund import refund_order_payment
+
+    _ = admin
+    order = await Order.get(ObjectId(order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    payload_body = body if isinstance(body, dict) else {}
+    reason = str(payload_body.get("reason") or "admin_cancel_refund").strip() or "admin_cancel_refund"
+    result = await refund_order_payment(order, reason=reason)
+    payload = (await enrich_orders([order]))[0]
+    payload["refundResult"] = result
+    return payload
+
+
 @router.patch("/orders/{order_id}/archive")
-async def order_archive(order_id: str, body: dict, _: AdminUser):
+async def order_archive(order_id: str, body: dict, _: OrdersWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1403,28 +1956,18 @@ async def order_archive(order_id: str, body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/return")
-async def order_return(order_id: str, body: dict, _: AdminUser):
-    order = await Order.get(ObjectId(order_id))
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    action = str(body.get("action") or "").lower()
-    if action not in {"approve", "reject"}:
-        raise HTTPException(status_code=400, detail="action must be approve or reject")
-    order.status = "returned" if action == "approve" else "delivered"
-    order.updatedAt = datetime.utcnow()
-    await order.save()
-    if action == "approve":
-        try:
-            from app.services.stock import restock_order_stock
-
-            await restock_order_stock(order)
-        except Exception as exc:
-            print(f"[Admin] Stock restore on return failed for {order.id}: {exc}")
-    return (await enrich_orders([order]))[0]
+async def order_return(order_id: str, body: dict, _: OrdersWriter):
+    """Retired. It marked the order returned and restocked at once, skipping the
+    Delhivery pickup and leaving the return request pending. Returns are
+    approved, collected and received from the Returns page only."""
+    raise HTTPException(
+        status_code=410,
+        detail="Handle returns from the Returns page — approving there books the pickup.",
+    )
 
 
 @router.patch("/orders/{order_id}/delivery-date")
-async def order_delivery_date(order_id: str, body: dict, _: AdminUser):
+async def order_delivery_date(order_id: str, body: dict, _: OrdersWriter):
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1449,18 +1992,36 @@ async def order_delivery_date(order_id: str, body: dict, _: AdminUser):
 
 
 @router.patch("/orders/{order_id}/payment-status")
-async def order_payment_status(order_id: str, body: dict, _: AdminUser):
+async def order_payment_status(order_id: str, body: dict, _: PaymentsWriter):
+    from app.services.stock import ensure_stock_for_payment
+
     order = await Order.get(ObjectId(order_id))
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    order.paymentStatus = body.get("paymentStatus", order.paymentStatus)
+    next_status = str(body.get("paymentStatus") or order.paymentStatus or "").strip().lower()
+    # Manual refunds require Razorpay; do not invent refunded state here.
+    # COD / pay_on_delivery is not supported.
+    allowed = {"pending", "paid", "failed"}
+    if next_status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid paymentStatus '{next_status}'. "
+                "Allowed: pending, paid, failed. "
+                "Refunded statuses require a Razorpay refund."
+            ),
+        )
+    if next_status == "paid":
+        await ensure_stock_for_payment(order)
+    order.paymentStatus = next_status
     order.transactionDetails = {
         **(order.transactionDetails or {}),
         "paymentStatus": order.paymentStatus,
+        "paymentStatusSetBy": "admin",
     }
     order.updatedAt = datetime.utcnow()
     await order.save()
-    if str(order.paymentStatus or "").lower() == "paid":
+    if next_status == "paid":
         await apply_order_commitments(order)
         try:
             await erp_ops.ensure_order_invoice_safe(order, context="admin_payment_paid")
@@ -1478,30 +2039,21 @@ async def list_categories(_: AdminUser):
     return await _crud_list(Category, _)
 
 
+# Categories are collections now — these legacy routes share its slug rules and
+# keep Product.collections in sync on delete.
 @router.post("/categories", status_code=201)
 async def create_category(body: dict, _: AdminUser):
-    doc = Category(**body)
-    await doc.insert()
-    return doc_to_dict(doc)
+    return await collections_svc.create(body or {})
 
 
 @router.put("/categories/{item_id}")
 async def update_category(item_id: str, body: dict, _: AdminUser):
-    doc = await Category.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    for k, v in body.items():
-        setattr(doc, k, v)
-    await doc.save()
-    return doc_to_dict(doc)
+    return await collections_svc.update(item_id, body or {})
 
 
 @router.delete("/categories/{item_id}")
 async def delete_category(item_id: str, _: AdminUser):
-    doc = await Category.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    await doc.delete()
+    await collections_svc.delete(item_id)
     return {"message": "removed"}
 
 
@@ -1565,44 +2117,98 @@ async def delete_brand(item_id: str, _: AdminUser):
     return {"message": "removed"}
 
 
-@router.get("/collections")
-async def list_collections(_: AdminUser):
-    return await _crud_list(CollectionDoc, _)
+_COUPON_UPDATE_FIELDS = frozenset({
+    "name",
+    "code",
+    "kind",
+    "discountType",
+    "discountValue",
+    "minOrderAmount",
+    "maxDiscount",
+    "usageLimit",
+    "expiryDate",
+    "status",
+    "productIds",
+    "buyQuantity",
+    "getQuantity",
+    "getDiscountPercent",
+    "buyProductIds",
+    "getProductIds",
+    "showOnProduct",
+    "badge",
+    # Shopify-style rules
+    "appliesTo",
+    "collectionIds",
+    "oncePerOrder",
+    "minRequirement",
+    "minQuantity",
+    "eligibility",
+    "customerIds",
+    "oncePerCustomer",
+    "startsAt",
+    "tags",
+    "buyRequirement",
+    "buyAmount",
+    "buyAppliesTo",
+    "buyCollectionIds",
+    "getAppliesTo",
+    "getCollectionIds",
+    "getValueType",
+    "getAmountOff",
+    "maxUsesPerOrder",
+    "method",
+    "combinesWithProduct",
+    "combinesWithOrder",
+    "combinesWithShipping",
+    "maxShippingRate",
+})
+
+_COUPON_CHOICES = {
+    "kind": {"order", "products", "bxgy", "shipping"},
+    "method": {"code", "automatic"},
+    "discountType": {"percentage", "fixed"},
+    "appliesTo": {"products", "collections"},
+    "minRequirement": {"none", "amount", "quantity"},
+    "eligibility": {"all", "customers"},
+    "buyRequirement": {"quantity", "amount"},
+    "buyAppliesTo": {"products", "collections"},
+    "getAppliesTo": {"products", "collections"},
+    "getValueType": {"percentage", "amount", "free"},
+    "status": {"active", "inactive"},
+}
 
 
-@router.post("/collections", status_code=201)
-async def create_collection(body: dict, _: AdminUser):
-    doc = CollectionDoc(**body)
-    await doc.insert()
-    return doc_to_dict(doc)
+def _coupon_payload(body: dict | None) -> dict:
+    """Whitelisted, checked coupon fields. Raises 400 on a rule that can't work."""
+    payload = {k: v for k, v in (body or {}).items() if k in _COUPON_UPDATE_FIELDS}
+    if "code" in payload:
+        payload["code"] = re.sub(r"\s+", "", str(payload["code"] or "")).upper()
+        if not payload["code"]:
+            raise HTTPException(status_code=400, detail="Enter a discount code")
+        if not 2 <= len(payload["code"]) <= 40:
+            raise HTTPException(status_code=400, detail="Codes are 2–40 characters, with no spaces")
+    for field, allowed in _COUPON_CHOICES.items():
+        if field in payload and payload[field] is not None and str(payload[field]) not in allowed:
+            raise HTTPException(status_code=400, detail=f"Invalid {field}")
+    return payload
 
 
-@router.get("/collections/{item_id}")
-async def get_collection(item_id: str, _: AdminUser):
-    doc = await CollectionDoc.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    return doc_to_dict(doc)
+def _automatic_code() -> str:
+    import secrets
+
+    return "AUTO-" + secrets.token_hex(5).upper()
 
 
-@router.put("/collections/{item_id}")
-async def update_collection(item_id: str, body: dict, _: AdminUser):
-    doc = await CollectionDoc.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    for k, v in body.items():
-        setattr(doc, k, v)
-    await doc.save()
-    return doc_to_dict(doc)
-
-
-@router.delete("/collections/{item_id}")
-async def delete_collection(item_id: str, _: AdminUser):
-    doc = await CollectionDoc.get(ObjectId(item_id))
-    if not doc:
-        raise HTTPException(status_code=404, detail="Not found")
-    await doc.delete()
-    return {"message": "removed"}
+def _check_coupon(coupon: Coupon) -> None:
+    """Rules on the whole coupon (after defaults / merge), not just the sent fields."""
+    if (coupon.method or "code") == "automatic" and not (coupon.name or "").strip():
+        raise HTTPException(status_code=400, detail="Enter a title for the automatic discount")
+    if coupon.discountType == "percentage" and float(coupon.discountValue or 0) > 100:
+        raise HTTPException(status_code=400, detail="Percentage must be 1–100")
+    if coupon.getValueType == "percentage" and float(coupon.getDiscountPercent or 0) > 100:
+        raise HTTPException(status_code=400, detail="Percentage must be 1–100")
+    if coupon.startsAt and coupon.expiryDate and coupon.expiryDate <= coupon.startsAt:
+        raise HTTPException(status_code=400, detail="End date must be after the start date")
 
 
 @router.get("/coupons")
@@ -1610,11 +2216,51 @@ async def list_coupons(_: AdminUser):
     return await _crud_list(Coupon, _)
 
 
+@router.get("/coupons/customers")
+async def coupon_customer_search(
+    _: AdminUser,
+    q: str = "",
+    ids: str = "",
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    """Customers for the 'Specific customers' picker: search by name/email/phone, or resolve ids."""
+    from app.services.customers import customer_mongo_filter
+
+    def row(u: User) -> dict:
+        return {"_id": str(u.id), "name": u.name or "", "email": u.email or "", "phone": u.phone or ""}
+
+    wanted = [ObjectId(i) for i in ids.split(",") if ObjectId.is_valid(i.strip())]
+    if wanted:
+        return [row(u) for u in await User.find({"_id": {"$in": wanted}}).to_list()]
+    needle = q.strip()
+    if not needle:
+        return []
+    pattern = {"$regex": re.escape(needle), "$options": "i"}
+    query = {
+        "$and": [
+            customer_mongo_filter(),
+            {"$or": [{"name": pattern}, {"email": pattern}, {"phone": pattern}]},
+        ]
+    }
+    return [row(u) for u in await User.find(query).limit(limit).to_list()]
+
+
 @router.post("/coupons", status_code=201)
 async def create_coupon(body: dict, _: AdminUser):
-    if "code" in body:
-        body["code"] = str(body["code"]).upper()
-    doc = Coupon(**body)
+    body = dict(body or {})
+    if body.get("method") == "automatic" and not str(body.get("code") or "").strip():
+        # Shoppers never type an automatic discount; it still needs a unique id.
+        body["code"] = _automatic_code()
+    payload = _coupon_payload(body)
+    if not payload.get("code"):
+        raise HTTPException(status_code=400, detail="Enter a discount code")
+    if await Coupon.find_one(Coupon.code == payload["code"]):
+        raise HTTPException(status_code=400, detail="A discount with this code already exists")
+    try:
+        doc = Coupon(**payload)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid discount settings") from None
+    _check_coupon(doc)
     await doc.insert()
     return doc_to_dict(doc)
 
@@ -1624,8 +2270,22 @@ async def update_coupon(item_id: str, body: dict, _: AdminUser):
     doc = await Coupon.get(ObjectId(item_id))
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    for k, v in body.items():
-        setattr(doc, k, v)
+    # Never accept usedCount or unknown keys (discount abuse / mass assignment).
+    body = dict(body or {})
+    if body.get("method") == "automatic" and not str(body.get("code") or "").strip():
+        body["code"] = doc.code if str(doc.code).startswith("AUTO-") else _automatic_code()
+    payload = _coupon_payload(body)
+    if payload.get("code") and payload["code"] != doc.code:
+        if await Coupon.find_one(Coupon.code == payload["code"]):
+            raise HTTPException(status_code=400, detail="A discount with this code already exists")
+    # Validate the merged document, then save.
+    try:
+        merged = Coupon(**{**doc.model_dump(exclude={"id", "revision_id"}), **payload})
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid discount settings") from None
+    _check_coupon(merged)
+    for k in payload:
+        setattr(doc, k, getattr(merged, k))
     await doc.save()
     return doc_to_dict(doc)
 
@@ -1665,13 +2325,36 @@ async def abandoned(
     needle = (q or "").strip()
     if needle:
         rx = {"$regex": re.escape(needle), "$options": "i"}
-        query["$or"] = [
+        or_clause: list[dict[str, Any]] = [
             {"customerDetails.name": rx},
             {"customerDetails.email": rx},
             {"customerDetails.phone": rx},
         ]
         if ObjectId.is_valid(needle):
-            query["$or"].append({"_id": ObjectId(needle)})
+            or_clause.append({"_id": ObjectId(needle)})
+            or_clause.append({"userId": ObjectId(needle)})
+        # Match logged-in customers by account name/email/phone even when
+        # customerDetails was wiped by an early empty upsert.
+        try:
+            matched_users = (
+                await User.find(
+                    {
+                        "$or": [
+                            {"name": rx},
+                            {"email": rx},
+                            {"phone": rx},
+                        ]
+                    }
+                )
+                .limit(100)
+                .to_list()
+            )
+            for u in matched_users:
+                or_clause.append({"userId": u.id})
+                or_clause.append({"userId": str(u.id)})
+        except Exception:
+            pass
+        query["$or"] = or_clause
 
     total = await AbandonedCheckout.find(query).count()
     rows = (
@@ -1683,16 +2366,43 @@ async def abandoned(
     )
 
     site = cart_recovery.recovery_site_base()
-    try:
-        from app.services import aisensy as aisensy_svc
 
-        cfg = await aisensy_svc.get_settings()
-        site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
-    except Exception:
-        pass
+    # Enrich Customer column from User when checkout details are thin/empty.
+    user_oids: list[ObjectId] = []
+    for r in rows:
+        uid = getattr(r, "userId", None)
+        if uid is not None and ObjectId.is_valid(str(uid)):
+            user_oids.append(ObjectId(str(uid)))
+    user_map: dict[str, User] = {}
+    if user_oids:
+        try:
+            for u in await User.find({"_id": {"$in": user_oids}}).to_list():
+                user_map[str(u.id)] = u
+        except Exception:
+            user_map = {}
+
+    def _fill_details(details: dict, user: User | None) -> dict:
+        out_details = dict(details or {}) if isinstance(details, dict) else {}
+        if not user:
+            return out_details
+        for key, value in (
+            ("name", getattr(user, "name", None) or ""),
+            ("email", getattr(user, "email", None) or ""),
+            ("phone", getattr(user, "phone", None) or ""),
+        ):
+            if not str(out_details.get(key) or "").strip() and str(value or "").strip():
+                out_details[key] = str(value).strip()
+        return out_details
 
     # Fast list: do not mint/save recovery tokens here — only expose URL when token exists.
-    out = [cart_recovery.admin_checkout_dict(r, site=site) for r in rows]
+    out = []
+    for r in rows:
+        data = cart_recovery.admin_checkout_dict(r, site=site)
+        user = user_map.get(str(r.userId)) if getattr(r, "userId", None) else None
+        data["customerDetails"] = _fill_details(data.get("customerDetails"), user)
+        if user:
+            data["userId"] = str(user.id)
+        out.append(data)
     return page_payload(out, total=total, page=pg, limit=lim)
 
 
@@ -1713,13 +2423,6 @@ async def abandoned_recovery_link(checkout_id: str, _: AdminUser):
         await checkout.save()
 
     site = cart_recovery.recovery_site_base()
-    try:
-        from app.services import aisensy as aisensy_svc
-
-        cfg = await aisensy_svc.get_settings()
-        site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
-    except Exception:
-        pass
 
     url = cart_recovery.recovery_cart_url(checkout, site=site)
     if not url:
@@ -1738,126 +2441,27 @@ async def abandoned_checkout_detail(checkout_id: str, _: AdminUser):
         raise HTTPException(status_code=404, detail="Abandoned checkout not found")
 
     site = cart_recovery.recovery_site_base()
-    try:
-        from app.services import aisensy as aisensy_svc
 
-        cfg = await aisensy_svc.get_settings()
-        site = str(cfg.get("siteUrl") or site or "").rstrip("/") or site
-    except Exception:
-        pass
-    return cart_recovery.admin_checkout_dict(checkout, site=site)
-
-
-@router.get("/wallet/{user_id}")
-async def wallet(user_id: str, _: AdminUser):
-    w = await Wallet.find_one(Wallet.userId == ObjectId(user_id))
-    if not w:
-        return {"userId": user_id, "balance": 0, "transactions": []}
-    return doc_to_dict(w)
-
-
-@router.post("/wallet/refund")
-async def wallet_refund(body: dict, _: AdminUser):
-    user_id = body.get("userId")
-    amount = float(body.get("amount") or 0)
-    w = await Wallet.find_one(Wallet.userId == ObjectId(user_id))
-    if not w:
-        w = Wallet(userId=ObjectId(user_id), balance=0, transactions=[])
-        await w.insert()
-    w.balance += amount
-    w.transactions.append({"type": "refund", "amount": amount, "reason": body.get("reason"), "date": datetime.utcnow().isoformat()})
-    await w.save()
-    return doc_to_dict(w)
+    data = cart_recovery.admin_checkout_dict(checkout, site=site)
+    details = dict(data.get("customerDetails") or {}) if isinstance(data.get("customerDetails"), dict) else {}
+    uid = getattr(checkout, "userId", None)
+    if uid is not None and ObjectId.is_valid(str(uid)):
+        user = await User.get(ObjectId(str(uid)))
+        if user:
+            for key, value in (
+                ("name", getattr(user, "name", None) or ""),
+                ("email", getattr(user, "email", None) or ""),
+                ("phone", getattr(user, "phone", None) or ""),
+            ):
+                if not str(details.get(key) or "").strip() and str(value or "").strip():
+                    details[key] = str(value).strip()
+            data["customerDetails"] = details
+            data["userId"] = str(user.id)
+    return data
 
 
-@router.get("/razorpay/settings")
-async def razorpay_settings(_: AdminUser):
-    from app.services import razorpay_cfg
-
-    return await razorpay_cfg.get_prefs()
 
 
-@router.post("/razorpay/settings")
-async def save_razorpay_settings(body: dict, _: AdminUser):
-    from app.services import razorpay_cfg
-
-    # Credentials are env-only; UI may only update checkout prefs.
-    if any(str(body.get(k) or "").strip() for k in ("keyId", "keySecret", "webhookSecret")):
-        raise HTTPException(
-            status_code=400,
-            detail="Razorpay keys are configured via RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET / RAZORPAY_WEBHOOK_SECRET in the API environment.",
-        )
-    return await razorpay_cfg.save_prefs(body or {})
-
-
-@router.post("/razorpay/disconnect")
-async def disconnect_razorpay(_: AdminUser):
-    raise HTTPException(
-        status_code=400,
-        detail="Razorpay is configured via environment variables. Remove RAZORPAY_* from the API env and restart to disconnect.",
-    )
-
-
-@router.get("/aisensy/settings")
-async def aisensy_settings(_: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    return aisensy_svc.public_settings(await aisensy_svc.get_settings())
-
-
-@router.put("/aisensy/settings")
-async def save_aisensy_settings(body: dict, _: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    if any(str(body.get(k) or "").strip() for k in ("apiKey", "projectApiKey")):
-        raise HTTPException(
-            status_code=400,
-            detail="AiSensy keys are configured via AISENSY_API_KEY / AISENSY_PROJECT_API_KEY in the API environment.",
-        )
-    return await aisensy_svc.save_prefs(body or {})
-
-
-@router.post("/aisensy/disconnect")
-async def disconnect_aisensy(_: AdminUser):
-    raise HTTPException(
-        status_code=400,
-        detail="AiSensy is configured via environment variables. Remove AISENSY_* from the API env and restart to disconnect.",
-    )
-
-
-@router.get("/gtm/settings")
-async def gtm_settings(_: AdminUser):
-    from app.routers.gtm import resolve_gtm_config
-
-    cfg = resolve_gtm_config()
-    return {
-        **cfg,
-        "source": "env",
-        "hint": "Set GTM_ID and GTM_ENABLED in the API environment.",
-    }
-
-
-@router.put("/gtm/settings")
-async def save_gtm_settings(body: dict, _: AdminUser):
-    raise HTTPException(
-        status_code=410,
-        detail="GTM is configured via server environment (GTM_ID / GTM_ENABLED)",
-    )
-
-
-@router.get("/ga4/settings")
-async def ga4_settings(_: AdminUser):
-    from app.services import ga4 as ga4_svc
-
-    return ga4_svc.resolve_status()
-
-
-@router.put("/ga4/settings")
-async def save_ga4_settings(body: dict, _: AdminUser):
-    raise HTTPException(
-        status_code=410,
-        detail="GA4 is configured via server environment (GA4_PROPERTY_ID / GA4_CREDENTIALS_JSON)",
-    )
 
 
 @router.get("/ga4/report")
@@ -1870,276 +2474,15 @@ async def ga4_report(
     return ga4_svc.fetch_report(range_)
 
 
-def _ai_media_config() -> tuple[str, str, str]:
-    """Return (api_key, model, provider) from server env. OpenRouter only."""
-    settings = get_settings()
-    openrouter_key = str(settings.openrouter_api_key or "").strip()
-    model = str(settings.openrouter_model or "google/gemini-3-pro-image").strip()
-    return openrouter_key, model or "google/gemini-3-pro-image", "openrouter"
 
 
-@router.get("/ai-media/status")
-async def ai_media_status(_: AdminUser):
-    api_key, _, provider = _ai_media_config()
-    return {
-        "enabled": bool(api_key),
-        "provider": provider,
-    }
-
-
-@router.get("/openrouter/settings")
-async def openrouter_settings_gone(_: AdminUser):
-    raise HTTPException(status_code=410, detail="AI provider is configured via server environment")
-
-
-@router.put("/openrouter/settings")
-async def save_openrouter_settings_gone(_: AdminUser):
-    raise HTTPException(status_code=410, detail="AI provider is configured via server environment")
-
-
-@router.post("/openrouter/disconnect")
-async def disconnect_openrouter_gone(_: AdminUser):
-    raise HTTPException(status_code=410, detail="AI provider is configured via server environment")
-
-
-async def _save_upload_temp(upload: UploadFile, folder: Path) -> tuple[str, Path]:
-    """Save bytes locally for model processing; prefer R2 URL when configured."""
-    from app.services import r2 as r2_svc
-
-    ext = Path(upload.filename or "img.jpg").suffix.lower() or ".jpg"
-    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
-        raise HTTPException(status_code=400, detail="Invalid image type")
-    name = f"{uuid4().hex}{ext}"
-    dest = folder / name
-    content = await upload.read()
-    dest.write_bytes(content)
-    if r2_svc.is_configured():
-        result = r2_svc.upload_bytes(
-            folder=folder.name if folder.name in {"products", "ai"} else "ai",
-            data=content,
-            filename=name,
-            content_type=upload.content_type,
-        )
-        return result["url"], dest
-    rel = f"/uploads/{folder.name}/{name}"
-    return rel, dest
-
-
-@router.post("/ai-media/generate", status_code=202)
-async def ai_media_generate(
-    background_tasks: BackgroundTasks,
-    user: AdminUser,
-    reference: UploadFile = File(...),
-    product_id: str = Form(...),
-    front_image_url: str = Form(...),
-    back_image_url: str = Form(...),
-):
-    from app.services.ai_studio_prompts import compose_studio_prompt
-
-    api_key, model, _provider = _ai_media_config()
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="AI image generation is not configured (set OPENROUTER_API_KEY)",
-        )
-
-    # Prompts come only from server env (AI_STUDIO_STYLE_PROMPT / AI_STUDIO_PROMPT)
-    final_prompt = compose_studio_prompt()
-
-    if not ObjectId.is_valid(str(product_id)):
-        raise HTTPException(status_code=400, detail="Valid product_id is required")
-    product = await Product.get(ObjectId(str(product_id)))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    from app.services import ai_media as ai_media_svc
-
-    allowed = set(ai_media_svc.product_image_urls(product))
-    front = str(front_image_url or "").strip()
-    back = str(back_image_url or "").strip()
-    if front not in allowed:
-        raise HTTPException(status_code=400, detail="Front image must be an existing product image")
-    if back not in allowed:
-        raise HTTPException(status_code=400, detail="Back image must be an existing product image")
-    if front == back:
-        raise HTTPException(status_code=400, detail="Pick different images for front and back")
-
-    ref_url, ref_path = await _save_upload_temp(reference, AI_UPLOAD_DIR)
-    product_urls = [front, back]
-
-    job = AiMediaJob(
-        prompt=final_prompt,
-        referenceUrl=ref_url,
-        productImageUrls=product_urls,
-        status="pending",
-        reviewStatus="pending",
-        model=model,
-        productId=product.id,
-        createdBy=getattr(user, "id", None),
-    )
-    await job.insert()
-
-    background_tasks.add_task(
-        ai_media_svc.run_ai_media_generation,
-        job_id=str(job.id),
-        reference_path=str(ref_path),
-        product_urls=product_urls,
-        prompt=final_prompt,
-        api_key=api_key,
-        model=model,
-    )
-
-    return doc_to_dict(job)
-
-
-@router.get("/ai-media/jobs")
-async def ai_media_jobs(_: AdminUser):
-    jobs = await AiMediaJob.find_all().sort([("createdAt", -1)]).limit(50).to_list()
-    return [doc_to_dict(j) for j in jobs]
-
-
-@router.get("/ai-media/jobs/{job_id}")
-async def ai_media_job(job_id: str, _: AdminUser):
-    job = await AiMediaJob.get(ObjectId(job_id)) if ObjectId.is_valid(job_id) else None
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return doc_to_dict(job)
-
-
-@router.delete("/ai-media/jobs/{job_id}")
-async def ai_media_delete_job(job_id: str, _: AdminUser):
-    job = await AiMediaJob.get(ObjectId(job_id)) if ObjectId.is_valid(job_id) else None
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    for url in [job.outputUrl, job.referenceUrl, *(job.productImageUrls or [])]:
-        if not url or not str(url).startswith("/uploads/ai/"):
-            continue
-        path = Path(__file__).resolve().parents[2] / str(url).lstrip("/")
-        if path.is_file():
-            try:
-                path.unlink()
-            except OSError:
-                pass
-    await job.delete()
-    return {"ok": True}
-
-
-@router.post("/ai-media/jobs/{job_id}/approve")
-async def ai_media_approve_job(job_id: str, body: dict, admin: AdminUser):
-    """Copy output to Content (products folder) and attach to product gallery."""
-    job = await AiMediaJob.get(ObjectId(job_id)) if ObjectId.is_valid(job_id) else None
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    product_id = str(body.get("productId") or job.productId or "").strip()
-    if not product_id or not ObjectId.is_valid(product_id):
-        raise HTTPException(status_code=400, detail="Valid productId required")
-    product = await Product.get(ObjectId(product_id))
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    from app.services import ai_media as ai_media_svc
-
-    try:
-        result = await ai_media_svc.approve_job_to_content(
-            job,
-            product=product,
-            admin_id=admin.id,
-            variant_color=str(body.get("variantColor") or "").strip(),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return {
-        "ok": True,
-        "job": doc_to_dict(result["job"]),
-        "product": doc_to_dict(result["product"]),
-        "publishedUrl": result["publishedUrl"],
-    }
-
-
-@router.post("/ai-media/jobs/{job_id}/attach-product")
-async def ai_media_attach_product(job_id: str, body: dict, admin: AdminUser):
-    """Legacy alias — approve to content."""
-    return await ai_media_approve_job(job_id, body, admin)
-
-
-@router.post("/aisensy/sync-customers")
-async def aisensy_sync_customers(_: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    store = await aisensy_svc.get_settings()
-    client = aisensy_svc.project_client_from_cfg(store)
-    if not client.configured and not store.get("projectApiKey"):
-        raise HTTPException(
-            status_code=400,
-            detail="Set AISENSY_PROJECT_ID and AISENSY_PROJECT_API_KEY in the API environment to sync contacts.",
-        )
-
-    users = await User.find({"isAdmin": {"$ne": True}}).to_list()
-    imported = 0
-    errors = 0
-    for u in users:
-        phone = getattr(u, "phone", None)
-        if not phone:
-            continue
-        result = await aisensy_svc.create_contact(
-            name=u.name or "Customer",
-            phone=phone,
-            email=getattr(u, "email", None),
-            tags=["urban-aana", "customer"],
-        )
-        if result.get("ok"):
-            imported += 1
-        elif not result.get("skipped"):
-            errors += 1
-
-    s = await Setting.find_one(Setting.key == "aisensy")
-    prefs = dict(s.value) if s and isinstance(s.value, dict) else {}
-    prefs["lastSyncedAt"] = datetime.utcnow().isoformat()
-    prefs["lastSyncCount"] = imported
-    # Never persist secrets into DB
-    prefs.pop("apiKey", None)
-    prefs.pop("projectApiKey", None)
-    prefs.pop("projectId", None)
-    if s:
-        s.value = prefs
-        await s.save()
-    else:
-        await Setting(key="aisensy", value=prefs).insert()
-
-    return {
-        **aisensy_svc.public_settings(await aisensy_svc.get_settings()),
-        "imported": imported,
-        "errors": errors,
-    }
-
-
-@router.post("/aisensy/sync-catalog")
-async def aisensy_sync_catalog(_: AdminUser):
-    from app.services import aisensy as aisensy_svc
-
-    store = await aisensy_svc.get_settings()
-    client = aisensy_svc.project_client_from_cfg(store)
-    if not client.configured:
-        raise HTTPException(
-            status_code=400,
-            detail="Set AISENSY_PROJECT_ID and AISENSY_PROJECT_API_KEY to sync the WhatsApp catalog.",
-        )
-    result = await aisensy_svc.sync_catalog()
-    if result.get("skipped"):
-        raise HTTPException(status_code=400, detail="Project API is not configured.")
-    if result.get("ok") is False and not result.get("created"):
-        raise HTTPException(
-            status_code=502,
-            detail=result.get("error") or result.get("lastCatalogError") or "Catalog sync failed",
-        )
-    return result
 
 
 @router.post("/abandoned-checkouts/{checkout_id}/send-recovery")
 async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
-    from app.services import aisensy as aisensy_svc
+    """Email the abandoned-cart recovery link now; persist the result."""
+    from app.services import abandoned_recovery
+    from app.services import cart_recovery
 
     if not ObjectId.is_valid(checkout_id):
         raise HTTPException(status_code=400, detail="Invalid checkout id")
@@ -2149,19 +2492,36 @@ async def send_abandoned_recovery(checkout_id: str, _: AdminUser):
     if checkout.status != "abandoned":
         raise HTTPException(status_code=400, detail="Checkout is no longer abandoned")
 
-    result = await aisensy_svc.notify_abandoned(checkout)
-    checkout.recoverySentAt = datetime.utcnow()
-    checkout.recoveryLastResult = {k: v for k, v in result.items() if k != "response"}
+    details = dict(checkout.customerDetails or {})
+    result: dict = {"skipped": True, "reason": "no_email"}
+    if str(details.get("email") or "").strip():
+        try:
+            result = await abandoned_recovery.send_recovery_email(checkout)
+        except Exception as exc:
+            result = {"ok": False, "error": str(exc)[:300]}
+
+    now = datetime.utcnow()
+    prev = dict(checkout.recoveryLastResult or {})
+    email_sent_at = now.isoformat() if result.get("ok") else prev.get("emailSentAt")
+    checkout.recoveryLastResult = {
+        "email": {k: v for k, v in (result or {}).items() if k != "response"},
+        **({"emailSentAt": email_sent_at} if email_sent_at else {}),
+    }
+    if result.get("ok"):
+        checkout.recoverySentAt = now
     await checkout.save()
 
     if result.get("ok"):
-        return {"ok": True, "result": result, "checkout": doc_to_dict(checkout)}
-    if result.get("skipped"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Recovery not sent: {result.get('reason')}. Map and enable the Abandoned campaign in AiSensy settings.",
-        )
-    raise HTTPException(status_code=502, detail=result.get("error") or "AiSensy send failed")
+        return {
+            "ok": True,
+            "result": {"email": checkout.recoveryLastResult.get("email")},
+            "checkout": cart_recovery.admin_checkout_dict(checkout),
+        }
+    reason = result.get("reason") if result.get("skipped") else result.get("error")
+    raise HTTPException(
+        status_code=400 if result.get("skipped") else 502,
+        detail=f"Recovery not sent: email: {reason or 'unknown'}",
+    )
 
 
 @router.get("/tax-classes")
@@ -2278,23 +2638,78 @@ async def save_company_profile(body: dict, _: AdminUser):
 
 @router.get("/shipping-settings")
 async def get_shipping_settings(_: AdminUser):
-    s = await Setting.find_one(Setting.key == "shipping_settings")
-    if not s or not isinstance(s.value, dict):
-        return {**DEFAULT_SHIPPING_SETTINGS}
-    return {**DEFAULT_SHIPPING_SETTINGS, **s.value}
+    return await load_shipping_settings()
 
 
 @router.put("/shipping-settings")
 async def save_shipping_settings(body: dict, _: AdminUser):
-    current = await get_shipping_settings(_)
-    value = {**current, **(body or {})}
+    current = await load_shipping_settings()
+    incoming = dict(body or {})
+    # Drop legacy Shiprocket-era keys if clients still send them.
+    incoming.pop("codFee", None)
+    incoming.pop("carrierAccounts", None)
+    value = {**current, **incoming}
+    value.pop("codFee", None)
+    value.pop("carrierAccounts", None)
     s = await Setting.find_one(Setting.key == "shipping_settings")
     if s:
         s.value = value
         await s.save()
     else:
         await Setting(key="shipping_settings", value=value).insert()
-    return value
+    return await load_shipping_settings()
+
+
+@router.get("/delhivery/settings")
+async def get_delhivery_settings(_: AdminUser):
+    from app.services import delhivery as delhivery_svc
+
+    raw = await delhivery_svc.get_delhivery_settings()
+    env_token = (os.environ.get("DELHIVERY_API_TOKEN") or "").strip()
+    return {
+        # Must match the warehouse name registered with Delhivery exactly.
+        "pickupLocation": raw.get("pickupLocation") or "",
+        "shippingMode": raw.get("shippingMode") or "Surface",
+        # "4x6" re-cuts Delhivery's A4 packing slip to a thermal label; "a4"
+        # passes their sheet through untouched.
+        "labelSize": raw.get("labelSize") or "4x6",
+        "hasApiToken": bool(raw.get("apiToken")),
+        "isConnected": bool(raw.get("apiToken") and raw.get("pickupLocation")),
+        "source": "env" if env_token else "settings",
+    }
+
+
+@router.put("/delhivery/settings")
+async def save_delhivery_settings(body: dict, _: AdminUser):
+    from app.services import delhivery as delhivery_svc
+
+    s = await Setting.find_one(Setting.key == delhivery_svc.SETTING_KEY)
+    current = dict(s.value) if s and isinstance(s.value, dict) else {}
+    # Token is env-only when DELHIVERY_API_TOKEN is set; admin never becomes the
+    # source of truth for the secret, matching how DTDC behaves.
+    env_token = (os.environ.get("DELHIVERY_API_TOKEN") or "").strip()
+    if env_token:
+        api_token = current.get("apiToken")
+    else:
+        api_token = str(body.get("apiToken") or "").strip() or current.get("apiToken")
+
+    value = {
+        **current,
+        "pickupLocation": str(body.get("pickupLocation") or current.get("pickupLocation") or "").strip(),
+        "shippingMode": str(body.get("shippingMode") or current.get("shippingMode") or "Surface").strip(),
+        "labelSize": str(body.get("labelSize") or current.get("labelSize") or "4x6").strip().lower(),
+    }
+    if api_token:
+        value["apiToken"] = api_token
+
+    if s:
+        s.value = value
+        s.updatedAt = datetime.utcnow()
+        await s.save()
+    else:
+        await Setting(key=delhivery_svc.SETTING_KEY, value=value).insert()
+
+    return await get_delhivery_settings(_)
 
 
 @router.get("/dtdc/settings")
@@ -2356,26 +2771,3 @@ async def save_dtdc_settings(body: dict, _: AdminUser):
         "isConnected": True,
     }
 
-
-@router.get("/tax-settings")
-async def get_tax_settings(_: AdminUser):
-    s = await Setting.find_one(Setting.key == "tax_settings")
-    if not s or not isinstance(s.value, dict):
-        return {**DEFAULT_TAX_SETTINGS}
-    merged = {**DEFAULT_TAX_SETTINGS, **s.value}
-    if not merged.get("regions"):
-        merged["regions"] = DEFAULT_TAX_SETTINGS["regions"]
-    return merged
-
-
-@router.put("/tax-settings")
-async def save_tax_settings(body: dict, _: AdminUser):
-    current = await get_tax_settings(_)
-    value = {**current, **(body or {})}
-    s = await Setting.find_one(Setting.key == "tax_settings")
-    if s:
-        s.value = value
-        await s.save()
-    else:
-        await Setting(key="tax_settings", value=value).insert()
-    return value

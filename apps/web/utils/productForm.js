@@ -1,3 +1,5 @@
+import { saleFormFromProduct, salePayload } from "@/lib/saleSchedule";
+
 export const STATUSES = ["draft", "active"];
 
 export const PRODUCT_CLASSES = [
@@ -9,17 +11,17 @@ export const PRODUCT_CLASSES = [
 ];
 
 /** Fixed catalog categories (admin Category dropdown). */
-export const PRODUCT_CATEGORIES = ["T-Shirts"];
+export const PRODUCT_CATEGORIES = ["T-Shirt"];
 
 /** Product Type options keyed by Category name. */
 export const PRODUCT_TYPES_BY_CATEGORY = {
-  "T-Shirts": [
-    "Graphic T-Shirts",
-    "Oversized T-Shirts",
-    "Plain T-Shirts",
-    "Polo T-Shirts",
-    "Full Sleeve T-Shirts",
-    "Tank Tops",
+  "T-Shirt": [
+    "Graphic T-Shirt",
+    "Oversized T-Shirt",
+    "Plain T-Shirt",
+    "Polo T-Shirt",
+    "Full Sleeve T-Shirt",
+    "Tank Top",
   ],
 };
 
@@ -34,32 +36,37 @@ export const PRODUCT_ATTR_FIELDS = [
     key: "fit",
     label: "Fit",
     options: ["Regular", "Oversized", "Relaxed", "Slim"],
+    creatable: true,
   },
   {
     key: "fabric",
     label: "Fabric",
     options: ["Cotton", "Cotton Blend", "Terry", "Polyester"],
+    creatable: true,
   },
   {
     key: "neckType",
     label: "Neck Type",
     options: ["Round Neck", "Polo", "V Neck", "Henley"],
+    creatable: true,
   },
   {
     key: "colors",
-    label: "Color",
+    label: "Colour",
     options: [],
     creatable: true,
   },
   {
     key: "pattern",
     label: "Pattern",
-    options: ["Graphic Print", "Solid", "Striped", "All Over Print"],
+    options: ["Graphic Print", "Solid", "Striped", "All Over Print", "Embroidery"],
+    creatable: true,
   },
   {
     key: "sleeveType",
     label: "Sleeve Type",
     options: ["Half Sleeve", "Full Sleeve", "Sleeveless"],
+    creatable: true,
   },
 ];
 
@@ -142,7 +149,14 @@ export function slugify(text) {
     .slice(0, 80);
 }
 
-export function generateSku(productId, parts, index) {
+/** Strip legacy trailing variant index (`-01`, `-02`, …) from SKUs. */
+export function stripSkuIndex(sku) {
+  return String(sku || "")
+    .trim()
+    .replace(/-\d{2}$/, "");
+}
+
+export function generateSku(productId, parts, _index) {
   const baseId = String(productId || "")
     .replace(/[^A-Z0-9]/gi, "")
     .slice(0, 6)
@@ -152,8 +166,7 @@ export function generateSku(productId, parts, index) {
     .replace(/[^A-Z0-9]/gi, "")
     .slice(0, 4)
     .toUpperCase();
-  const idx = String((index ?? 0) + 1).padStart(2, "0");
-  return `${baseId}-${part || "VAR"}-${idx}`;
+  return `${baseId}-${part || "VAR"}`;
 }
 
 /** Digits only, optional single `.`, max 2 decimal places. */
@@ -203,7 +216,7 @@ export function defaultForm() {
     productId: generateProductId(),
     product: "",
     productName: "",
-    category: "T-Shirts",
+    category: "T-Shirt",
     type: "",
     brand: "",
     description: "",
@@ -214,7 +227,9 @@ export function defaultForm() {
       sellingPrice: "0.00",
     },
     variants: [emptyVariant()],
+    thumbnails: [],
     status: "draft",
+    badge: "auto",
     hsnCode: "",
     taxClassId: "",
     priceTaxMode: "inclusive",
@@ -222,17 +237,44 @@ export function defaultForm() {
     metaTitle: "",
     metaDescription: "",
     slugManual: false,
+    sale: { price: "", startsAt: "", endsAt: "" },
   };
 }
 
 export function productToForm(product) {
   if (!product) return defaultForm();
   const name = product.productName || product.name || "";
+  const variants =
+    Array.isArray(product.variants) && product.variants.length
+      ? product.variants.map((v) => ({
+          color: "",
+          size: v.size || "",
+          customName: v.customName || "",
+          customValue: v.customValue || "",
+          quantity: Number(v.quantity) || 0,
+          images: Array.isArray(v.images) ? v.images.filter(Boolean).map(String) : [],
+          sku: stripSkuIndex(v.sku),
+          barcode: v.barcode || "",
+        }))
+      : [emptyVariant()];
+
+  // Product Media and variant images stay separate. Drop any URLs that already
+  // belong to a variant so they only show in the variant image area.
+  const variantImageSet = new Set(
+    variants.flatMap((v) => (Array.isArray(v.images) ? v.images : []))
+  );
+  const thumbnails = (
+    Array.isArray(product.thumbnails) ? product.thumbnails : []
+  )
+    .filter(Boolean)
+    .map(String)
+    .filter((url) => !variantImageSet.has(url));
+
   return {
     productId: product.productId || generateProductId(),
     product: product.product || "",
     productName: name,
-    category: product.category || "T-Shirts",
+    category: product.category || "T-Shirt",
     type: product.type || product.subcategory || "",
     brand: product.brand || "",
     description: product.description || "",
@@ -243,23 +285,17 @@ export function productToForm(product) {
         product.pricing?.mrp != null && product.pricing?.mrp !== ""
           ? formatPriceDisplay(product.pricing.mrp)
           : "",
+      // During a live sale the stored selling price is the sale price; the
+      // form edits the regular price the store returns to when it ends.
       sellingPrice: formatPriceDisplay(
-        product.pricing?.sellingPrice ?? product.price ?? 0
+        (product.sale?.live ? product.sale.regularPrice : null) ??
+          product.pricing?.sellingPrice ??
+          product.price ??
+          0
       ),
     },
-    variants:
-      Array.isArray(product.variants) && product.variants.length
-        ? product.variants.map((v) => ({
-            color: "",
-            size: v.size || "",
-            customName: v.customName || "",
-            customValue: v.customValue || "",
-            quantity: Number(v.quantity) || 0,
-            images: Array.isArray(v.images) ? [...v.images] : [],
-            sku: v.sku || "",
-            barcode: v.barcode || "",
-          }))
-        : [emptyVariant()],
+    variants,
+    thumbnails,
     status:
       product.status === "active"
         ? "active"
@@ -268,6 +304,17 @@ export function productToForm(product) {
           : product.status === "out_of_stock"
             ? "active"
             : "draft",
+    badge: ["new_arrival", "trending", "best_seller"].includes(
+      String(product.badge || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_")
+    )
+      ? String(product.badge)
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      : "auto",
     hsnCode: product.hsnCode || "",
     taxClassId: product.taxClassId || "",
     priceTaxMode: product.priceTaxMode === "exclusive" ? "exclusive" : "inclusive",
@@ -275,6 +322,7 @@ export function productToForm(product) {
     metaTitle: product.metaTitle || "",
     metaDescription: product.metaDescription || "",
     slugManual: Boolean(product.slug),
+    sale: saleFormFromProduct(product),
   };
 }
 
@@ -341,7 +389,7 @@ export function buildProductPayload(formData) {
       const customValue = (v.customValue || "").trim();
       const quantity = Math.max(0, Number(v.quantity) || 0);
       const images = Array.isArray(v.images) ? v.images.filter(Boolean) : [];
-      const existingSku = v.sku != null ? String(v.sku).trim() : "";
+      const existingSku = stripSkuIndex(v.sku);
       const sku =
         existingSku ||
         generateSku(
@@ -361,20 +409,40 @@ export function buildProductPayload(formData) {
         barcode: barcode || undefined,
       };
     }),
-    thumbnails: (formData.variants || []).flatMap((v) =>
-      (Array.isArray(v.images) ? v.images.filter(Boolean) : []).slice(0, 1)
-    ),
+    // Product Media only — never copy variant uploads into thumbnails.
+    thumbnails: (() => {
+      const variantImageSet = new Set(
+        (formData.variants || []).flatMap((v) =>
+          Array.isArray(v.images) ? v.images.filter(Boolean) : []
+        )
+      );
+      return (formData.thumbnails || [])
+        .filter(Boolean)
+        .filter((url) => !variantImageSet.has(url));
+    })(),
     totalStock: variantsForPayload.reduce(
       (sum, v) => sum + Math.max(0, Number(v.quantity) || 0),
       0
     ),
     status: STATUSES.includes(formData.status) ? formData.status : "draft",
+    badge: ["new_arrival", "trending", "best_seller"].includes(
+      String(formData.badge || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_")
+    )
+      ? String(formData.badge)
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      : null,
     hsnCode: (formData.hsnCode || "").trim() || null,
     taxClassId: null,
     priceTaxMode: formData.priceTaxMode === "exclusive" ? "exclusive" : "inclusive",
     slug,
     metaTitle: (formData.metaTitle || "").trim() || null,
     metaDescription: (formData.metaDescription || "").trim() || null,
+    sale: salePayload(formData.sale),
   };
 }
 
@@ -422,7 +490,7 @@ export function createDraftPayload() {
         customValue: "",
         quantity: 0,
         images: [],
-        sku: generateSku(productId, "VAR", 0),
+        sku: generateSku(productId, "VAR"),
       },
     ],
     thumbnails: [],

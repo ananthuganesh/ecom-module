@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { PackageOpenIcon } from "@hugeicons/core-free-icons";
 import {
   AlertTriangle,
   CalendarDays,
@@ -11,9 +14,10 @@ import {
   XCircle,
   Zap,
   ChevronDown,
-} from "lucide-react";
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardAction,
@@ -39,6 +43,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -50,8 +59,18 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
-export function AdminListLayout({ title, actions, metrics, filters, children, aside, fill = true }) {
-  const showHeader = Boolean(title) || Boolean(actions);
+export function AdminListLayout({
+  title,
+  icon: Icon,
+  description,
+  actions,
+  metrics,
+  filters,
+  children,
+  aside,
+  fill = true,
+}) {
+  const showHeader = Boolean(title) || Boolean(actions) || Boolean(description);
 
   return (
     <div
@@ -78,11 +97,29 @@ export function AdminListLayout({ title, actions, metrics, filters, children, as
           {showHeader || metrics || filters ? (
             <div className="shrink-0">
               {showHeader ? (
-                <div className="mb-5 flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  {title ? (
-                    <h1 className="admin-page-title text-[1.25rem] font-[650] leading-6 tracking-[-0.00833em] text-[#303030]">
-                      {title}
-                    </h1>
+                <div className="mb-5 flex w-full flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  {title || description ? (
+                    <div className="min-w-0">
+                      {title ? (
+                        <div className="flex items-center gap-2">
+                          {Icon ? (
+                            <Icon
+                              active
+                              className="size-5 shrink-0 text-(--p-color-icon-secondary)"
+                              aria-hidden
+                            />
+                          ) : null}
+                          <h1 className="admin-page-title text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
+                            {title}
+                          </h1>
+                        </div>
+                      ) : null}
+                      {description ? (
+                        <p className="mt-1 max-w-[42rem] text-[13px] leading-5 text-(--p-color-text-secondary)">
+                          {description}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : (
                     <div />
                   )}
@@ -134,12 +171,12 @@ export function AdminHeaderButton({
       size="lg"
       variant={isPrimary ? "default" : isOutline ? "outline" : "secondary"}
       className={cn(
-        "h-8 min-h-8 gap-1.5 rounded-lg px-3 text-[0.8125rem] font-[550] leading-5 shadow-none",
+        "h-8 min-h-8 gap-1.5 rounded-lg px-3 text-[0.8125rem] font-medium leading-5 shadow-none",
         isPrimary
-          ? "bg-[#303030] text-white hover:bg-[#1a1a1a]"
+          ? "bg-(--p-color-button-primary-bg) text-white hover:bg-(--p-color-button-primary-bg-hover)"
           : isOutline
-            ? "border-[#c9cccf] bg-transparent text-[#303030] hover:bg-[#f7f7f7] active:bg-[#f1f1f1]"
-            : "border-transparent bg-[#e3e3e3] text-[#303030] hover:bg-[#d4d4d4] active:bg-[#ccc]"
+            ? "admin-btn-secondary text-(--p-color-text)"
+            : "admin-btn-secondary text-(--p-color-text)"
       )}
     >
       {children}
@@ -166,10 +203,10 @@ export function AdminHeaderSplitButton({
         variant={btnVariant}
         size="lg"
         className={cn(
-          "h-8 min-h-8 gap-1.5 rounded-r-none px-3 text-[0.8125rem] font-[550] leading-5 shadow-none",
+          "h-8 min-h-8 gap-1.5 rounded-r-none px-3 text-[0.8125rem] font-medium leading-5 shadow-none",
           isPrimary
-            ? "border-r border-r-white/15 bg-[#303030] text-white hover:bg-[#1a1a1a]"
-            : "border-transparent bg-[#e3e3e3] text-[#303030] hover:bg-[#d4d4d4]"
+            ? "border-r border-r-white/15 bg-(--p-color-button-primary-bg) text-white hover:bg-(--p-color-button-primary-bg-hover)"
+            : "border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) hover:bg-(--p-color-button-bg-fill-hover)"
         )}
       >
         {children}
@@ -186,8 +223,8 @@ export function AdminHeaderSplitButton({
               className={cn(
                 "h-8 w-8 rounded-l-none shadow-none",
                 isPrimary
-                  ? "bg-[#303030] text-white hover:bg-[#1a1a1a]"
-                  : "border-transparent bg-[#e3e3e3] text-[#303030] hover:bg-[#d4d4d4]"
+                  ? "bg-(--p-color-button-primary-bg) text-white hover:bg-(--p-color-button-primary-bg-hover)"
+                  : "border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) hover:bg-(--p-color-button-bg-fill-hover)"
               )}
             />
           }
@@ -235,9 +272,9 @@ export function AdminViewMenu({ value = "all", options = [], onChange }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 text-[0.8125rem] font-[550] text-[#303030] outline-none hover:bg-black/5">
+      <DropdownMenuTrigger className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 text-[0.8125rem] font-medium text-(--p-color-text) outline-none hover:bg-black/5">
         {current.label}
-        <span className="inline-flex flex-col leading-none text-[#8a8a8a]" aria-hidden>
+        <span className="inline-flex flex-col leading-none text-(--p-color-text-tertiary)" aria-hidden>
           <ChevronDown className="size-3 rotate-180" />
           <ChevronDown className="size-3 -mt-1" />
         </span>
@@ -265,101 +302,238 @@ const DATE_PRESETS = [
   { value: "30d", label: "Last 30 days" },
 ];
 
+function toDayKey(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseDayKey(key) {
+  if (!key || typeof key !== "string") return undefined;
+  const [y, m, d] = key.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+}
+
+function formatRangeLabel(fromKey, toKey) {
+  const from = parseDayKey(fromKey);
+  const to = parseDayKey(toKey || fromKey);
+  if (!from) return "Custom range";
+  const fmt = (dt) =>
+    dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  if (!to || toDayKey(from) === toDayKey(to)) return fmt(from);
+  return `${fmt(from)} – ${fmt(to)}`;
+}
+
 export function AdminDateRangeButton({
   value,
   onChange,
   className = "",
   presets = DATE_PRESETS,
   align = "end",
+  allowCustom = false,
 }) {
   const list = Array.isArray(presets) && presets.length ? presets : DATE_PRESETS;
-  const preset =
-    typeof value === "string"
-      ? value
-      : value?.preset || list[0]?.value || "all";
-  const current = list.find((p) => p.value === preset) || list[0];
+  const isObject = value && typeof value === "object";
+  const preset = isObject
+    ? value.preset || (value.from || value.to ? "custom" : list[0]?.value || "all")
+    : value || list[0]?.value || "all";
+  const fromKey = isObject ? value.from || "" : "";
+  const toKey = isObject ? value.to || "" : "";
+  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState("presets"); // presets | custom
+  const [draftRange, setDraftRange] = useState({
+    from: parseDayKey(fromKey),
+    to: parseDayKey(toKey),
+  });
+
+  const current = list.find((p) => p.value === preset);
+  const label =
+    preset === "custom" || (fromKey && toKey)
+      ? formatRangeLabel(fromKey, toKey || fromKey)
+      : current?.label || list[0]?.label || "Date";
   const hasAll = list.some((p) => p.value === "all");
-  const isFiltered = hasAll ? preset !== "all" : false;
+
+  const emit = (next) => {
+    if (typeof value === "string" && next.preset && next.preset !== "custom" && !next.from) {
+      onChange?.(next.preset);
+      return;
+    }
+    onChange?.(next);
+  };
+
+  const handleOpenChange = (nextOpen) => {
+    setOpen(nextOpen);
+    if (!nextOpen) setPanel("presets");
+  };
+
+  const applyPreset = (p) => {
+    setPanel("presets");
+    setOpen(false);
+    emit({ preset: p.value });
+  };
+
+  const showCustom = () => {
+    setDraftRange({
+      from: parseDayKey(fromKey) || undefined,
+      to: parseDayKey(toKey || fromKey) || undefined,
+    });
+    setPanel("custom");
+  };
+
+  const applyCustom = () => {
+    if (!draftRange?.from) return;
+    const from = toDayKey(draftRange.from);
+    const to = toDayKey(draftRange.to || draftRange.from);
+    emit({ preset: "custom", from, to });
+    setPanel("presets");
+    setOpen(false);
+  };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
         className={cn(
-          "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-[13px] font-medium outline-none hover:bg-muted",
-          isFiltered && "border-foreground/20 bg-muted/60",
+          "admin-btn-secondary inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium outline-none",
           className
         )}
       >
         <CalendarDays className="size-3.5 text-muted-foreground" />
-        <span className="max-w-[9.5rem] truncate">{current.label}</span>
+        <span className="max-w-[14rem] truncate">{label}</span>
         <ChevronDown className="size-3.5 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className="min-w-[200px]">
-        {list.map((p, idx) => (
-          <div key={p.value}>
-            {hasAll && idx === 1 ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem
-              onClick={() => {
-                if (typeof value === "string") onChange?.(p.value);
-                else onChange?.({ preset: p.value });
-              }}
-              className="gap-2 text-[13px]"
-            >
-              <span className="flex size-4 shrink-0 items-center justify-center">
-                {p.value === preset ? <Check className="size-3.5" /> : null}
-              </span>
-              {p.label}
-            </DropdownMenuItem>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        side="bottom"
+        sideOffset={6}
+        className={cn(
+          "gap-0 p-1.5 shadow-lg",
+          panel === "custom" ? "w-auto min-w-[280px]" : "w-[220px]"
+        )}
+      >
+        {panel === "presets" ? (
+          <div className="flex flex-col py-0.5">
+            {list.map((p, idx) => (
+              <div key={p.value}>
+                {hasAll && idx === 1 ? (
+                  <div className="my-1 h-px bg-border" />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground outline-none hover:bg-muted"
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    {p.value === preset && preset !== "custom" ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                  </span>
+                  {p.label}
+                </button>
+              </div>
+            ))}
+            {allowCustom ? (
+              <>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  onClick={showCustom}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground outline-none hover:bg-muted"
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    {preset === "custom" ? <Check className="size-3.5" /> : null}
+                  </span>
+                  Custom range…
+                </button>
+              </>
+            ) : null}
           </div>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        ) : (
+          <div className="flex flex-col gap-2 p-1">
+            <Calendar
+              mode="range"
+              numberOfMonths={1}
+              selected={draftRange}
+              onSelect={(range) => {
+                setDraftRange(range || { from: undefined, to: undefined });
+              }}
+              defaultMonth={draftRange?.from || new Date()}
+            />
+            <div className="flex items-center justify-end gap-1.5 border-t border-border px-1 pt-2 pb-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[12px]"
+                onClick={() => {
+                  setPanel("presets");
+                  setOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2.5 text-[12px]"
+                disabled={!draftRange?.from}
+                onClick={applyCustom}
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
 const STATUS_TONE_STYLES = {
-  success: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  info: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  purple: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  review: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  neutral: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  danger: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  warning: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
-  caution: "bg-black/[0.06] text-[#616161] hover:bg-black/[0.06]",
+  success: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  info: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  purple: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  review: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  neutral: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  danger: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  warning: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
+  caution: "bg-black/[0.06] text-(--p-color-text-secondary) hover:bg-black/[0.06]",
 };
 
 /** Solid Polaris-style fills — use for fulfillment badges only. */
 const STATUS_TONE_SOLID_STYLES = {
-  success: "bg-[#cdfee1] text-[#0c5132] hover:bg-[#cdfee1]",
-  info: "bg-[#e0f0ff] text-[#00527c] hover:bg-[#e0f0ff]",
-  purple: "bg-[#f1e8ff] text-[#4c2e9d] hover:bg-[#f1e8ff]",
-  review: "bg-[#ffef9d] text-[#4f4700] hover:bg-[#ffef9d]",
-  neutral: "bg-[#e3e3e3] text-[#303030] hover:bg-[#e3e3e3]",
-  danger: "bg-[#fee2e1] text-[#8e1f0b] hover:bg-[#fee2e1]",
-  warning: "bg-[#ffd6a4] text-[#5e4200] hover:bg-[#ffd6a4]",
-  caution: "bg-[#ffeb78] text-[#4f4700] hover:bg-[#ffeb78]",
+  success: "bg-(--p-color-badge-bg-fill-success) text-(--p-color-text-success-secondary) hover:bg-(--p-color-badge-bg-fill-success)",
+  info: "bg-(--p-color-bg-fill-info) text-(--p-color-text-info-secondary) hover:bg-(--p-color-bg-fill-info)",
+  purple: "bg-(--p-color-bg-fill-ai) text-(--p-color-badge-text-ai) hover:bg-(--p-color-bg-fill-ai)",
+  review: "bg-(--p-color-badge-bg-fill-caution) text-(--p-color-badge-text-caution) hover:bg-(--p-color-badge-bg-fill-caution)",
+  neutral: "bg-(--p-color-button-bg-fill) text-(--p-color-text) hover:bg-(--p-color-button-bg-fill)",
+  danger: "bg-(--p-color-badge-bg-fill-critical) text-(--p-color-text-critical-secondary) hover:bg-(--p-color-badge-bg-fill-critical)",
+  warning: "bg-(--p-color-badge-bg-fill-warning) text-(--p-color-badge-text-caution) hover:bg-(--p-color-badge-bg-fill-warning)",
+  caution: "bg-(--p-color-badge-bg-fill-caution) text-(--p-color-badge-text-caution) hover:bg-(--p-color-badge-bg-fill-caution)",
 };
 
 const STATUS_TONE_ICON_COLORS = {
-  success: "text-[#047b5d]",
-  info: "text-[#0094d5]",
-  purple: "text-[#8051ff]",
-  review: "text-[#b28400]",
-  neutral: "text-[#8a8a8a]",
-  danger: "text-[#e22c38]",
-  warning: "text-[#b28400]",
-  caution: "text-[#4f4700]",
+  success: "text-(--p-color-text-success-accent)",
+  info: "text-(--p-color-text-info-accent)",
+  purple: "text-(--p-color-text-ai-accent)",
+  review: "text-(--p-color-text-caution-accent)",
+  neutral: "text-(--p-color-text-tertiary)",
+  danger: "text-(--p-color-text-critical-accent)",
+  warning: "text-(--p-color-text-caution-accent)",
+  caution: "text-(--p-color-badge-text-caution)",
 };
 
 const STATUS_TONE_DOT_COLORS = {
-  success: "bg-[#4a4a4a]",
-  info: "bg-[#0094d5]",
-  purple: "bg-[#8051ff]",
-  review: "bg-[#b28400]",
-  neutral: "bg-[#8a8a8a]",
-  danger: "bg-[#e22c38]",
-  warning: "bg-[#b28400]",
-  caution: "bg-[#998a00]",
+  success: "bg-(--p-color-icon-secondary)",
+  info: "bg-(--p-color-bg-info-accent)",
+  purple: "bg-(--p-color-bg-ai-accent)",
+  review: "bg-(--p-color-text-caution-accent)",
+  neutral: "bg-(--p-color-icon-secondary)",
+  danger: "bg-(--p-color-bg-critical-accent)",
+  warning: "bg-(--p-color-text-caution-accent)",
+  caution: "bg-[oklch(0.7_0.16_82)]", /* darker yellow than the #ffdd34 accent, which vanished on the yellow fill */
 };
 
 const STATUS_TONE_ICONS = {
@@ -374,29 +548,14 @@ const STATUS_TONE_ICONS = {
 };
 
 const STATUS_SIZE_STYLES = {
-  default: "h-6 gap-1.5 rounded-[0.5rem] px-2 py-0.5 pl-1.5 text-[0.75rem] font-[550] leading-4",
+  default: "h-6 gap-1.5 rounded-[0.5rem] px-2 py-0.5 pl-1.5 text-[0.75rem] font-medium leading-4",
   large:
-    "h-7 gap-1.5 rounded-[0.5rem] px-2.5 py-0.5 pl-2 text-[0.8125rem] font-[550] leading-5",
+    "h-7 gap-1.5 rounded-[0.5rem] px-2.5 py-0.5 pl-2 text-[0.8125rem] font-medium leading-5",
 };
 
-/** Shopify Polaris order-unfulfilled glyph (16×16). */
+/** Order-unfulfilled glyph (Hugeicons open package). */
 export function OrderUnfulfilledIcon({ className, ...props }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      className={className}
-      aria-hidden
-      {...props}
-    >
-      <path d="M10.53 2.78a.749.749 0 1 0-1.06-1.06l-1.47 1.47-1.47-1.47a.749.749 0 1 0-1.06 1.06l1.47 1.47-1.47 1.47a.749.749 0 1 0 1.06 1.06l1.47-1.47 1.47 1.47a.749.749 0 1 0 1.06-1.06l-1.47-1.47z" />
-      <path
-        fillRule="evenodd"
-        d="m12.844 8-.336-2.265a.75.75 0 0 1 1.484-.22l.413 2.792q.095.638.095 1.282v1.661a3.25 3.25 0 0 1-3.25 3.25h-6.5a3.25 3.25 0 0 1-3.25-3.25v-1.66q0-.645.094-1.283l.414-2.792a.75.75 0 1 1 1.484.22l-.336 2.265h2.484c.538 0 1.015.344 1.185.855l.159.474a.25.25 0 0 0 .237.171h1.558a.25.25 0 0 0 .237-.17l.159-.475a1.25 1.25 0 0 1 1.185-.855zm-9.843 1.5-.001.09v1.66c0 .967.784 1.75 1.75 1.75h6.5a1.75 1.75 0 0 0 1.75-1.75v-1.75h-2.46l-.1.303a1.75 1.75 0 0 1-1.66 1.197h-1.56a1.75 1.75 0 0 1-1.66-1.197l-.1-.303h-2.46Z"
-      />
-    </svg>
-  );
+  return <HugeiconsIcon icon={PackageOpenIcon} className={className} aria-hidden {...props} />;
 }
 
 export function AdminStatusText({
@@ -460,7 +619,7 @@ export function AdminDataTable({ headers, children, empty, toolbar, fitContent =
       {toolbar ? (
         <div
           data-slot="data-table-toolbar"
-          className="flex w-full shrink-0 items-center gap-2 border-b border-[#ebebeb] bg-white px-3 py-2"
+          className="flex w-full shrink-0 items-center gap-2 border-b border-(--p-color-border-secondary) bg-white px-3 py-2"
         >
           {toolbar}
         </div>
@@ -561,7 +720,7 @@ export function AdminProgressRow({ label, value, percent }) {
 
 export function AdminMetricRow({ items = [] }) {
   return (
-    <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-4 dark:*:data-[slot=card]:bg-card">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <Card key={item.label} className="@container/card">
           <CardHeader>

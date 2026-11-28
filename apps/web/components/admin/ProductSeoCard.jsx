@@ -1,15 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Pencil } from "lucide-react";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Pencil } from "@/components/icons";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { slugify } from "@/utils/productForm";
 
 const TITLE_MAX = 70;
+const TITLE_RECOMMENDED = "50–60";
 const DESC_MAX = 160;
+const DESC_RECOMMENDED = "150–160";
 
 function stripHtml(value) {
   return String(value || "")
@@ -34,15 +42,55 @@ function formatPreviewPrice(sellingPrice) {
   })} INR`;
 }
 
-function SeoPreview({
-  storeName,
-  breadcrumb,
-  previewTitle,
-  previewDescription,
-  onClick,
+function CharHint({ length, max, recommended }) {
+  return (
+    <p className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[12px] text-(--p-color-text-secondary)">
+      <span>Recommended: {recommended} characters</span>
+      <span className="tabular-nums">
+        {length}/{max}
+      </span>
+    </p>
+  );
+}
+
+export default function ProductSeoCard({
+  form,
+  updateForm,
+  storeName = "Urban Aana",
+  // Reused by collections: /collections/{slug}, titled by form.name.
+  pathPrefix = "product",
+  breadcrumbSection = "products",
 }) {
-  const body = (
-    <>
+  const [editing, setEditing] = useState(false);
+  const slug = String(form?.slug || "").trim();
+  const productName = String(form?.productName || form?.name || "").trim();
+  const metaTitle = String(form?.metaTitle || "");
+  const metaDescription = String(form?.metaDescription || "");
+
+  const previewTitle = (
+    metaTitle.trim() ||
+    productName ||
+    "Page title"
+  ).slice(0, TITLE_MAX);
+
+  const previewDescription = useMemo(() => {
+    const custom = metaDescription.trim();
+    if (custom) return custom.slice(0, DESC_MAX);
+    const fromBody = stripHtml(form?.description);
+    if (fromBody) return fromBody.slice(0, DESC_MAX);
+    return formatPreviewPrice(form?.pricing?.sellingPrice);
+  }, [metaDescription, form?.description, form?.pricing?.sellingPrice]);
+
+  const origin = storeOrigin();
+  const originHost = origin.replace(/^https?:\/\//, "");
+  const handlePath = slug ? `${pathPrefix}/${slug}` : `${pathPrefix}/`;
+  const fullUrl = `${origin}/${handlePath}`;
+  const breadcrumb = [originHost, breadcrumbSection, slug || undefined].filter(
+    Boolean
+  );
+
+  const preview = (
+    <div className="rounded-lg border border-(--p-color-border-secondary) bg-white px-3 py-2.5">
       <p className="truncate text-[12px] text-[#202124]">{storeName}</p>
       <p className="mt-0.5 truncate text-[12px] text-[#4d5156]">
         {breadcrumb.join(" › ")}
@@ -55,68 +103,18 @@ function SeoPreview({
           {previewDescription}
         </p>
       ) : null}
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full rounded-lg px-1 py-1 text-left hover:bg-[#fafafa]"
-      >
-        {body}
-      </button>
-    );
-  }
-
-  return <div className="px-1 py-1">{body}</div>;
-}
-
-export default function ProductSeoCard({
-  form,
-  updateForm,
-  storeName = "Urban Aana",
-}) {
-  const [editing, setEditing] = useState(false);
-
-  const slug = String(form?.slug || "").trim();
-  const productName = String(form?.productName || "").trim();
-  const metaTitle = String(form?.metaTitle || "");
-  const metaDescription = String(form?.metaDescription || "");
-
-  const previewTitle = (metaTitle.trim() || productName || "Product title").slice(
-    0,
-    TITLE_MAX
-  );
-
-  const previewDescription = useMemo(() => {
-    const custom = metaDescription.trim();
-    if (custom) return custom.slice(0, DESC_MAX);
-    const fromBody = stripHtml(form?.description);
-    if (fromBody) return fromBody.slice(0, DESC_MAX);
-    return formatPreviewPrice(form?.pricing?.sellingPrice);
-  }, [metaDescription, form?.description, form?.pricing?.sellingPrice]);
-
-  const origin = storeOrigin();
-  const originHost = origin.replace(/^https?:\/\//, "");
-  const handlePath = slug ? `products/${slug}` : "products/";
-  const fullUrl = `${origin}/${handlePath}`;
-  const breadcrumb = [originHost, "products", slug || undefined].filter(
-    Boolean
+    </div>
   );
 
   return (
-    <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle className="admin-card-heading m-0">
-            Search engine listing
-          </CardTitle>
+    <Card className="@container/card">
+      <CardHeader>
+        <CardTitle>Search engine listing</CardTitle>
+        <CardAction>
           <button
             type="button"
             onClick={() => setEditing((v) => !v)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#616161] hover:bg-[#f1f1f1]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-(--p-color-text-secondary) hover:bg-(--p-color-bg-fill)"
             aria-label={
               editing
                 ? "Collapse search engine listing"
@@ -126,30 +124,32 @@ export default function ProductSeoCard({
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-        </div>
-
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
         {editing ? (
           <>
-            <SeoPreview
-              storeName={storeName}
-              breadcrumb={breadcrumb}
-              previewTitle={previewTitle}
-              previewDescription={previewDescription}
-            />
+            <div>
+              <p className="mb-2 admin-card-label">Preview</p>
+              {preview}
+            </div>
 
-            <div className="-mx-4 border-t border-[#ebebeb]" />
+            <div className="-mx-(--card-spacing) border-t border-(--p-color-border-secondary)" />
 
             <Field>
               <FieldLabel>Page title</FieldLabel>
               <Input
                 value={metaTitle}
                 maxLength={TITLE_MAX}
+                placeholder={productName || "Page title"}
                 onChange={(e) => updateForm({ metaTitle: e.target.value })}
-                className="h-9 border-[#c9cccf] bg-white"
+                className="h-9 border-(--p-color-border-hover) bg-white"
               />
-              <p className="mt-1 text-[12px] text-[#616161]">
-                {metaTitle.length} of {TITLE_MAX} characters used
-              </p>
+              <CharHint
+                length={metaTitle.length}
+                max={TITLE_MAX}
+                recommended={TITLE_RECOMMENDED}
+              />
             </Field>
 
             <Field>
@@ -158,42 +158,48 @@ export default function ProductSeoCard({
                 rows={3}
                 value={metaDescription}
                 maxLength={DESC_MAX}
+                placeholder="Meta description"
                 onChange={(e) =>
                   updateForm({ metaDescription: e.target.value })
                 }
-                className="min-h-[4.5rem] border-[#c9cccf] bg-white"
+                className="min-h-[4.5rem] border-(--p-color-border-hover) bg-white"
               />
-              <p className="mt-1 text-[12px] text-[#616161]">
-                {metaDescription.length} of {DESC_MAX} characters used
-              </p>
+              <CharHint
+                length={metaDescription.length}
+                max={DESC_MAX}
+                recommended={DESC_RECOMMENDED}
+              />
             </Field>
 
             <Field>
               <FieldLabel>URL handle</FieldLabel>
               <Input
-                value={slug ? `products/${slug}` : "products/"}
+                value={handlePath}
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/^products\/?/i, "");
+                  const raw = e.target.value.replace(
+                    new RegExp(`^${pathPrefix}s?/`, "i"),
+                    ""
+                  );
                   updateForm({
                     slug: slugify(raw),
                     slugManual: true,
                   });
                 }}
-                className="h-9 border-[#c9cccf] bg-white"
+                className="h-9 border-(--p-color-border-hover) bg-white"
               />
-              <p className="mt-1 truncate text-[12px] text-[#616161]">
+              <p className="mt-1 truncate text-[12px] text-(--p-color-text-secondary)">
                 {fullUrl}
               </p>
             </Field>
           </>
         ) : (
-          <SeoPreview
-            storeName={storeName}
-            breadcrumb={breadcrumb}
-            previewTitle={previewTitle}
-            previewDescription={previewDescription}
+          <button
+            type="button"
             onClick={() => setEditing(true)}
-          />
+            className="w-full rounded-lg text-left hover:bg-(--p-color-bg-surface-secondary)"
+          >
+            {preview}
+          </button>
         )}
       </CardContent>
     </Card>

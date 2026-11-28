@@ -1,3 +1,4 @@
+from datetime import date, datetime, timezone
 from typing import Any
 
 from bson import ObjectId
@@ -16,6 +17,14 @@ def _jsonify(value: Any) -> Any:
         return None
     if isinstance(value, ObjectId):
         return str(value)
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        iso = dt.isoformat()
+        if iso.endswith("+00:00"):
+            iso = f"{iso[:-6]}Z"
+        return iso
+    if isinstance(value, date):
+        return value.isoformat()
     if isinstance(value, list):
         return [_jsonify(v) for v in value]
     if isinstance(value, dict):
@@ -25,7 +34,8 @@ def _jsonify(value: Any) -> Any:
     return value
 
 
-def user_public(user: User, token: str | None = None, stats: dict | None = None) -> dict:
+def user_public(user, token: str | None = None, stats: dict | None = None) -> dict:
+    """Serialize a customer User or staff AdminAccount for API responses."""
     first = getattr(user, "firstName", None) or None
     last = getattr(user, "lastName", None) or None
     if not first and not last and user.name:
@@ -33,25 +43,37 @@ def user_public(user: User, token: str | None = None, stats: dict | None = None)
         if parts:
             first = parts[0]
             last = " ".join(parts[1:]) if len(parts) > 1 else ""
+    raw_addresses = getattr(user, "addresses", None) or []
+    addresses = []
+    for i, a in enumerate(raw_addresses):
+        if hasattr(a, "model_dump"):
+            item = a.model_dump()
+        elif isinstance(a, dict):
+            item = dict(a)
+        else:
+            continue
+        if not str(item.get("id") or "").strip():
+            item["id"] = f"legacy-{i}"
+        addresses.append(item)
     data = {
         "_id": oid_str(user.id),
         "name": user.name,
         "firstName": first or "",
         "lastName": last or "",
         "email": user.email,
-        "isAdmin": user.isAdmin,
+        "isAdmin": bool(getattr(user, "isAdmin", False)),
         "roleId": getattr(user, "roleId", None),
-        "phone": user.phone,
-        "walletBalance": user.walletBalance,
-        "addresses": [a.model_dump() for a in (user.addresses or [])],
+        "phone": getattr(user, "phone", None),
+        "addresses": addresses,
         "emailSubscribed": bool(getattr(user, "emailSubscribed", False)),
         "whatsappSubscribed": bool(getattr(user, "whatsappSubscribed", False)),
-        "hasPassword": bool(user.password),
+        "hasPassword": bool(getattr(user, "password", None)),
         "customerUrlId": getattr(user, "customerUrlId", None) or None,
         "createdAt": getattr(user, "createdAt", None),
         "updatedAt": getattr(user, "updatedAt", None),
         "ordersCount": int((stats or {}).get("ordersCount") or 0),
         "amountSpent": float((stats or {}).get("amountSpent") or 0),
+        "abandonedCount": int((stats or {}).get("abandonedCount") or 0),
     }
     if token is not None:
         data["token"] = token
@@ -71,8 +93,19 @@ def doc_to_dict(doc: Any) -> dict:
     return data
 
 
-def product_dict(product: Product) -> dict:
-    return doc_to_dict(product)
+def product_dict(product: Product, *, admin: bool = False) -> dict:
+    """Storefront-safe product payload. Cost fields only when admin=True."""
+    data = doc_to_dict(product)
+    if admin:
+        return data
+    pricing = data.get("pricing")
+    if isinstance(pricing, dict):
+        pricing = dict(pricing)
+        pricing.pop("buyingPrice", None)
+        pricing.pop("costPrice", None)
+        pricing.pop("landedCost", None)
+        data["pricing"] = pricing
+    return data
 
 
 def remap_order(
@@ -90,18 +123,35 @@ def remap_order(
         if customer_id
         else None
     )
+    from app.services.variants import find_variant
+
     items = []
     enriched_items = []
     for it in order.items or []:
         pid = oid_str(it.productId)
-        name = "Product"
-        image = None
+        # Prefer values snapshotted on the line item so deleted/changed products
+        # still show the correct name/image on order pages.
+        name = (getattr(it, "productName", None) or "").strip() or "Product"
+        image = (getattr(it, "image", None) or "").strip() or None
         product = product_map.get(pid) if product_map and pid else None
         if product:
-            name = product.productName or product.product or product.name or "Product"
-            image = (product.thumbnails[0] if product.thumbnails else None) or (
-                product.variants[0].images[0] if product.variants and product.variants[0].images else None
+            live_name = (
+                product.productName or product.product or product.name or ""
+            ).strip()
+            if live_name and (not name or name.lower() == "product"):
+                name = live_name
+            matched = find_variant(
+                product, color=getattr(it, "color", "") or "", size=getattr(it, "size", "") or ""
             )
+            variant_image = None
+            if matched and getattr(matched, "images", None):
+                variant_image = next((img for img in matched.images if img), None)
+            catalog_image = (product.thumbnails[0] if product.thumbnails else None) or (
+                product.variants[0].images[0]
+                if product.variants and product.variants[0].images
+                else None
+            )
+            image = image or variant_image or catalog_image
         items.append(
             {
                 "name": name,
@@ -114,10 +164,14 @@ def remap_order(
             }
         )
         item = _jsonify(it.model_dump(mode="python"))
+        if not item.get("productName"):
+            item["productName"] = name
+        if not item.get("image"):
+            item["image"] = image
         item["productId"] = (
             product_dict(product)
             if product
-            else {"_id": pid, "productId": pid, "productName": "Product", "thumbnails": []}
+            else {"_id": pid, "productId": pid, "productName": name, "thumbnails": []}
         )
         enriched_items.append(item)
     po["items"] = enriched_items
@@ -130,14 +184,22 @@ def remap_order(
     )
     po["paymentMethod"] = order.paymentMethod or (order.transactionDetails or {}).get("paymentMethod")
     po["awbCode"] = order.awb
-    po["courierName"] = order.courier or ("DTDC" if order.awb else None)
+    from app.services import couriers
+
+    meta = couriers.shipment_meta(order)
+    po["courierName"] = order.courier or meta["carrierLabel"]
     po["awb"] = order.awb
     po["courier"] = order.courier
+    po["carrier"] = meta["carrier"]
+    po["trackUrl"] = meta["trackUrl"]
+    # Resolved from whichever carrier booked it, so clients never read raw details.
+    po["shipmentTimestamps"] = _jsonify(meta["timestamps"])
     details = order.transactionDetails or {}
     dtdc = details.get("dtdc") if isinstance(details.get("dtdc"), dict) else {}
     po["dtdcServiceType"] = details.get("dtdcServiceType") or dtdc.get("service_type_id")
     po["refundedAmount"] = details.get("refundedAmount") or 0
     po["refunds"] = details.get("refunds") or []
+    po["cancelledAt"] = details.get("cancelledAt")
     return po
 
 
@@ -167,7 +229,7 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                     {
                         "$match": {
                             "customerId": {"$in": list(customer_ids)},
-                            "status": {"$nin": ["draft", "abandoned", "cancelled"]},
+                            "status": {"$nin": ["abandoned", "cancelled"]},
                         }
                     },
                     {
@@ -184,7 +246,7 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                                                         "$ifNull": ["$paymentStatus", ""]
                                                     }
                                                 },
-                                                ["paid", "pay_on_delivery", "cod"],
+                                                ["paid"],
                                             ]
                                         },
                                         {
@@ -205,12 +267,48 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                 stats_by_id[str(row.get("_id"))] = {
                     "ordersCount": int(row.get("ordersCount") or 0),
                     "amountSpent": float(row.get("amountSpent") or 0),
+                    "abandonedCount": 0,
                 }
         except Exception:
             stats_by_id = {}
 
+        abandoned_by_id: dict[str, int] = {}
+        try:
+            from app.documents import AbandonedCheckout
+
+            ac_rows = await AbandonedCheckout.get_pymongo_collection().aggregate(
+                [
+                    {
+                        "$match": {
+                            "status": "abandoned",
+                            "userId": {"$in": list(customer_ids)},
+                        }
+                    },
+                    {"$group": {"_id": "$userId", "count": {"$sum": 1}}},
+                ]
+            ).to_list(length=None)
+            for row in ac_rows:
+                key = str(row.get("_id"))
+                abandoned_by_id[key] = int(row.get("count") or 0)
+        except Exception:
+            pass
+        for key, count in abandoned_by_id.items():
+            stats_by_id.setdefault(
+                key, {"ordersCount": 0, "amountSpent": 0.0, "abandonedCount": 0}
+            )
+            stats_by_id[key]["abandonedCount"] = int(count)
+
     result = []
     from app.services.dtdc_est_cost import ensure_dtdc_est_cost
+
+    # Return requests per order: the admin status badge and activity show them.
+    returns_map: dict[str, list[dict]] = {}
+    try:
+        from app.services.returns import returns_by_order
+
+        returns_map = await returns_by_order([str(o.id) for o in orders if o.id])
+    except Exception:
+        returns_map = {}
 
     for order in orders:
         try:
@@ -231,6 +329,8 @@ async def enrich_orders(orders: list[Order]) -> list[dict]:
                     "customerUrlId": customer.get("customerUrlId"),
                     "ordersCount": int(stats.get("ordersCount") or 0),
                     "amountSpent": float(stats.get("amountSpent") or 0),
+                    "abandonedCount": int(stats.get("abandonedCount") or 0),
                 }
+        remapped["returns"] = returns_map.get(str(order.id), [])
         result.append(remapped)
     return result

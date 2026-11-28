@@ -7,11 +7,9 @@ export const abandonedCheckoutService = {
     return response.data;
   },
 
-  /** Rehydrate cart via unguessable recovery token (never pass checkout/cart IDs). */
+  /** Rehydrate cart via unguessable recovery token (POST body — not query string). */
   recover: async (token) => {
-    const response = await api.get("/abandoned-checkout/recover", {
-      params: { token },
-    });
+    const response = await api.post("/abandoned-checkout/recover", { token });
     return response.data;
   },
 

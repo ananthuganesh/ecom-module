@@ -14,6 +14,7 @@ _TOUCH_KEYS = (
     "fbclid",
     "landedAt",
     "landingPath",
+    "referrer",
 )
 _MAX_LEN = 200
 

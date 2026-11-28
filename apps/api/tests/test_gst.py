@@ -1,44 +1,56 @@
-from app.services.gst import split_cgst_sgst_igst, taxable_and_tax
+import pytest
+
+from app.services.gst import (
+    gst_rate_for_line,
+    gst_rate_for_unit_price,
+    resolve_state_code,
+    split_cgst_sgst_igst,
+    taxable_and_tax,
+)
 
 
-def test_taxable_inclusive_18():
-    taxable, tax = taxable_and_tax(118, 18, inclusive=True)
-    assert taxable == 100.0
-    assert tax == 18.0
+def test_gst_slabs():
+    assert gst_rate_for_unit_price(2500) == 5.0
+    assert gst_rate_for_unit_price(2500.01) == 18.0
+    assert gst_rate_for_unit_price(999) == 5.0
 
 
-def test_taxable_exclusive_18():
-    taxable, tax = taxable_and_tax(100, 18, inclusive=False)
-    assert taxable == 100.0
-    assert tax == 18.0
+def test_line_slab_is_per_piece():
+    # Two pieces at ₹1,300 is ₹2,600 on the line but ₹1,300 a piece → 5%.
+    assert gst_rate_for_line(2600, 2) == 5.0
+    assert gst_rate_for_line(2501, 1) == 18.0
+    assert gst_rate_for_line(2500, 1) == 5.0
+    assert gst_rate_for_line(0, 0) == 5.0
 
 
-def test_taxable_zero_rate():
-    taxable, tax = taxable_and_tax(50, 0, inclusive=True)
-    assert taxable == 50.0
-    assert tax == 0.0
+def test_inclusive_split():
+    taxable, tax = taxable_and_tax(1180, 18, inclusive=True)
+    assert taxable == 1000.0
+    assert tax == 180.0
 
 
-def test_split_intra_state():
-    parts = split_cgst_sgst_igst(18, "32", "32")
-    assert parts["cgst"] == 9.0
-    assert parts["sgst"] == 9.0
-    assert parts["igst"] == 0.0
+def test_exclusive_split():
+    taxable, tax = taxable_and_tax(1000, 18, inclusive=False)
+    assert taxable == 1000.0
+    assert tax == 180.0
 
 
-def test_resolve_state_code_from_name():
-    from app.services.gst import resolve_state_code
+def test_rejects_negative_amount():
+    with pytest.raises(ValueError):
+        taxable_and_tax(-1, 5, inclusive=True)
 
+
+def test_kerala_intra_state_split():
+    split = split_cgst_sgst_igst(18.0, "kerala", "32")
+    assert split["igst"] == 0.0
+    assert split["cgst"] + split["sgst"] == 18.0
+
+
+def test_inter_state_igst():
+    split = split_cgst_sgst_igst(18.0, "kerala", "maharashtra")
+    assert split == {"cgst": 0.0, "sgst": 0.0, "igst": 18.0}
+
+
+def test_state_code_lookup():
     assert resolve_state_code("Kerala") == "32"
-    assert resolve_state_code("27") == "27"
-    assert resolve_state_code("Maharashtra") == "27"
-
-
-def test_split_uses_state_names():
-    from app.services.gst import split_cgst_sgst_igst
-
-    parts = split_cgst_sgst_igst(18, "Kerala", "Kerala")
-    assert parts["cgst"] == 9.0
-    assert parts["sgst"] == 9.0
-    assert parts["igst"] == 0.0
-
+    assert resolve_state_code("07") == "07"

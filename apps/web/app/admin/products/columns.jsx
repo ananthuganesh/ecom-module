@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye } from "lucide-react";
+import { Eye } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
 import SafeImage from "@/components/SafeImage";
@@ -28,12 +28,12 @@ export function resolveCategoryName(categories, value) {
   if (!id) return "";
   const match = (categories || []).find((c) => categoryId(c) === id);
   if (match) return String(match?.name || match?.title || "").trim();
-  // Fixed catalog strings (e.g. "T-Shirts") are stored directly
+  // Fixed catalog strings (e.g. "T-Shirt") are stored directly
   return id;
 }
 
 export function storefrontHref(product) {
-  if (product?.slug) return `/products/${product.slug}`;
+  if (product?.slug) return `/product/${product.slug}`;
   if (product?._id) return `/product/${product._id}`;
   return "/all-products";
 }
@@ -84,6 +84,8 @@ export function createProductColumns({ categories = [] } = {}) {
     selectColumn(),
     {
       id: "product",
+      size: 280,
+      meta: { className: "w-[280px]" },
       accessorFn: (row) => row.productName || row.name || "",
       header: "Product",
       cell: ({ row }) => {
@@ -109,6 +111,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "status",
+      size: 128,
+      meta: { className: "w-[128px]" },
       accessorFn: (row) => productStatus(row),
       header: "Status",
       cell: ({ row }) => {
@@ -117,7 +121,7 @@ export function createProductColumns({ categories = [] } = {}) {
           return (
             <AdminStatusText
               tone="success"
-              className="bg-[#95FFB9] text-[#004D41] hover:bg-[#95FFB9] [&_svg]:text-[#004D41] [&_svg]:opacity-100"
+              className="bg-(--p-color-badge-bg-fill-success) text-(--p-color-badge-text-success) hover:bg-(--p-color-badge-bg-fill-success) [&_svg]:text-(--p-color-badge-text-success) [&_svg]:opacity-100"
             >
               {statusLabel(status)}
             </AdminStatusText>
@@ -132,6 +136,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "inventory",
+      size: 96,
+      meta: { className: "w-24" },
       accessorFn: (row) => Number(row.totalStock ?? row.countInStock ?? 0),
       header: "Inventory",
       cell: ({ row }) => (
@@ -142,6 +148,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "category",
+      size: 140,
+      meta: { className: "w-[140px]" },
       accessorFn: (row) => resolveCategoryName(categories, row.category),
       header: "Category",
       cell: ({ row }) => (
@@ -152,6 +160,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "type",
+      size: 140,
+      meta: { className: "w-[140px]" },
       accessorFn: (row) =>
         resolveCategoryName(categories, row.type || row.subcategory),
       header: "Product type",
@@ -166,6 +176,8 @@ export function createProductColumns({ categories = [] } = {}) {
     },
     {
       id: "actions",
+      size: 48,
+      meta: { className: "w-12" },
       enableSorting: false,
       enableHiding: false,
       header: "",

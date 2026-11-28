@@ -1,14 +1,27 @@
-name: siyara
+name: urbanaana
+
+# Tuned for a 2 vCPU / 4 GB RAM host (Mongo external via MONGO_URI).
+# Budget (~3.2 GB usable after OS/Docker):
+#   api  ≤ 640 MB / 0.70 CPU
+#   web  ≤ 1280 MB / 0.90 CPU
+# Headroom left for kernel page cache + short spikes.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   api:
-    container_name: siyara-api
-    hostname: siyara-api
+    container_name: urbanaana-api
+    hostname: urbanaana-api
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-    image: siyara-api:latest
+    image: urbanaana-api:latest
     restart: unless-stopped
+    init: true
     env_file:
       - .env
     ports:
@@ -19,39 +32,53 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "8000"
+      UVICORN_WORKERS: "1"
+      UVICORN_LIMIT_CONCURRENCY: "40"
+      UVICORN_TIMEOUT_KEEP_ALIVE: "5"
+      MALLOC_ARENA_MAX: "2"
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+      # Leave unset so the API enables Secure cookies on HTTPS (PUBLIC_WEB_URL).
+      # Set COOKIE_SECURE=false only for local HTTP Docker.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      RAZORPAY_LIVE_API_KEY: ${RAZORPAY_LIVE_API_KEY}
+      RAZORPAY_LIVE_KEY_SECRET: ${RAZORPAY_LIVE_KEY_SECRET}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
-      SHIPROCKET_EMAIL: ${SHIPROCKET_EMAIL}
-      SHIPROCKET_PASSWORD: ${SHIPROCKET_PASSWORD}
-      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
-      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
-      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID}
       R2_BUCKET: ${R2_BUCKET}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL}
       R2_KEY_PREFIX: ${R2_KEY_PREFIX:-}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       GTM_ID: ${GTM_ID:-}
       GTM_ENABLED: ${GTM_ENABLED:-true}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
-      AI_STUDIO_STYLE_PROMPT: ${AI_STUDIO_STYLE_PROMPT:-}
-      AI_STUDIO_PROMPT: ${AI_STUDIO_PROMPT:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-Urban Aana <noreply@urbanaana.com>}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-}
     volumes:
-      - siyara_uploads:/app/uploads
+      - urbanaana_uploads:/app/uploads
     networks:
-      - siyara-net
+      - urbanaana-net
+    mem_limit: 640m
+    mem_reservation: 256m
+    cpus: 0.70
+    pids_limit: 256
+    logging: *default-logging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   web:
-    container_name: siyara-web
-    hostname: siyara-web
+    container_name: urbanaana-web
+    hostname: urbanaana-web
     build:
       context: .
       dockerfile: docker/Dockerfile.web
@@ -59,29 +86,61 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         NEXT_PUBLIC_GTM_ID: ${NEXT_PUBLIC_GTM_ID:-}
         NEXT_PUBLIC_GTM_ENABLED: ${NEXT_PUBLIC_GTM_ENABLED:-true}
-    image: siyara-web:latest
+        # Baked in at build: storefront pages are prerendered.
+        NEXT_PUBLIC_META_PIXEL_ID: ${META_PIXEL_ID:-}
+        NEXT_PUBLIC_CLARITY_ID: ${CLARITY_PROJECT_ID:-}
+    image: urbanaana-web:latest
     restart: unless-stopped
+    init: true
     env_file:
       - .env
     ports:
       - "3000:3000"
     environment:
-      INTERNAL_BACKEND_URL: http://siyara-api:8000
+      INTERNAL_BACKEND_URL: http://urbanaana-api:8000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
       NEXT_PUBLIC_GTM_ID: ${NEXT_PUBLIC_GTM_ID:-}
       NEXT_PUBLIC_GTM_ENABLED: ${NEXT_PUBLIC_GTM_ENABLED:-true}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://urbanaana.com}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      STORE_CATALOG_REVALIDATE: ${STORE_CATALOG_REVALIDATE:-60}
+      STORE_FILTERS_REVALIDATE: ${STORE_FILTERS_REVALIDATE:-300}
+      STORE_HOME_PAGE_SIZE: ${STORE_HOME_PAGE_SIZE:-12}
+      STORE_CATALOG_PAGE_SIZE: ${STORE_CATALOG_PAGE_SIZE:-40}
+      STORE_CATEGORY_PAGE_SIZE: ${STORE_CATEGORY_PAGE_SIZE:-100}
+      STORE_CARD_PRIORITY_COUNT: ${STORE_CARD_PRIORITY_COUNT:-4}
       NODE_ENV: ${NODE_ENV:-production}
+      NODE_OPTIONS: --max-old-space-size=768
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
     depends_on:
       api:
         condition: service_healthy
     networks:
-      - siyara-net
+      - urbanaana-net
+    mem_limit: 1280m
+    mem_reservation: 384m
+    cpus: 0.90
+    pids_limit: 256
+    logging: *default-logging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
 networks:
-  siyara-net:
-    name: siyara-net
+  urbanaana-net:
+    name: urbanaana-net
 
 volumes:
-  siyara_uploads:
-    name: siyara_uploads
+  urbanaana_uploads:
+    name: urbanaana_uploads

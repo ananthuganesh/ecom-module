@@ -4,27 +4,43 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   adminProductService,
   adminProductColorService,
 } from "@/api";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import {
   ChevronDown,
   ChevronUp,
   Eye,
-  Package,
+  Loader2,
   Plus,
   Printer,
-} from "lucide-react";
+} from "@/components/icons";
 import SafeImage from "@/components/SafeImage";
-import ImageCropModal from "@/components/admin/ImageCropModal";
 import SelectExistingMediaDialog from "@/components/admin/SelectExistingMediaDialog";
 import { AdminHeaderButton, AdminStatusText } from "@/components/admin/list";
+import { Package } from "@/components/admin/LocalIcons";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { bustStorefrontCatalogCache } from "@/lib/bustStorefrontCatalogCache";
 import {
   Popover,
   PopoverContent,
@@ -41,10 +57,11 @@ import { Spinner } from "@/components/ui/spinner";
 import ProductRichTextEditor from "@/components/admin/ProductRichTextEditor";
 import ProductVariantsCard from "@/components/admin/ProductVariantsCard";
 import ProductColorChips from "@/components/admin/ProductColorChips";
+import ProductAttrCombobox from "@/components/admin/ProductAttrCombobox";
 import ProductInventoryCard from "@/components/admin/ProductInventoryCard";
+import ProductSaleCard from "@/components/admin/ProductSaleCard";
 import ProductSeoCard from "@/components/admin/ProductSeoCard";
 import { cn } from "@/lib/utils";
-import { getCroppedImg } from "@/utils/cropImage";
 import { adminProductHref, productUrlKey } from "@/utils/formatProductUrl";
 import { gstRateForUnitPrice } from "@/utils/gstRate";
 import {
@@ -70,9 +87,72 @@ import {
 } from "@/utils/printProductBarcodeLabel";
 import { storefrontHref } from "../columns";
 import { useProductSaveBarStore } from "@/store/useProductSaveBarStore";
+import { PRODUCT_CARD_BADGE_OPTIONS } from "@/utils/urbanProductAdapter";
 
 const productSelectTriggerClass =
-  "h-8 w-full border-[#e3e3e3] bg-white shadow-none ring-0 focus-visible:border-[#b5b5b5] focus-visible:ring-0";
+  "h-8 w-full border-(--p-color-border) bg-white shadow-none ring-0 focus-visible:border-(--p-color-border-tertiary) focus-visible:ring-0";
+
+
+function SortableMediaTile({
+  src,
+  featured,
+  active,
+  selectionMode,
+  onToggleSelect,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: src });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 20 : undefined,
+      }}
+      onClick={() => onToggleSelect(src)}
+      aria-label={featured ? "Featured product image" : "Product image"}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "admin-media-tile group relative shrink-0 overflow-hidden border bg-(--p-color-bg-surface-secondary)",
+        featured ? "admin-media-tile--featured" : "admin-media-tile--thumb",
+        active ? "border-(--p-color-text)" : "border-(--p-color-border)",
+        isDragging && "admin-media-tile--dragging opacity-90 shadow-md"
+      )}
+    >
+      <SafeImage src={src} alt="" fill className="object-cover" />
+      <span
+        className={cn(
+          "admin-media-tile-overlay",
+          (active || selectionMode) && "opacity-100"
+        )}
+      >
+        <span
+          className="absolute top-2 left-2"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={active}
+            onCheckedChange={(checked) => {
+              onToggleSelect(src, Boolean(checked));
+            }}
+            className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-(--p-color-text) data-checked:bg-(--p-color-button-primary-bg)"
+          />
+        </span>
+      </span>
+    </button>
+  );
+}
 
 function ProductSelectContent({ children, ...props }) {
   return (
@@ -117,19 +197,6 @@ function variantMenuLabel(variant, index) {
   return `Variant ${index + 1}`;
 }
 
-function formatCreatedAt(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function cloneForm(form) {
   return JSON.parse(JSON.stringify(form));
 }
@@ -138,7 +205,7 @@ export default function AdminProductDetailPage() {
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
-  const productRef = params?.id;
+  const productRef = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const isNew =
     String(productRef || "") === "new" ||
     String(pathname || "").endsWith("/products/new");
@@ -150,6 +217,7 @@ export default function AdminProductDetailPage() {
   const [saving, setSaving] = useState(false);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
   const [productColors, setProductColors] = useState([]);
+  const [attrOptions, setAttrOptions] = useState({});
   const [variantMenuOpen, setVariantMenuOpen] = useState(false);
   const [qtyOpen, setQtyOpen] = useState(false);
   const [pendingVariant, setPendingVariant] = useState(null);
@@ -157,13 +225,17 @@ export default function AdminProductDetailPage() {
   const barcodeBtnRef = useRef(null);
   const qtyInputRef = useRef(null);
 
-  const [cropOpen, setCropOpen] = useState(false);
-  const [cropSrc, setCropSrc] = useState("");
-  const [cropTarget, setCropTarget] = useState(null);
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  /** null = product Media gallery; number = variant row index */
+  const [mediaPickerVariantIndex, setMediaPickerVariantIndex] = useState(null);
   const [selectedMedia, setSelectedMedia] = useState(() => new Set());
   const [addMediaOpen, setAddMediaOpen] = useState(false);
-  const addMediaInputRef = useRef(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const mediaSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
 
   const dirty = form && snapshot ? isProductFormDirty(form, snapshot) : false;
   const showSaveBar = useProductSaveBarStore((s) => s.show);
@@ -231,6 +303,13 @@ export default function AdminProductDetailPage() {
         setProductColors(list.filter(Boolean));
       })
       .catch(() => setProductColors([]));
+  }, []);
+
+  useEffect(() => {
+    adminProductService
+      .getAttributeOptions()
+      .then((data) => setAttrOptions(data && typeof data === "object" ? data : {}))
+      .catch(() => setAttrOptions({}));
   }, []);
 
   useEffect(() => {
@@ -321,66 +400,135 @@ export default function AdminProductDetailPage() {
       },
     }));
 
-  const attachMediaUrls = (urls) => {
+  /** Product Media gallery — never auto-assigns to a variant. */
+  const attachProductMediaUrls = (urls) => {
+    const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
+    if (!nextUrls.length) return;
+    setForm((prev) => {
+      const existing = Array.isArray(prev.thumbnails)
+        ? prev.thumbnails.filter(Boolean)
+        : [];
+      // Append new uploads after existing so gallery order stays stable.
+      const imgs = [...existing];
+      for (const url of nextUrls) {
+        if (!imgs.includes(url)) imgs.push(url);
+      }
+      return { ...prev, thumbnails: imgs };
+    });
+  };
+
+  /** Per-variant image upload — shows only on that variant row. */
+  const attachVariantMediaUrls = (urls, variantIndex) => {
     const nextUrls = (Array.isArray(urls) ? urls : []).filter(Boolean);
     if (!nextUrls.length) return;
     setForm((prev) => {
       const list = Array.isArray(prev.variants) ? [...prev.variants] : [];
       if (!list.length) list.push(emptyVariant());
-      const imgs = [
-        ...(Array.isArray(list[primaryVariantIndex]?.images)
-          ? list[primaryVariantIndex].images.filter(Boolean)
-          : []),
-      ];
+      const idx = Math.min(
+        Math.max(0, Number(variantIndex) || 0),
+        Math.max(0, list.length - 1)
+      );
+      const existing = Array.isArray(list[idx]?.images)
+        ? list[idx].images.filter(Boolean)
+        : [];
+      const imgs = [...existing];
       for (const url of nextUrls) {
         if (!imgs.includes(url)) imgs.push(url);
       }
-      list[primaryVariantIndex] = {
-        ...list[primaryVariantIndex],
+      list[idx] = {
+        ...list[idx],
         images: imgs,
       };
-      return { ...prev, variants: list };
+      // Also strip these URLs from product Media so they only show on the variant.
+      const variantOnly = new Set(imgs);
+      const thumbnails = (prev.thumbnails || []).filter(
+        (url) => !variantOnly.has(url)
+      );
+      return { ...prev, variants: list, thumbnails };
     });
   };
 
-  const openCrop = (file, target) => {
-    const src = URL.createObjectURL(file);
-    setCropSrc(src);
-    setCropTarget(target);
-    setCropOpen(true);
+  const reorderMedia = (activeId, overId) => {
+    if (!activeId || !overId || activeId === overId) return;
+    setForm((prev) => {
+      const current = (Array.isArray(prev.thumbnails) ? prev.thumbnails : []).filter(
+        Boolean
+      );
+      const oldIndex = current.indexOf(activeId);
+      const newIndex = current.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      return {
+        ...prev,
+        thumbnails: arrayMove(current, oldIndex, newIndex),
+      };
+    });
   };
 
-  const closeCrop = () => {
-    if (cropSrc) URL.revokeObjectURL(cropSrc);
-    setCropSrc("");
-    setCropTarget(null);
-    setCropOpen(false);
+  const toggleMediaSelect = (src, forceChecked) => {
+    setSelectedMedia((prev) => {
+      const next = new Set(prev);
+      if (typeof forceChecked === "boolean") {
+        if (forceChecked) next.add(src);
+        else next.delete(src);
+        return next;
+      }
+      if (next.has(src)) next.delete(src);
+      else next.add(src);
+      return next;
+    });
   };
 
-  const handleCropped = async (croppedAreaPixels) => {
-    if (!croppedAreaPixels || !cropTarget || !cropSrc) return;
-    try {
-      const blob = await getCroppedImg(cropSrc, croppedAreaPixels, 600, 800);
-      const file = new File([blob], "product.jpg", { type: "image/jpeg" });
-      const { url } = await adminProductService.uploadImage(file);
-      setForm((prev) => {
-        const idx = cropTarget.variantIndex;
-        const imageIndex = cropTarget.imageIndex ?? 0;
-        const nextVariants = prev.variants.map((v, i) => {
-          if (i !== idx) return v;
-          const imgs = Array.isArray(v.images) ? [...v.images.filter(Boolean)] : [];
-          if (imageIndex === -1) imgs.push(url);
-          else if (imageIndex === 0) imgs[0] = url;
-          else imgs[imageIndex] = url;
-          return { ...v, images: imgs };
-        });
-        return { ...prev, variants: nextVariants };
-      });
-    } catch (e) {
-      toast.error(e?.response?.data?.message || e?.message || "Image upload failed");
-    } finally {
-      closeCrop();
+  const uploadImageFiles = async (fileList, variantIndex = null) => {
+    const files = Array.from(fileList || []).filter((f) =>
+      String(f?.type || "").startsWith("image/")
+    );
+    if (!files.length) {
+      toast.error("Choose a JPG, PNG, WEBP, or GIF image");
+      return;
     }
+    setUploadingMedia(true);
+    try {
+      const urls = [];
+      for (const file of files) {
+        const { url } = await adminProductService.uploadImage(file);
+        if (url) urls.push(url);
+      }
+      if (!urls.length) {
+        toast.error("Image upload failed");
+        return;
+      }
+      if (variantIndex == null) attachProductMediaUrls(urls);
+      else attachVariantMediaUrls(urls, variantIndex);
+      toast.success(
+        urls.length === 1 ? "Image uploaded" : `${urls.length} images uploaded`
+      );
+    } catch (e) {
+      toast.error(
+        userErrorMessage(
+          e?.response?.status === 401
+            ? "Your session expired. Sign in again, then retry the upload."
+            : e,
+          "Couldn’t upload the image"
+        )
+      );
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  /** Same reliable picker path as variant thumbs (avoids broken label→hidden Input). */
+  const openImageFilePicker = (variantIndex = null) => {
+    if (uploadingMedia) return;
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/jpeg,image/png,image/webp,image/gif";
+    fileInput.multiple = true;
+    fileInput.onchange = (ev) => {
+      const files = ev.target?.files;
+      if (!files?.length) return;
+      void uploadImageFiles(files, variantIndex);
+    };
+    fileInput.click();
   };
 
   const handleDiscard = () => {
@@ -406,6 +554,7 @@ export default function AdminProductDetailPage() {
       if (isNew) {
         const created = await adminProductService.create(payload);
         toast.success("Product saved");
+        await bustStorefrontCatalogCache();
         router.replace(adminProductHref(created));
         return;
       }
@@ -416,17 +565,13 @@ export default function AdminProductDetailPage() {
       setForm(nextForm);
       setSnapshot(cloneForm(nextForm));
       toast.success("Product saved");
+      await bustStorefrontCatalogCache();
       const key = productUrlKey(updated);
       if (key && key !== String(productRef)) {
         router.replace(adminProductHref(updated));
       }
     } catch (err) {
-      toast.error(
-        err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "Failed to save product"
-      );
+      toast.error(userErrorMessage(err, "Couldn’t save the product"));
     } finally {
       setSaving(false);
     }
@@ -490,7 +635,7 @@ export default function AdminProductDetailPage() {
         copies: count,
       });
       if (!result.ok) {
-        toast.error(result.error || "Barcode print failed");
+        toast.error(userErrorMessage(result.error, "Couldn’t print barcodes"));
         return;
       }
       toast.success(
@@ -499,7 +644,7 @@ export default function AdminProductDetailPage() {
           : `Printing ${result.copies} barcodes`
       );
     } catch (err) {
-      toast.error(err?.message || "Barcode print failed");
+      toast.error(userErrorMessage(err, "Couldn’t print barcodes"));
     }
   };
 
@@ -536,41 +681,38 @@ export default function AdminProductDetailPage() {
     );
   }
 
-  const mediaImages = (form.variants || []).flatMap((v) =>
-    Array.isArray(v.images) ? v.images.filter(Boolean) : []
-  );
+  const variantMediaUrls = [
+    ...new Set(
+      (form.variants || []).flatMap((v) =>
+        Array.isArray(v.images) ? v.images.filter(Boolean) : []
+      )
+    ),
+  ];
+  const mediaImages = (Array.isArray(form.thumbnails) ? form.thumbnails : [])
+    .filter(Boolean)
+    .filter((url) => !variantMediaUrls.includes(url));
   const uniqueMedia = [...new Set(mediaImages)];
   const selectedMediaList = uniqueMedia.filter((src) => selectedMedia.has(src));
-  const primaryVariantIndex = 0;
 
   return (
     <>
-      <main className="admin-product-form mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
-        <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 bg-transparent px-4 py-3 backdrop-blur-sm">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-foreground">
-              <Package className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="m-0 truncate text-[16px] leading-5 font-medium text-foreground">
-                  {isNew
-                    ? form.productName || "Add product"
-                    : form.productName || "Untitled product"}
-                </p>
-                <AdminStatusText tone={statusTone(form.status)} dot>
-                  {statusLabel(form.status)}
-                </AdminStatusText>
-                {!isNew && dirty ? (
-                  <span className="text-[12px] font-medium text-muted-foreground">
-                    Unsaved
-                  </span>
-                ) : null}
-              </div>
-              <p className="m-0 mt-0.5 truncate text-[13px] font-normal text-muted-foreground">
-                {isNew ? "New product" : formatCreatedAt(product?.createdAt)}
-              </p>
-            </div>
+      <main className="admin-product-form mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 bg-background md:gap-6">
+        <header className="flex shrink-0 flex-col gap-3 bg-transparent py-0 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2">
+            <Package active className="size-[18px] shrink-0 text-(--p-color-text)" />
+            <h2 className="admin-page-title m-0 truncate text-[1.25rem] font-semibold leading-6 tracking-[-0.00833em] text-(--p-color-text)">
+              {isNew
+                ? form.productName || "Add product"
+                : form.productName || "Untitled product"}
+            </h2>
+            <AdminStatusText tone={statusTone(form.status)} dot>
+              {statusLabel(form.status)}
+            </AdminStatusText>
+            {!isNew && dirty ? (
+              <span className="text-xs font-medium text-muted-foreground">
+                Unsaved
+              </span>
+            ) : null}
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -666,7 +808,7 @@ export default function AdminProductDetailPage() {
                 size="icon-lg"
                 title="Previous product"
                 disabled={!neighbors.previous}
-                className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+                className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
                 onClick={() => {
                   if (!neighbors.previous || !confirmLeave()) return;
                   router.push(
@@ -682,7 +824,7 @@ export default function AdminProductDetailPage() {
                 size="icon-lg"
                 title="Next product"
                 disabled={!neighbors.next}
-                className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+                className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
                 onClick={() => {
                   if (!neighbors.next || !confirmLeave()) return;
                   router.push(
@@ -698,10 +840,10 @@ export default function AdminProductDetailPage() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 items-start gap-3 p-3 pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
-          <div className="flex min-w-0 flex-col gap-3">
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
+        <div className="grid grid-cols-1 items-start gap-4 pb-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <Card className="@container/card">
+              <CardContent className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel>Title</FieldLabel>
                   <Input
@@ -727,7 +869,7 @@ export default function AdminProductDetailPage() {
                 </Field>
 
                 <div className="flex flex-col gap-3">
-                  <CardTitle className="admin-card-heading m-0">Media</CardTitle>
+                  <CardTitle>Media</CardTitle>
                   {uniqueMedia.length === 0 ? (
                   <div
                     className="admin-media-dropzone flex flex-col items-center justify-center gap-3 bg-white px-4 py-12 text-center"
@@ -738,53 +880,43 @@ export default function AdminProductDetailPage() {
                     onDrop={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const file = e.dataTransfer?.files?.[0];
-                      if (!file || !String(file.type || "").startsWith("image/")) {
-                        return;
-                      }
-                      openCrop(file, {
-                        type: "variant",
-                        variantIndex: primaryVariantIndex,
-                        imageIndex: 0,
-                      });
+                      if (uploadingMedia) return;
+                      void uploadImageFiles(e.dataTransfer?.files);
                     }}
                   >
                     <div className="flex flex-wrap items-center justify-center gap-3">
-                      <FieldLabel className="m-0 inline-flex h-8 cursor-pointer items-center rounded-lg border border-[#c9cccf] bg-white px-3 text-[13px] font-medium text-[#303030] hover:bg-[#f7f7f7]">
-                        Upload new
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = "";
-                            if (!file) return;
-                            openCrop(file, {
-                              type: "variant",
-                              variantIndex: primaryVariantIndex,
-                              imageIndex: 0,
-                            });
-                          }}
-                        />
-                      </FieldLabel>
                       <button
                         type="button"
-                        className="text-[13px] font-medium text-[#005bd3] hover:underline"
-                        onClick={() => setMediaPickerOpen(true)}
+                        disabled={uploadingMedia}
+                        className="m-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-(--p-color-border-hover) bg-white px-3 text-[13px] font-medium text-(--p-color-text) hover:bg-(--p-color-bg-surface-hover) disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => openImageFilePicker(null)}
+                      >
+                        {uploadingMedia ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        ) : null}
+                        {uploadingMedia ? "Uploading…" : "Upload new"}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[13px] font-medium text-(--p-color-text-link) hover:underline disabled:opacity-50"
+                        disabled={uploadingMedia}
+                        onClick={() => {
+                          setMediaPickerVariantIndex(null);
+                          setMediaPickerOpen(true);
+                        }}
                       >
                         Select existing
                       </button>
                     </div>
-                    <p className="text-[12px] text-[#616161]">
-                      Accepts images, videos
+                    <p className="text-[12px] text-(--p-color-text-secondary)">
+                      JPG, PNG, WEBP, or GIF — up to 25 MB
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {selectedMediaList.length > 0 ? (
                       <div className="flex items-center justify-between gap-3">
-                        <label className="inline-flex items-center gap-2 text-[13px] font-medium text-[#303030]">
+                        <label className="inline-flex items-center gap-2 text-[13px] font-medium text-(--p-color-text)">
                           <Checkbox
                             checked={
                               uniqueMedia.length > 0 &&
@@ -797,24 +929,21 @@ export default function AdminProductDetailPage() {
                                 setSelectedMedia(new Set());
                               }
                             }}
-                            className="data-checked:border-[#303030] data-checked:bg-[#303030]"
+                            className="data-checked:border-(--p-color-text) data-checked:bg-(--p-color-button-primary-bg)"
                           />
                           {selectedMediaList.length} file
                           {selectedMediaList.length === 1 ? "" : "s"} selected
                         </label>
                         <button
                           type="button"
-                          className="text-[13px] font-medium text-[#c70a24] hover:underline"
+                          className="text-[13px] font-medium text-(--p-color-text-critical-accent) hover:underline"
                           onClick={() => {
                             const remove = new Set(selectedMediaList);
                             setForm((prev) => ({
                               ...prev,
-                              variants: (prev.variants || []).map((v) => ({
-                                ...v,
-                                images: (v.images || []).filter(
-                                  (img) => !remove.has(img)
-                                ),
-                              })),
+                              thumbnails: (prev.thumbnails || []).filter(
+                                (img) => !remove.has(img)
+                              ),
                             }));
                             setSelectedMedia(new Set());
                           }}
@@ -825,73 +954,43 @@ export default function AdminProductDetailPage() {
                     ) : null}
 
                     <div className="flex flex-wrap items-start gap-3">
-                      {uniqueMedia.map((src, imgIdx) => {
-                        const active = selectedMedia.has(src);
-                        const featured = imgIdx === 0;
-                        return (
-                          <button
-                            key={`${src}-${imgIdx}`}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMedia((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(src)) next.delete(src);
-                                else next.add(src);
-                                return next;
-                              });
-                            }}
-                            className={cn(
-                              "admin-media-tile group relative shrink-0 overflow-hidden border bg-[#fafafa]",
-                              featured
-                                ? "admin-media-tile--featured"
-                                : "admin-media-tile--thumb",
-                              active
-                                ? "border-[#303030]"
-                                : "border-[#e3e3e3]"
-                            )}
-                          >
-                            <SafeImage
+                      <DndContext
+                        sensors={mediaSensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={({ active, over }) => {
+                          if (!over) return;
+                          reorderMedia(String(active.id), String(over.id));
+                        }}
+                      >
+                        <SortableContext
+                          items={uniqueMedia}
+                          strategy={rectSortingStrategy}
+                        >
+                          {uniqueMedia.map((src, imgIdx) => (
+                            <SortableMediaTile
+                              key={src}
                               src={src}
-                              alt=""
-                              fill
-                              className="object-cover"
+                              featured={imgIdx === 0}
+                              active={selectedMedia.has(src)}
+                              selectionMode={selectedMediaList.length > 0}
+                              onToggleSelect={toggleMediaSelect}
                             />
-                            <span
-                              className={cn(
-                                "admin-media-tile-overlay",
-                                (active || selectedMediaList.length > 0) &&
-                                  "opacity-100"
-                              )}
-                            >
-                              <span
-                                className="absolute top-2 left-2"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Checkbox
-                                  checked={active}
-                                  onCheckedChange={(checked) => {
-                                    setSelectedMedia((prev) => {
-                                      const next = new Set(prev);
-                                      if (checked) next.add(src);
-                                      else next.delete(src);
-                                      return next;
-                                    });
-                                  }}
-                                  className="size-4 rounded-[0.25rem] border-white bg-white shadow-sm data-checked:border-[#303030] data-checked:bg-[#303030]"
-                                />
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })}
+                          ))}
+                        </SortableContext>
+                      </DndContext>
 
                       <Popover open={addMediaOpen} onOpenChange={setAddMediaOpen}>
                         <PopoverTrigger
                           type="button"
-                          className="admin-media-tile admin-media-tile--add inline-flex shrink-0 items-center justify-center border border-dashed border-[#c9cccf] bg-[#fafafa] text-[#303030] hover:bg-[#f3f3f3]"
-                          aria-label="Add media"
+                          disabled={uploadingMedia}
+                          className="admin-media-tile admin-media-tile--add relative inline-flex shrink-0 items-center justify-center border border-dashed border-(--p-color-border-hover) bg-(--p-color-bg-surface-secondary) text-(--p-color-text) hover:bg-(--p-color-bg-fill) disabled:opacity-60"
+                          aria-label={uploadingMedia ? "Uploading media" : "Add media"}
                         >
-                          <Plus className="h-5 w-5" />
+                          {uploadingMedia ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : (
+                            <Plus className="h-5 w-5" />
+                          )}
                         </PopoverTrigger>
                         <PopoverContent
                           align="start"
@@ -899,19 +998,20 @@ export default function AdminProductDetailPage() {
                         >
                           <button
                             type="button"
-                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
                             onClick={() => {
                               setAddMediaOpen(false);
-                              addMediaInputRef.current?.click();
+                              openImageFilePicker(null);
                             }}
                           >
                             Upload new
                           </button>
                           <button
                             type="button"
-                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-[#303030] hover:bg-[#f1f1f1]"
+                            className="flex w-full rounded-md px-2.5 py-2 text-left text-[13px] text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
                             onClick={() => {
                               setAddMediaOpen(false);
+                              setMediaPickerVariantIndex(null);
                               setMediaPickerOpen(true);
                             }}
                           >
@@ -919,23 +1019,6 @@ export default function AdminProductDetailPage() {
                           </button>
                         </PopoverContent>
                       </Popover>
-
-                      <input
-                        ref={addMediaInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          e.target.value = "";
-                          if (!file) return;
-                          openCrop(file, {
-                            type: "variant",
-                            variantIndex: primaryVariantIndex,
-                            imageIndex: -1,
-                          });
-                        }}
-                      />
                     </div>
                   </div>
                 )}
@@ -943,14 +1026,16 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Price</CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Price</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field>
                     <FieldLabel>MRP</FieldLabel>
                     <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                         ₹
                       </span>
                       <Input
@@ -969,7 +1054,7 @@ export default function AdminProductDetailPage() {
                   <Field>
                     <FieldLabel>Selling Price</FieldLabel>
                     <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                         ₹
                       </span>
                       <Input
@@ -988,7 +1073,7 @@ export default function AdminProductDetailPage() {
                   <Field>
                     <FieldLabel>Cost</FieldLabel>
                     <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#616161]">
+                      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-(--p-color-text-secondary)">
                         ₹
                       </span>
                       <Input
@@ -1008,19 +1093,23 @@ export default function AdminProductDetailPage() {
                     <FieldLabel>Tax (Automatic)</FieldLabel>
                     <Input
                       readOnly
-                      value={
-                        form.pricing?.mrp != null &&
-                        form.pricing?.mrp !== "" &&
-                        Number(form.pricing.mrp) > 0
-                          ? `GST ${gstRateForUnitPrice(form.pricing.mrp)}%`
-                          : ""
-                      }
+                      value={(() => {
+                        // Slab follows the sale value per piece, not MRP.
+                        const sale = Number(form.pricing?.sellingPrice) || Number(form.pricing?.mrp) || 0;
+                        return sale > 0 ? `GST ${gstRateForUnitPrice(sale)}%` : "";
+                      })()}
                       className="bg-muted/40 text-muted-foreground"
                     />
                   </Field>
                 </div>
               </CardContent>
             </Card>
+
+            <ProductSaleCard
+              form={form}
+              updateForm={updateForm}
+              savedSale={product?.sale}
+            />
 
             <ProductInventoryCard form={form} setForm={setForm} />
 
@@ -1030,30 +1119,23 @@ export default function AdminProductDetailPage() {
               updatePricing={updatePricing}
               focusPricing={focusPricing}
               blurPricing={blurPricing}
-              onUploadImage={(variantIndex) => {
-                const fileInput = document.createElement("input");
-                fileInput.type = "file";
-                fileInput.accept = "image/*";
-                fileInput.onchange = (ev) => {
-                  const file = ev.target?.files?.[0];
-                  if (!file) return;
-                  openCrop(file, {
-                    type: "variant",
-                    variantIndex,
-                    imageIndex: 0,
-                  });
-                };
-                fileInput.click();
+              uploadingMedia={uploadingMedia}
+              onUploadImage={(variantIndex) => openImageFilePicker(variantIndex)}
+              onSelectExistingImage={(variantIndex) => {
+                setMediaPickerVariantIndex(variantIndex);
+                setMediaPickerOpen(true);
               }}
             />
 
             <ProductSeoCard form={form} updateForm={updateForm} />
           </div>
 
-          <aside className="flex flex-col gap-3">
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Status</CardTitle>
+          <aside className="flex flex-col gap-4">
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Status</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <Select
                   value={form.status || "draft"}
                   onValueChange={(status) => updateForm({ status })}
@@ -1071,16 +1153,41 @@ export default function AdminProductDetailPage() {
                     ))}
                   </ProductSelectContent>
                 </Select>
+                <Field>
+                  <FieldLabel>Card badge</FieldLabel>
+                  <Select
+                    value={form.badge || "auto"}
+                    onValueChange={(badge) => updateForm({ badge })}
+                  >
+                    <SelectTrigger className={productSelectTriggerClass}>
+                      <SelectValue placeholder="Auto">
+                        {(value) =>
+                          PRODUCT_CARD_BADGE_OPTIONS.find((o) => o.value === value)
+                            ?.label || "Auto"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <ProductSelectContent>
+                      {PRODUCT_CARD_BADGE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </ProductSelectContent>
+                  </Select>
+                </Field>
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Category</CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Category</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel>Category</FieldLabel>
                   <Select
-                    value={form.category || "T-Shirts"}
+                    value={form.category || "T-Shirt"}
                     onValueChange={(category) => {
                       const nextTypes = productTypesForCategory(category);
                       const keepType = nextTypes.includes(form.type)
@@ -1132,11 +1239,11 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">
-                  Attributes
-                </CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Attributes</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 {PRODUCT_ATTR_FIELDS.map(({ key, label, options, creatable }) => {
                   if (creatable && key === "colors") {
                     return (
@@ -1185,6 +1292,26 @@ export default function AdminProductDetailPage() {
                       </Field>
                     );
                   }
+                  if (creatable) {
+                    // Built-in options plus anything already used on a product,
+                    // so a value typed once becomes a suggestion afterwards.
+                    const merged = [
+                      ...(options || []),
+                      ...(attrOptions[key] || []),
+                    ];
+                    return (
+                      <Field key={key}>
+                        <FieldLabel>{label}</FieldLabel>
+                        <ProductAttrCombobox
+                          value={form[key] || ""}
+                          suggestions={merged}
+                          onChange={(value) => updateForm({ [key]: value })}
+                          placeholder={`Select or type a ${label.toLowerCase()}`}
+                        />
+                      </Field>
+                    );
+                  }
+
                   return (
                   <Field key={key}>
                     <FieldLabel>{label}</FieldLabel>
@@ -1220,9 +1347,11 @@ export default function AdminProductDetailPage() {
               </CardContent>
             </Card>
 
-            <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
-              <CardContent className="flex flex-col gap-4 p-4">
-                <CardTitle className="admin-card-heading">Publishing</CardTitle>
+            <Card className="@container/card">
+              <CardHeader>
+                <CardTitle>Publishing</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
                 <Button
                   type="button"
                   variant="outline"
@@ -1243,20 +1372,25 @@ export default function AdminProductDetailPage() {
         </div>
       </main>
 
-      <ImageCropModal
-        isOpen={cropOpen}
-        imageSrc={cropSrc}
-        aspect={3 / 4}
-        title="Crop image (product card)"
-        onCancel={closeCrop}
-        onCropComplete={handleCropped}
-      />
-
       <SelectExistingMediaDialog
         open={mediaPickerOpen}
-        onOpenChange={setMediaPickerOpen}
-        excludeUrls={uniqueMedia}
-        onSelect={attachMediaUrls}
+        onOpenChange={(open) => {
+          setMediaPickerOpen(open);
+          if (!open) setMediaPickerVariantIndex(null);
+        }}
+        excludeUrls={
+          mediaPickerVariantIndex == null
+            ? [...uniqueMedia, ...variantMediaUrls]
+            : variantMediaUrls
+        }
+        onSelect={(urls) => {
+          if (mediaPickerVariantIndex == null) {
+            attachProductMediaUrls(urls);
+          } else {
+            attachVariantMediaUrls(urls, mediaPickerVariantIndex);
+          }
+          setMediaPickerVariantIndex(null);
+        }}
       />
     </>
   );

@@ -26,19 +26,23 @@ export const paymentService = {
     client.post(e.verify, verificationData).then((res) => res.data),
 
   /**
-   * Release soft-reserved stock when Razorpay modal is dismissed.
+   * Magic Checkout (one-click): create the order and its Razorpay order, signed
+   * in or not. Pass the previous localOrderId to reuse it when reopening.
+   */
+  startMagicCheckout: (data) => client.post(e.magicStart, data).then((res) => res.data),
+
+  /** Confirm a Magic Checkout payment by Razorpay's signature (no login needed). */
+  verifyMagicPayment: (data) => client.post(e.magicVerify, data).then((res) => res.data),
+
+  /**
+   * Record Razorpay modal dismiss. Does not drop the stock hold (UPI can
+   * still capture after the modal closes). Unpaid holds expire via TTL.
    */
   releaseReservation: (localOrderId) =>
     client
       .post(o.releaseReservation(localOrderId))
       .then((res) => res.data)
       .catch(() => null),
-
-  /**
-   * Admin: full or partial refund for a paid Razorpay order
-   * @param {{ localOrderId: string, amount?: number, reason?: string }} data
-   */
-  refund: (data) => client.post(e.refund, data).then((res) => res.data),
 };
 
 export default paymentService;

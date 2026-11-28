@@ -1,0 +1,184 @@
+"use client";
+
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { X } from "@/components/icons";
+import { cn } from "@/lib/utils";
+
+function normalizeValue(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Single-value attribute picker: choose a suggestion or type a new one.
+ *
+ * The single-value sibling of ProductColorChips, for fields like Pattern and
+ * Fit where the built-in list is a starting point rather than a closed set.
+ */
+export default function ProductAttrCombobox({
+  value = "",
+  suggestions = [],
+  onChange,
+  placeholder = "Select or type a new value",
+  className = "",
+}) {
+  const [draft, setDraft] = useState("");
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const inputRef = useRef(null);
+  const anchorRef = useRef(null);
+
+  const current = normalizeValue(value);
+
+  // The dropdown is portalled to the body: these fields sit inside a Card with
+  // overflow-hidden, which clips an absolutely positioned menu on the last rows.
+  const measure = useCallback(() => {
+    const node = anchorRef.current;
+    if (!node) return;
+    const box = node.getBoundingClientRect();
+    setRect({ top: box.bottom + 4, left: box.left, width: box.width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    measure();
+  }, [open, measure]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMove = () => measure();
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, measure]);
+
+  const options = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    for (const item of suggestions || []) {
+      const name = normalizeValue(item);
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+    return out;
+  }, [suggestions]);
+
+  const filtered = useMemo(() => {
+    const q = draft.trim().toLowerCase();
+    return options.filter((o) => !q || o.toLowerCase().includes(q)).slice(0, 10);
+  }, [options, draft]);
+
+  const typed = normalizeValue(draft);
+  const canCreate =
+    !!typed &&
+    !options.some((o) => o.toLowerCase() === typed.toLowerCase()) &&
+    typed.toLowerCase() !== current.toLowerCase();
+
+  const commit = (raw) => {
+    const name = normalizeValue(raw);
+    if (!name) return;
+    onChange?.(name);
+    setDraft("");
+    setOpen(false);
+    inputRef.current?.blur();
+  };
+
+  const clear = () => {
+    onChange?.("");
+    setDraft("");
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  return (
+    <div className={cn("relative", className)} ref={anchorRef}>
+      <div
+        className="flex min-h-8 w-full items-center gap-1.5 rounded-lg border border-(--p-color-border) bg-white px-2.5 py-1 shadow-none focus-within:border-(--p-color-border-tertiary)"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {current && !draft ? (
+          <span className="inline-flex h-5 max-w-full items-center gap-1 rounded-md bg-(--p-color-button-bg-fill) px-1.5 text-[12px] leading-none font-medium text-(--p-color-text)">
+            <span className="truncate leading-none">{current}</span>
+            <button
+              type="button"
+              aria-label={`Clear ${current}`}
+              className="inline-flex size-3.5 shrink-0 items-center justify-center rounded opacity-60 hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation();
+                clear();
+              }}
+            >
+              <X className="size-3" strokeWidth={2.5} />
+            </button>
+          </span>
+        ) : null}
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            window.setTimeout(() => setOpen(false), 120);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit(draft);
+              return;
+            }
+            if (e.key === "Backspace" && !draft && current) {
+              clear();
+            }
+          }}
+          placeholder={current ? "" : placeholder}
+          className="h-5 min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-[13px] leading-5 outline-none placeholder:text-(--p-color-text-disabled)"
+          autoComplete="off"
+        />
+      </div>
+
+      {open && rect && (filtered.length > 0 || canCreate)
+        ? createPortal(
+        <div
+          className="fixed z-50 max-h-48 overflow-auto rounded-lg border border-(--p-color-border) bg-white py-1 text-left shadow-md"
+          style={{ top: rect.top, left: rect.left, width: rect.width }}
+        >
+          {filtered.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              className={cn(
+                "flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 text-(--p-color-text) hover:bg-(--p-color-bg-fill)",
+                opt.toLowerCase() === current.toLowerCase() && "font-medium"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => commit(opt)}
+            >
+              {opt}
+            </button>
+          ))}
+          {canCreate ? (
+            <button
+              type="button"
+              className="flex w-full px-2.5 py-1.5 text-left text-[13px] leading-5 font-medium text-(--p-color-text) hover:bg-(--p-color-bg-fill)"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => commit(draft)}
+            >
+              Add “{typed}”
+            </button>
+          ) : null}
+        </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}

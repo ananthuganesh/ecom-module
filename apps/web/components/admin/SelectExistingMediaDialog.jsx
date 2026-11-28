@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search } from "@/components/icons";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
 import { adminMediaService } from "@/api";
 import SafeImage from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,38 @@ function mediaKey(file) {
   return file?.key || `${file?.folder || ""}/${file?.name || ""}`;
 }
 
+function normalizeMediaUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  const siteBase = (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_WEB_URL ||
+    process.env.PUBLIC_WEB_URL ||
+    "https://urbanaana.com"
+  ).replace(/\/$/, "");
+  try {
+    const u = new URL(raw, siteBase);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return raw.split("?")[0].split("#")[0];
+  }
+}
+
+function isImageFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  if (type === "image") return true;
+  if (type === "video") return false;
+  const name = String(file?.name || file?.url || "");
+  return /\.(webp|png|jpe?g|gif|avif|svg)(\?|#|$)/i.test(name);
+}
+
+function asMediaList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.files)) return data.files;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+}
+
 export default function SelectExistingMediaDialog({
   open,
   onOpenChange,
@@ -33,7 +66,10 @@ export default function SelectExistingMediaDialog({
   const [selected, setSelected] = useState(() => new Set());
 
   const excluded = useMemo(
-    () => new Set((excludeUrls || []).filter(Boolean)),
+    () =>
+      new Set(
+        (excludeUrls || []).map(normalizeMediaUrl).filter(Boolean)
+      ),
     [excludeUrls]
   );
 
@@ -45,18 +81,17 @@ export default function SelectExistingMediaDialog({
     setSearch("");
     (async () => {
       try {
-        const data = await adminMediaService.list("products");
+        // Same scope as Admin → Files ("all" = products + ai; reels excluded).
+        const data = await adminMediaService.list("all");
         if (cancelled) return;
-        const list = (Array.isArray(data) ? data : []).filter(
-          (f) => (f.type || "image") === "image" && f.url
+        const list = asMediaList(data).filter(
+          (f) => isImageFile(f) && f.url
         );
         setFiles(list);
       } catch (err) {
         if (!cancelled) {
           setFiles([]);
-          toast.error(
-            err?.response?.data?.detail || "Could not load media library"
-          );
+          toast.error(userErrorMessage(err, "Couldn’t load the media library"));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -70,7 +105,6 @@ export default function SelectExistingMediaDialog({
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return files.filter((f) => {
-      if (excluded.has(f.url)) return false;
       if (!q) return true;
       return (
         String(f.name || "")
@@ -81,9 +115,17 @@ export default function SelectExistingMediaDialog({
           .includes(q)
       );
     });
-  }, [files, search, excluded]);
+  }, [files, search]);
+
+  const selectableCount = useMemo(
+    () =>
+      visible.filter((f) => !excluded.has(normalizeMediaUrl(f.url))).length,
+    [visible, excluded]
+  );
 
   const toggle = (url) => {
+    const key = normalizeMediaUrl(url) || url;
+    if (excluded.has(key)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(url)) next.delete(url);
@@ -93,7 +135,9 @@ export default function SelectExistingMediaDialog({
   };
 
   const handleDone = () => {
-    const urls = [...selected];
+    const urls = [...selected].filter(
+      (url) => !excluded.has(normalizeMediaUrl(url))
+    );
     if (!urls.length) {
       onOpenChange?.(false);
       return;
@@ -102,6 +146,16 @@ export default function SelectExistingMediaDialog({
     onOpenChange?.(false);
   };
 
+  const emptyMessage = (() => {
+    if (files.length === 0) {
+      return "No images in the media library yet.";
+    }
+    if (selectableCount === 0) {
+      return "All library images are already on this product.";
+    }
+    return "No images match your search.";
+  })();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -109,46 +163,56 @@ export default function SelectExistingMediaDialog({
         showCloseButton
       >
         <DialogHeader>
-          <DialogTitle className="text-[16px] font-medium text-[#303030]">
+          <DialogTitle className="text-[16px] font-medium text-(--p-color-text)">
             Select existing media
           </DialogTitle>
         </DialogHeader>
 
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-[#8a8a8a]" />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-(--p-color-text-tertiary)" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search files"
-            className="h-8 border-[#e3e3e3] bg-white pl-8"
+            className="h-8 border-(--p-color-border) bg-white pl-8"
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-[#e3e3e3]">
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-(--p-color-border)">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-[#616161]">
+            <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-(--p-color-text-secondary)">
               <Spinner className="size-4" /> Loading media…
             </div>
           ) : visible.length === 0 ? (
-            <div className="px-4 py-16 text-center text-[13px] text-[#616161]">
-              No images in the media library yet.
+            <div className="px-4 py-16 text-center text-[13px] text-(--p-color-text-secondary)">
+              {emptyMessage}
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2 p-3 sm:grid-cols-4">
               {visible.map((file) => {
+                const alreadyOnProduct = excluded.has(
+                  normalizeMediaUrl(file.url)
+                );
                 const active = selected.has(file.url);
                 return (
                   <button
                     key={mediaKey(file)}
                     type="button"
+                    disabled={alreadyOnProduct}
                     onClick={() => toggle(file.url)}
                     className={cn(
-                      "relative aspect-square overflow-hidden rounded-lg border bg-[#fafafa] text-left",
-                      active
-                        ? "border-[#005bd3] ring-2 ring-[#005bd3]/30"
-                        : "border-[#e3e3e3] hover:border-[#b5b5b5]"
+                      "relative aspect-square overflow-hidden rounded-lg border bg-(--p-color-bg-surface-secondary) text-left",
+                      alreadyOnProduct
+                        ? "cursor-not-allowed border-(--p-color-border) opacity-45"
+                        : active
+                          ? "border-(--p-color-border-focus) ring-2 ring-(--p-color-border-focus)/30"
+                          : "border-(--p-color-border) hover:border-(--p-color-border-tertiary)"
                     )}
-                    title={file.name}
+                    title={
+                      alreadyOnProduct
+                        ? `${file.name} (already on product)`
+                        : file.name
+                    }
                   >
                     <SafeImage
                       src={file.url}
@@ -156,8 +220,12 @@ export default function SelectExistingMediaDialog({
                       fill
                       className="object-cover"
                     />
-                    {active ? (
-                      <span className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#005bd3] text-[11px] font-bold text-white">
+                    {alreadyOnProduct ? (
+                      <span className="absolute inset-x-1 bottom-1 rounded bg-black/65 px-1 py-0.5 text-center text-[10px] font-medium text-white">
+                        Added
+                      </span>
+                    ) : active ? (
+                      <span className="absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-(--p-color-bg-highlight-accent) text-[11px] font-bold text-white">
                         ✓
                       </span>
                     ) : null}
@@ -169,10 +237,10 @@ export default function SelectExistingMediaDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
-          <p className="text-[12px] text-[#616161]">
+          <p className="text-[12px] text-(--p-color-text-secondary)">
             {selected.size
               ? `${selected.size} selected`
-              : `${visible.length} image${visible.length === 1 ? "" : "s"}`}
+              : `${selectableCount} image${selectableCount === 1 ? "" : "s"} available`}
           </p>
           <div className="flex gap-2">
             <Button
@@ -187,7 +255,7 @@ export default function SelectExistingMediaDialog({
             <Button
               type="button"
               size="sm"
-              className="h-8 bg-[#1a1a1a] text-white hover:bg-[#000]"
+              className="h-8 bg-(--p-color-button-primary-bg-hover) text-white hover:bg-[#000]"
               disabled={!selected.size}
               onClick={handleDone}
             >

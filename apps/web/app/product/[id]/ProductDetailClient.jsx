@@ -1,0 +1,1395 @@
+"use client";
+
+import { formatINR } from "@/utils/formatINR";
+import {
+  CaretIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  RulerIcon,
+} from "@/components/icons/storeIcons";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+
+import SafeImage from "@/components/SafeImage";
+import ProductCard from "@/components/storefront/ProductCard";
+import ProductDetailSkeleton from "@/components/ProductDetailSkeleton";
+import RecentlyViewed from "@/components/RecentlyViewed";
+import { filterInStock } from "@/lib/productStock";
+import { estimateDeliveryWindow } from "@/lib/deliveryEstimate";
+import { productService } from "@/api";
+import { trackBeginCheckout, trackViewItem } from "@/lib/tracking";
+import {
+  getPaymentConfig,
+  openMagicCheckout,
+  prefetchMagicCheckout,
+  startMagicCheckout,
+} from "@/lib/magicCheckout";
+import { userErrorMessage } from "@/lib/userMessage";
+import WishlistButton from "@/components/storefront/WishlistButton";
+import BackInStockNotify from "@/components/storefront/BackInStockNotify";
+import SaleOfferCard from "@/components/storefront/SaleOfferCard";
+import ProductOffers from "@/components/storefront/ProductOffers";
+import ProductReviews from "@/components/storefront/ProductReviews";
+import StarRating from "@/components/storefront/StarRating";
+import { productRating, reviewCountLabel } from "@/lib/reviews";
+import {
+  SIZE_GUIDE_COLUMNS,
+  SIZE_GUIDE_NOTE,
+  SIZE_GUIDE_ROWS,
+  formatSizeGuideValue,
+} from "@/lib/sizeGuide";
+import { useCartStore } from "@/store/useCartStore";
+import { useBuyNowStore } from "@/store/useBuyNowStore";
+import { useRecentlyViewedStore } from "@/store/useRecentlyViewedStore";
+import { resolveImageUrl } from "@/utils/imageResolver";
+import { getProductSizeOptions } from "@/utils/productSizes";
+import { sanitizeProductHtml } from "@/utils/sanitizeProductHtml";
+import { resolveCardBadge } from "@/utils/urbanProductAdapter";
+import { productBreadcrumbs } from "@/lib/productJsonLd";
+import { orderProductImages, productImageAlt } from "@/lib/productGallery";
+
+const stockFor = (item, fallback = 0) => Number(item?.stock ?? item?.quantity ?? fallback ?? 0);
+
+/** Urgency copy only makes sense below this many units of the chosen size. */
+const LOW_STOCK_THRESHOLD = 10;
+
+function CtaSpinner({ tone = "dark" }) {
+  const ring =
+    tone === "light"
+      ? "border-white/30 border-t-white"
+      : "border-black/20 border-t-black";
+  return (
+    <span
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 ${ring}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+/** Convert ALL CAPS / shouty text to sentence case; leave mixed-case alone. */
+function toSentenceCase(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return text;
+  // Keep SKUs / codes as-is (e.g. TJ9I99-S).
+  if (/[0-9]/.test(text) && !/\s/.test(text)) return text;
+  const letters = text.replace(/[^A-Za-z]/g, "");
+  if (!letters) return text;
+  const upperRatio =
+    letters.replace(/[^A-Z]/g, "").length / Math.max(1, letters.length);
+  if (upperRatio < 0.6) return text;
+  const lower = text.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+export default function ProductDetailPage({ initialProduct = null, initialSimilar = [] }) {
+  const params = useParams();
+  const router = useRouter();
+  const addItem = useCartStore((state) => state.addItem);
+  const cartItems = useCartStore((state) => state.cartItems);
+  const addRecentlyViewed = useRecentlyViewedStore((state) => state.addProduct);
+  const [product, setProduct] = useState(initialProduct);
+  // Server-rendered (page.js) so the links are in the HTML; fetched here only as a fallback.
+  const [similarProducts, setSimilarProducts] = useState(initialSimilar);
+  // Similar Products is dropped while Recently Viewed is showing, to keep the page short.
+  const [recentlyViewedVisible, setRecentlyViewedVisible] = useState(false);
+  const [loading, setLoading] = useState(!initialProduct);
+  const [selectedSize, setSelectedSize] = useState("");
+  const [showSizeGuide, setShowSizeGuide] = useState(false);
+  const [sizeGuideUnit, setSizeGuideUnit] = useState("in");
+  const [openSection, setOpenSection] = useState("description");
+  const [deliveryWindow, setDeliveryWindow] = useState("");
+  const [ctaPending, setCtaPending] = useState(null);
+  // Buy now opens Razorpay Magic Checkout right here when it's enabled;
+  // otherwise it goes to /checkout as before. null = not known yet.
+  const [magicEnabled, setMagicEnabled] = useState(null);
+  const [buyError, setBuyError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    getPaymentConfig()
+      .then((cfg) => {
+        if (alive) setMagicEnabled(cfg?.razorpayConfigured !== false && cfg?.magicCheckout === true);
+      })
+      .catch(() => {
+        if (alive) setMagicEnabled(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const [showStickyCta, setShowStickyCta] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const trackedViewIdRef = useRef(null);
+  const primaryCtaRef = useRef(null);
+  const mobileGalleryRef = useRef(null);
+  const mobileGalleryScrollLock = useRef(false);
+
+  // Next can leave the page mid-viewport when opening a product (sticky
+  // product column + preserved scroll from the previous listing page).
+  const productScrollKey = product?._id || params?.id;
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const toTop = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    };
+    toTop();
+    // Router scroll can run after first paint — re-assert top briefly.
+    const t0 = window.setTimeout(toTop, 0);
+    const t1 = window.setTimeout(toTop, 80);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [productScrollKey]);
+
+  useEffect(() => {
+    if (!initialProduct?._id) return;
+    if (trackedViewIdRef.current === initialProduct._id) return;
+    trackedViewIdRef.current = initialProduct._id;
+    addRecentlyViewed(initialProduct);
+    trackViewItem(initialProduct);
+  }, [initialProduct, addRecentlyViewed]);
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      if (!params?.id) return;
+      const hadInitial = Boolean(initialProduct);
+      // Keep SSR paint visible; only show skeleton when we have no product yet.
+      if (!hadInitial) setLoading(true);
+      try {
+        const isObjectId = /^[0-9a-fA-F]{24}$/.test(params.id);
+        let data;
+        if (isObjectId) {
+          try {
+            data = await productService.getById(params.id);
+          } catch {
+            data = await productService.getBySlug(params.id);
+          }
+        } else {
+          data = await productService.getBySlug(params.id);
+        }
+        if (!data) {
+          if (!hadInitial) setProduct(null);
+          return;
+        }
+        setProduct(data);
+        addRecentlyViewed(data);
+        if (trackedViewIdRef.current !== data._id) {
+          trackedViewIdRef.current = data._id;
+          trackViewItem(data);
+        }
+
+        const currentId = data._id;
+        const categoryValue =
+          typeof data.category === "object"
+            ? data.category?.name || data.category?.slug
+            : data.category;
+        const productGroup = data.product;
+
+        const normalizeList = (result) =>
+          Array.isArray(result?.products)
+            ? result.products
+            : Array.isArray(result)
+              ? result
+              : [];
+
+        const mergeUnique = (base, next) => {
+          const seen = new Set(base.map((item) => item._id));
+          for (const item of next) {
+            if (!item?._id || item._id === currentId || seen.has(item._id)) continue;
+            seen.add(item._id);
+            base.push(item);
+          }
+          return base;
+        };
+
+        // The server already rendered this product's related list.
+        if (hadInitial && initialSimilar.length && initialProduct?._id === data._id) return;
+
+        let related = [];
+        try {
+          if (productGroup) {
+            const byGroup = await productService.getProducts({
+              product: productGroup,
+              pageSize: 12,
+            });
+            related = mergeUnique(related, normalizeList(byGroup));
+          }
+          if (related.length < 8 && categoryValue) {
+            const byCategory = await productService.getProducts({
+              category: categoryValue,
+              pageSize: 12,
+            });
+            related = mergeUnique(related, normalizeList(byCategory));
+          }
+          if (related.length < 8) {
+            const latest = await productService.getProducts({ pageSize: 12 });
+            related = mergeUnique(related, normalizeList(latest));
+          }
+        } catch (relatedError) {
+          console.error("Error fetching related products:", relatedError);
+        }
+        setSimilarProducts(filterInStock(related).slice(0, 8));
+      } catch (error) {
+        console.error("Error fetching product:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProduct();
+  }, [params?.id, addRecentlyViewed, initialProduct]);
+
+  const sizes = useMemo(() => getProductSizeOptions(product), [product]);
+
+  useEffect(() => {
+    if (!sizes.length) {
+      setSelectedSize("");
+      return;
+    }
+    const currentStillAvailable =
+      selectedSize &&
+      sizes.some((size) => size.size === selectedSize && stockFor(size, 0) > 0);
+    if (currentStillAvailable) return;
+
+    // A size-specific link (?size=M, used in Google's product results) picks that size.
+    const requested =
+      typeof window !== "undefined"
+        ? String(new URLSearchParams(window.location.search).get("size") || "").trim().toLowerCase()
+        : "";
+    const requestedSize = requested
+      ? sizes.find((size) => size.size.toLowerCase() === requested && stockFor(size, 0) > 0)
+      : null;
+    const firstAvailable = requestedSize || sizes.find((size) => stockFor(size, 0) > 0);
+    setSelectedSize(firstAvailable?.size || "");
+  }, [product?._id, sizes, selectedSize]);
+
+  const selectedSizeData = sizes.find((size) => size.size === selectedSize);
+  const selectedVariant = useMemo(() => {
+    if (!product) return null;
+    if (selectedSize) {
+      return (
+        (product.variants || []).find(
+          (variant) => String(variant.size || "").trim() === selectedSize
+        ) || null
+      );
+    }
+    return product.variants?.[0] || null;
+  }, [product, selectedSize]);
+  // Same order the server preloads from (lib/productGallery.js); the selected
+  // variant's photo leads.
+  const images = useMemo(
+    () => orderProductImages(product, selectedSizeData?.images || selectedVariant?.images || []),
+    [product, selectedSizeData, selectedVariant]
+  );
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [product?._id, selectedSize]);
+
+  useEffect(() => {
+    if (!images.length) {
+      setActiveImageIndex(0);
+      return;
+    }
+    setActiveImageIndex((i) => Math.min(Math.max(0, i), images.length - 1));
+  }, [images.length]);
+
+  const mobileGalleryLoops = images.length > 1;
+
+  const mobileGallerySlides = useMemo(() => {
+    if (!images.length) return [];
+    if (!mobileGalleryLoops) {
+      return images.map((image, index) => ({
+        image,
+        realIndex: index,
+        key: `slide-${index}`,
+      }));
+    }
+    return [
+      {
+        image: images[images.length - 1],
+        realIndex: images.length - 1,
+        key: "clone-end",
+      },
+      ...images.map((image, index) => ({
+        image,
+        realIndex: index,
+        key: `slide-${index}`,
+      })),
+      {
+        image: images[0],
+        realIndex: 0,
+        key: "clone-start",
+      },
+    ];
+  }, [images, mobileGalleryLoops]);
+
+  useEffect(() => {
+    const el = mobileGalleryRef.current;
+    if (!el) return;
+    mobileGalleryScrollLock.current = true;
+    const width = el.clientWidth || 0;
+    // With infinite loop clones, real index 0 sits at slide 1.
+    const startLeft = mobileGalleryLoops && width ? width : 0;
+    el.scrollTo({ left: startLeft, behavior: "auto" });
+    const t = window.setTimeout(() => {
+      mobileGalleryScrollLock.current = false;
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [product?._id, selectedSize, images.length, mobileGalleryLoops]);
+
+  const settleMobileGalleryLoop = () => {
+    const el = mobileGalleryRef.current;
+    if (!el || !mobileGalleryLoops) return;
+    const width = el.clientWidth || 0;
+    if (!width) return;
+    const slide = Math.round(el.scrollLeft / width);
+    const last = images.length;
+    if (slide <= 0) {
+      mobileGalleryScrollLock.current = true;
+      el.scrollTo({ left: last * width, behavior: "auto" });
+      setActiveImageIndex(last - 1);
+      window.requestAnimationFrame(() => {
+        mobileGalleryScrollLock.current = false;
+      });
+      return;
+    }
+    if (slide >= last + 1) {
+      mobileGalleryScrollLock.current = true;
+      el.scrollTo({ left: width, behavior: "auto" });
+      setActiveImageIndex(0);
+      window.requestAnimationFrame(() => {
+        mobileGalleryScrollLock.current = false;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const el = mobileGalleryRef.current;
+    if (!el || !mobileGalleryLoops) return undefined;
+
+    let settleTimer = 0;
+    const onScrollEnd = () => settleMobileGalleryLoop();
+    const onScroll = () => {
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(settleMobileGalleryLoop, 80);
+    };
+
+    el.addEventListener("scrollend", onScrollEnd);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.clearTimeout(settleTimer);
+      el.removeEventListener("scrollend", onScrollEnd);
+      el.removeEventListener("scroll", onScroll);
+    };
+  }, [mobileGalleryLoops, images.length, product?._id, selectedSize]);
+
+  // Arrow buttons move one photo, like a swipe; the loop clones handle wrap-around.
+  const stepMobileGallery = (dir) => {
+    const el = mobileGalleryRef.current;
+    const width = el?.clientWidth || 0;
+    if (!width) return;
+    el.scrollBy({ left: dir * width, behavior: "smooth" });
+  };
+
+  const handleMobileGalleryScroll = () => {
+    if (mobileGalleryScrollLock.current) return;
+    const el = mobileGalleryRef.current;
+    if (!el) return;
+    const width = el.clientWidth || 0;
+    if (!width) return;
+    const slide = Math.round(el.scrollLeft / width);
+    if (mobileGalleryLoops) {
+      const last = images.length;
+      if (slide >= 1 && slide <= last) {
+        const next = slide - 1;
+        if (next !== activeImageIndex) setActiveImageIndex(next);
+      }
+      return;
+    }
+    if (slide >= 0 && slide < images.length && slide !== activeImageIndex) {
+      setActiveImageIndex(slide);
+    }
+  };
+
+  const availableStock = selectedSizeData
+    ? stockFor(selectedSizeData, product?.totalStock)
+    : Number(product?.totalStock || 0);
+  const inStock = availableStock > 0;
+  // Counted for the selected size, not the whole product — "3 left" has to
+  // mean three of this size, or it reads as a lie at the size picker.
+  const selectedSizeStock = selectedSizeData ? stockFor(selectedSizeData, 0) : 0;
+  const lowStockThreshold =
+    Number(product?.lowStockThreshold) > 0
+      ? Number(product.lowStockThreshold)
+      : LOW_STOCK_THRESHOLD;
+  const lowStockLeft =
+    selectedSizeStock > 0 && selectedSizeStock < lowStockThreshold
+      ? selectedSizeStock
+      : 0;
+  const rating = productRating(product);
+  const price = Number(product?.pricing?.sellingPrice ?? product?.price ?? 0);
+
+  // When the countdown ends, the API restores the regular price within its next
+  // one-minute sweep — reload then so the page stops showing the sale price.
+  const saleRefreshRef = useRef(null);
+  useEffect(() => () => clearTimeout(saleRefreshRef.current), []);
+  const handleSaleEnded = useCallback(() => {
+    const slug = product?.slug || params?.id;
+    if (!slug) return;
+    clearTimeout(saleRefreshRef.current);
+    saleRefreshRef.current = setTimeout(async () => {
+      try {
+        const fresh = await productService.getBySlug(slug);
+        if (fresh) setProduct(fresh);
+      } catch {
+        // Keep the current paint; the next visit shows the regular price.
+      }
+    }, 65000);
+  }, [product?.slug, params?.id]);
+  const mrp = Number(product?.pricing?.mrp ?? 0);
+  const hasCompareAt = mrp > 0 && mrp > price;
+  const originalPrice = hasCompareAt ? mrp : null;
+  const saveAmount = hasCompareAt ? originalPrice - price : 0;
+  const savePercent = hasCompareAt
+    ? Math.round((saveAmount / originalPrice) * 100)
+    : 0;
+  const title = toSentenceCase(product?.productName || product?.name || "Product");
+  const productType = toSentenceCase(
+    String(product?.type || product?.productType || product?.subcategory || "").trim()
+  );
+  const productBadge = useMemo(
+    () => (product ? resolveCardBadge(product) : null),
+    [product]
+  );
+  const isInCart = cartItems.some(
+    (item) => item._id === product?._id && (item.size || "") === selectedSize
+  );
+
+  useEffect(() => {
+    setDeliveryWindow(estimateDeliveryWindow());
+  }, []);
+
+  useEffect(() => {
+    const target = primaryCtaRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Sticky bar only when the real CTAs are off-screen.
+        setShowStickyCta(!entry.isIntersecting);
+      },
+      { threshold: 0, rootMargin: "0px" }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [product?._id, loading]);
+
+  const handleAddToCart = () => {
+    if (!inStock || ctaPending) return;
+    if (sizes.length > 0 && !selectedSize) return;
+    setCtaPending("add");
+    addItem({
+      ...product,
+      qty: 1,
+      size: selectedSize,
+      color: "",
+      image: selectedVariant?.images?.[0] || product?.thumbnails?.[0],
+      totalStock: availableStock,
+      variants: product?.variants || [],
+    });
+    window.setTimeout(() => setCtaPending(null), 450);
+  };
+
+  const prefetchBuyNow = () => {
+    if (magicEnabled) prefetchMagicCheckout();
+  };
+
+  const handleBuyNow = async () => {
+    if (!inStock || ctaPending) return;
+    if (sizes.length > 0 && !selectedSize) return;
+    setCtaPending("buy");
+    setBuyError("");
+    const item = {
+      ...product,
+      qty: 1,
+      size: selectedSize,
+      color: "",
+      image: selectedVariant?.images?.[0] || product?.thumbnails?.[0],
+      totalStock: availableStock,
+      variants: product?.variants || [],
+      price,
+    };
+
+    if (magicEnabled) {
+      // One tap: Magic Checkout collects phone, address and coupon in its popup.
+      trackBeginCheckout([item]);
+      let paymentData;
+      try {
+        paymentData = await startMagicCheckout({ items: [item] });
+      } catch (error) {
+        setBuyError(
+          error?.message === "Razorpay failed to load"
+            ? "Couldn’t load the payment window. Please try again."
+            : userErrorMessage(error, "We couldn’t start checkout. Please try again.")
+        );
+        setCtaPending(null);
+        return;
+      }
+      openMagicCheckout({
+        paymentData,
+        items: [item],
+        fallbackValue: price,
+        // Keep the spinner while the success page loads.
+        onPaid: (localOrderId) => router.push(`/checkout/success?orderId=${localOrderId}`),
+        onError: (message) => {
+          setBuyError(message);
+          setCtaPending(null);
+        },
+        onDismiss: () => setCtaPending(null),
+      });
+      return;
+    }
+
+    const ok = useBuyNowStore.getState().setBuyNowItem(item);
+    if (!ok) {
+      setCtaPending(null);
+      return;
+    }
+    router.push("/checkout?buyNow=1");
+  };
+
+  if (loading && !product) return <main className="min-h-screen bg-white py-8"><ProductDetailSkeleton /></main>;
+  if (!product) return <p className="min-h-screen bg-white py-24 text-center text-sm text-gray-400">Product not found</p>;
+
+  const formatSpec = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => toSentenceCase(String(item || "").trim()))
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (value && typeof value === "object") {
+      return toSentenceCase(String(value.name || value.label || "").trim());
+    }
+    return toSentenceCase(String(value || "").trim());
+  };
+
+  const productSpecs = [
+    { label: "Product Category", value: formatSpec(product.category) },
+    { label: "Fit", value: formatSpec(product.fit) },
+    { label: "Fabric", value: formatSpec(product.fabric) },
+    { label: "Neck Type", value: formatSpec(product.neckType) },
+    { label: "Sleeve Type", value: formatSpec(product.sleeveType) },
+    { label: "Pattern", value: formatSpec(product.pattern) },
+    {
+      label: "Colour",
+      value: formatSpec(
+        Array.isArray(product.colors) && product.colors.length
+          ? product.colors
+          : product.color
+      ),
+    },
+    { label: "Gender", value: formatSpec(product.gender) },
+    {
+      label: "SKU",
+      // A code, not prose: never re-case it (GSRGDM-S must not become Gsrgdm-s).
+      value: String(selectedVariant?.sku || product.productId || "").trim(),
+    },
+  ].filter((spec) => spec.value);
+
+  const breadcrumbs = productBreadcrumbs(product);
+
+
+  const ctaDisabled = !inStock || (sizes.length > 0 && !selectedSize);
+  const addLabel =
+    sizes.length > 0 && !selectedSize ? "Select size" : "Add to cart";
+
+  // Product details / information sit in the buy column (not below the gallery)
+  // so the right side isn't blank while images scroll.
+  const productInfoBlock = (
+    <>
+      {productSpecs.length > 0 ? (
+        <div className="mt-6 pt-1">
+          <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
+            Product details
+          </h2>
+          <div className="grid grid-cols-2">
+            {productSpecs.map((spec, index) => {
+              const isLastRow =
+                index >=
+                productSpecs.length -
+                  (productSpecs.length % 2 === 0 ? 2 : 1);
+              return (
+                <div
+                  key={spec.label}
+                  className={`py-4 pr-4 ${
+                    index % 2 === 1 ? "pl-4" : ""
+                  } ${!isLastRow ? "border-b border-gray-200" : ""}`}
+                >
+                  <p className="text-[12px] leading-snug text-gray-400">
+                    {spec.label}
+                  </p>
+                  <p className="mt-1.5 text-[14px] font-medium leading-snug text-[#222222]">
+                    {spec.value}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+
+      <div className="mt-6 pt-1">
+        <h2 className="mb-3 text-[16px] font-semibold text-gray-800">
+          Information
+        </h2>
+        <div>
+          {[
+            {
+              id: "description",
+              title: "Description",
+              body: /<\/?[a-z][\s\S]*>/i.test(
+                String(product.description || "")
+              ) ? (
+                <div
+                  className="prose prose-sm max-w-none pb-4 text-[13px] leading-relaxed text-gray-600 [&_a]:text-[#005bd3] [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeProductHtml(
+                      product.description || "No description available."
+                    ),
+                  }}
+                />
+              ) : (
+                <p className="whitespace-pre-line pb-4 text-[13px] leading-relaxed text-gray-600">
+                  {toSentenceCase(
+                    product.description || "No description available."
+                  )}
+                </p>
+              ),
+            },
+            {
+              id: "shipping",
+              title: "Shipping & returns",
+              body: (
+                <div className="space-y-3 pb-4 text-[13px] leading-relaxed text-gray-600">
+                  <p>
+                    Orders are packed and dispatched as quickly as stock
+                    allows. Delivery usually takes 3–6 business days after
+                    dispatch, depending on your pin code and courier
+                    serviceability.
+                  </p>
+                  <p>
+                    Easy returns and exchanges are available on eligible
+                    products within 3 days of delivery, provided items are
+                    unused and in original condition with tags.
+                  </p>
+                  <Link
+                    href="/return-refund"
+                    className="inline-block font-medium text-[#DF1721] hover:underline"
+                  >
+                    View full shipping & returns policy
+                  </Link>
+                </div>
+              ),
+            },
+            {
+              id: "wash",
+              title: "Wash care",
+              body: (
+                <ul className="list-disc space-y-1.5 pb-4 pl-5 text-[13px] leading-relaxed text-gray-600">
+                  <li>Machine wash cold with similar colours</li>
+                  <li>Use mild detergent; avoid bleach</li>
+                  <li>Do not tumble dry — hang dry in shade</li>
+                  <li>Warm iron inside out if needed</li>
+                  <li>Do not dry clean</li>
+                </ul>
+              ),
+            },
+          ]
+            .filter(Boolean)
+            .map((section, sectionIndex, sectionList) => {
+              const isOpen = openSection === section.id;
+              const isLast = sectionIndex === sectionList.length - 1;
+              return (
+                <div
+                  key={section.id}
+                  className={isLast ? "" : "border-b border-gray-200"}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => {
+                      if (!isOpen) setOpenSection(section.id);
+                    }}
+                    className="flex w-full items-center justify-between py-3 text-left text-[13px] font-medium text-gray-700"
+                  >
+                    <span>{section.title}</span>
+                    <CaretIcon
+                      className={`h-3.5 w-3.5 transition-transform duration-300 ease-out ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  <div
+                    className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      isOpen
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">{section.body}</div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        <div className="mt-6 grid grid-cols-4 gap-2 sm:gap-3">
+          {[
+            {
+              src: "/badge/premium-quality.png",
+              alt: "Premium quality",
+            },
+            {
+              src: "/badge/great-customer-service.png",
+              alt: "Great customer service",
+            },
+            {
+              src: "/badge/secure-payment.png",
+              alt: "100% secure payment",
+            },
+            {
+              src: "/badge/fast-free-shipping.png",
+              alt: "Fast and free shipping",
+            },
+          ].map((badge) => (
+            <div
+              key={badge.src}
+              className="relative mx-auto aspect-square w-full max-w-[4.75rem] sm:max-w-[5.5rem] md:max-w-[6.25rem]"
+            >
+              <SafeImage
+                src={badge.src}
+                alt={badge.alt}
+                fill
+                className="object-contain"
+                sizes="100px"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <main className="min-h-screen bg-[#ffffff] text-black">
+      {/* No bottom padding here: room for the mobile sticky bar is added under the
+          footer (body:has([data-sticky-cta]) in globals.css), so there's no gap above it. */}
+      <section className="w-full px-4 py-5 md:px-4 md:py-8 lg:px-8 lg:py-10">
+        {/* Same crumbs as the BreadcrumbList structured data (lib/productJsonLd.js).
+            Desktop only; on phones the photo starts right under the header. */}
+        <nav aria-label="Breadcrumb" className="mb-5 hidden text-[11px] font-medium text-gray-400 lg:block">
+          <ol className="flex min-w-0 items-center">
+            {breadcrumbs.map((crumb, i) => {
+              const last = i === breadcrumbs.length - 1;
+              return (
+                <li key={crumb.path} className={`flex items-center ${last ? "min-w-0" : "shrink-0"}`}>
+                  {i > 0 ? (
+                    <span aria-hidden className="mx-1.5 text-gray-300">
+                      /
+                    </span>
+                  ) : null}
+                  {last ? (
+                    <span aria-current="page" className="truncate text-gray-600">
+                      {crumb.name}
+                    </span>
+                  ) : (
+                    <Link href={crumb.path} className="transition-colors hover:text-black">
+                      {crumb.name}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,0.7fr)] lg:gap-8 xl:gap-10">
+          {/* Gallery */}
+          <div className="space-y-2.5">
+            {/* Mobile — full-bleed swipeable gallery (dots show position; no thumbnails).
+                Negative margins cancel the section padding so photos run edge to edge. */}
+            <div className="-mx-4 -mt-5 md:-mt-8 lg:hidden">
+              <div className="relative">
+                <div
+                  ref={mobileGalleryRef}
+                  onScroll={handleMobileGalleryScroll}
+                  className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+                  style={{ WebkitOverflowScrolling: "touch" }}
+                >
+                  {mobileGallerySlides.length > 0 ? (
+                    mobileGallerySlides.map(
+                      ({ image, realIndex, key }, slideIndex) => (
+                        <div
+                          key={key}
+                          className="relative aspect-[3/4] w-full shrink-0 snap-center overflow-hidden bg-gray-100"
+                        >
+                          <SafeImage
+                            src={resolveImageUrl(image)}
+                            alt={productImageAlt({ title, productType, url: image, index: realIndex })}
+                            fill
+                            fetchPriority={
+                              slideIndex === (mobileGalleryLoops ? 1 : 0)
+                                ? "high"
+                                : undefined
+                            }
+                            loading={
+                              slideIndex === (mobileGalleryLoops ? 1 : 0)
+                                ? "eager"
+                                : "lazy"
+                            }
+                            sizes="100vw"
+                            className="pointer-events-none object-cover"
+                            draggable={false}
+                          />
+                        </div>
+                      )
+                    )
+                  ) : (
+                    <div className="relative aspect-[3/4] w-full shrink-0 bg-gray-100" />
+                  )}
+                </div>
+
+                <WishlistButton
+                  product={product}
+                  iconSize={18}
+                  // Lined up with the page's 16px content edge, not the full-bleed photo edge.
+                  className="absolute top-4 right-4 z-20 inline-flex items-center justify-center text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+                />
+
+                {images.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => stepMobileGallery(-1)}
+                      aria-label="Previous photo"
+                      className="absolute top-1/2 left-2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-transparent text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] active:scale-95"
+                    >
+                      <ChevronLeftIcon size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => stepMobileGallery(1)}
+                      aria-label="Next photo"
+                      className="absolute top-1/2 right-2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-transparent text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] active:scale-95"
+                    >
+                      <ChevronRightIcon size={18} />
+                    </button>
+                  </>
+                ) : null}
+
+                {images.length > 1 ? (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center gap-1.5">
+                    {images.map((_, index) => (
+                      <span
+                        key={`dot-${index}`}
+                        className={`h-1.5 rounded-full transition-all ${
+                          index === activeImageIndex
+                            ? "w-4 bg-white"
+                            : "w-1.5 bg-white/55"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Desktop — sticky first image + scrolling stack (shared 3:4 ratio) */}
+            <div className="hidden lg:block">
+              {images.length <= 1 ? (
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100">
+                  {images[0] ? (
+                    <SafeImage
+                      src={resolveImageUrl(images[0])}
+                      alt={productImageAlt({ title, productType, url: images[0], index: 0 })}
+                      fill
+                      loading="eager"
+                      fetchPriority="high"
+                      sizes="50vw"
+                      className="object-cover"
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <div className="grid grid-cols-[1.35fr_1fr] gap-2">
+                  {/* Stretches with the stack so sticky primary can pin until the last image */}
+                  <div className="min-h-0">
+                    <div className="sticky top-24 z-[1]">
+                      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100">
+                        <SafeImage
+                          src={resolveImageUrl(images[0])}
+                          alt={productImageAlt({ title, productType, url: images[0], index: 0 })}
+                          fill
+                          loading="eager"
+                          fetchPriority="high"
+                          sizes="42vw"
+                          className="object-cover"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Document-flow stack — drives section height for sticky release */}
+                  <div className="flex flex-col gap-2">
+                    {images.slice(1).map((image, index) => (
+                      <div
+                        key={`${image}-${index + 1}`}
+                        className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100"
+                      >
+                        <SafeImage
+                          src={resolveImageUrl(image)}
+                          alt={productImageAlt({ title, productType, url: image, index: index + 1 })}
+                          fill
+                          sizes="28vw"
+                          className="object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Buy box — self-start so column isn't stretched to gallery height (no empty gap);
+              sticky on the column so it still pins until the last gallery image ends */}
+          <div className="min-w-0 lg:max-w-md xl:max-w-lg lg:sticky lg:top-24 lg:self-start">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  {productBadge ? (
+                    <span
+                      className={`mb-2 inline-flex h-7 items-center rounded-sm border px-2 text-xs font-semibold uppercase leading-none tracking-wide ${
+                        productBadge.key === "sold_out" || productBadge.key === "sale"
+                          ? "border-[#c70a24]/30 text-[#c70a24]"
+                          : productBadge.key === "low_stock"
+                            ? "border-[#b45309]/30 text-[#b45309]"
+                            : "border-[#133b5f]/30 text-[#133b5f]"
+                      }`}
+                    >
+                      {productBadge.label}
+                    </span>
+                  ) : null}
+                  <h1 className="text-xl font-semibold leading-snug tracking-tight text-black sm:text-2xl">
+                    {title}
+                  </h1>
+                  {productType ? (
+                    <p className="mt-1 text-[13px] font-medium text-gray-500">
+                      {productType}
+                    </p>
+                  ) : null}
+                  {rating || product.soldThisWeek ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-gray-600">
+                      {rating ? (
+                        <a
+                          href="#reviews"
+                          className="inline-flex items-center gap-1.5 hover:text-black"
+                        >
+                          <StarRating rating={rating.average} size={15} />
+                          <span className="font-semibold text-black tabular-nums">
+                            {rating.average.toFixed(1)}
+                          </span>
+                          <span className="capitalize">
+                            ({reviewCountLabel(rating.count)})
+                          </span>
+                        </a>
+                      ) : null}
+                      {rating && product.soldThisWeek ? (
+                        <span aria-hidden className="h-4 w-px bg-gray-300" />
+                      ) : null}
+                      {product.soldThisWeek ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span aria-hidden>🔥</span>
+                          <span>
+                            <span className="font-semibold text-black tabular-nums">
+                              {product.soldThisWeek.toLocaleString("en-IN")}+
+                            </span>{" "}
+                            sold this week
+                          </span>
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <WishlistButton
+                  product={product}
+                  iconSize={20}
+                  className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center text-gray-800 transition-colors hover:text-black lg:inline-flex"
+                />
+              </div>
+
+            {product.shortDescription ? (
+              <p className="mt-3 text-[13px] leading-relaxed text-gray-500">
+                {toSentenceCase(product.shortDescription)}
+              </p>
+            ) : null}
+
+            <div className="mt-4 space-y-1">
+              {/* Selling price, struck-through MRP and % OFF on one line */}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <p className="text-2xl font-semibold tracking-[0.02em] text-black">
+                  {formatINR(price)}
+                </p>
+                {hasCompareAt ? (
+                  <>
+                    <p className="text-base text-gray-400">
+                      MRP{" "}
+                      <span className="line-through">
+                        {formatINR(originalPrice)}
+                      </span>
+                    </p>
+                    {savePercent > 0 ? (
+                      <span className="inline-flex items-center rounded-sm bg-[#c70a24] px-2 py-1 text-[13px] font-semibold leading-none tracking-wide text-white uppercase">
+                        {savePercent}% OFF
+                      </span>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+              <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="text-[13px] text-gray-400">Inclusive of all taxes</span>
+                {hasCompareAt ? (
+                  <span className="text-[15px] font-semibold text-emerald-600">
+                    You save {formatINR(saveAmount)}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+
+            {product.sale?.live ? (
+              <SaleOfferCard sale={product.sale} onEnded={handleSaleEnded} />
+            ) : null}
+
+            {sizes.length > 0 ? (
+              <div className="mt-6">
+                <div className="mb-2.5 flex items-center gap-3">
+                  <p className="text-[12px] font-medium text-gray-600">Size</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowSizeGuide(true)}
+                    className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#DF1721] hover:underline"
+                  >
+                    <RulerIcon className="h-3 w-3" /> Find my size
+                  </button>
+                  {lowStockLeft ? (
+                    <span className="ml-auto text-[12px] font-semibold text-[#DF1721]">
+                      Only {lowStockLeft} Left
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {sizes.map((size) => {
+                    const unavailable = stockFor(size, 0) <= 0;
+                    const selected = selectedSize === size.size && !unavailable;
+                    return (
+                      <button
+                        key={size.size}
+                        type="button"
+                        disabled={unavailable}
+                        onClick={() => setSelectedSize(size.size)}
+                        aria-label={
+                          unavailable
+                            ? `${size.size} sold out`
+                            : `Select size ${size.size}`
+                        }
+                        className={`relative min-w-10 overflow-hidden rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                          selected
+                            ? "border-black bg-black text-white"
+                            : unavailable
+                              ? "cursor-not-allowed border-gray-200 bg-transparent text-gray-400"
+                              : "border-gray-200 text-black hover:border-black"
+                        }`}
+                      >
+                        <span className="relative z-[1]">{size.size}</span>
+                        {unavailable ? (
+                          <span
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 z-0"
+                            style={{
+                              background:
+                                "linear-gradient(to top right, transparent calc(50% - 0.6px), #c4c4c4 0, #c4c4c4 calc(50% + 0.6px), transparent 0)",
+                            }}
+                          />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <BackInStockNotify productId={product?._id} sizes={sizes} />
+              </div>
+            ) : !inStock ? (
+              <BackInStockNotify productId={product?._id} soldOut />
+            ) : null}
+
+            <ProductOffers productId={product?._id} />
+
+            <div ref={primaryCtaRef} className="mt-5 flex gap-2">
+              {isInCart && ctaPending !== "add" ? (
+                <button
+                  type="button"
+                  onClick={() => useCartStore.getState().setDrawerOpen(true)}
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[13px] font-semibold"
+                >
+                  View bag
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={ctaDisabled || Boolean(ctaPending)}
+                  aria-busy={ctaPending === "add"}
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[13px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-400"
+                >
+                  {ctaPending === "add" ? (
+                    <CtaSpinner tone="light" />
+                  ) : sizes.length > 0 && !selectedSize ? (
+                    "Select size"
+                  ) : (
+                    "Add to cart"
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                onPointerEnter={prefetchBuyNow}
+                onTouchStart={prefetchBuyNow}
+                onFocus={prefetchBuyNow}
+                disabled={ctaDisabled || Boolean(ctaPending)}
+                aria-busy={ctaPending === "buy"}
+                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-[#D92D36] text-[13px] font-semibold text-white transition-colors hover:bg-[#BF2530] disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              >
+                {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
+              </button>
+            </div>
+            {buyError ? (
+              <p role="alert" className="mt-2 text-[13px] text-destructive">
+                {buyError}
+              </p>
+            ) : null}
+
+            {deliveryWindow ? (
+              <div className="mt-5 flex flex-col gap-1.5 rounded-md bg-gray-100 px-3 py-2.5">
+                <p className="flex items-start gap-2 text-[13px] text-gray-700">
+                  <span aria-hidden className="shrink-0 leading-none">🚚</span>
+                  <span>
+                    Expected Delivery:{" "}
+                    <span className="font-semibold text-gray-900">
+                      {deliveryWindow}
+                    </span>
+                  </span>
+                </p>
+                <p className="flex items-start gap-2 text-[13px] text-gray-700">
+                  <span aria-hidden className="shrink-0 leading-none">📦</span>
+                  <span>
+                    Packed and shipped within{" "}
+                    <span className="font-semibold text-gray-900">
+                      24 hours.
+                    </span>
+                  </span>
+                </p>
+                <p className="flex items-start gap-2 text-[13px] text-gray-700">
+                  <span aria-hidden className="shrink-0 leading-none">✅</span>
+                  <span>
+                    Trusted by{" "}
+                    <span className="font-semibold text-gray-900">
+                      5,000+ customers.
+                    </span>
+                  </span>
+                </p>
+              </div>
+            ) : null}
+
+            {productInfoBlock}
+          </div>
+        </div>
+      </section>
+
+      <ProductReviews productId={product._id} />
+
+      {similarProducts.length > 0 && !recentlyViewedVisible ? (
+        <section className="border-t border-gray-100 bg-[#ffffff] py-6 md:py-10">
+          <header className="mb-3 w-full px-4 text-center md:mb-6 lg:px-8">
+            <h2 className="title-knewave mx-auto w-full text-center text-2xl leading-none tracking-tight normal-case md:text-4xl">
+              Similar <span className="title-knewave-accent">Products</span>
+            </h2>
+          </header>
+          <div
+            className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1 md:gap-3 lg:gap-4 lg:px-8"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            {similarProducts.map((item) => (
+              <div
+                key={item._id}
+                className="w-[48%] shrink-0 sm:w-[30%] md:w-[22%] lg:w-[18%]"
+              >
+                <ProductCard
+                  product={item}
+                  listName="Similar products"
+                  listId="similar-products"
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <RecentlyViewed excludeId={product._id} onVisibleChange={setRecentlyViewedVisible} />
+
+      {showSizeGuide ? (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowSizeGuide(false)}
+            aria-label="Close size guide"
+          />
+          <div className="relative w-full max-w-3xl border border-black bg-white p-5 shadow-2xl sm:p-7">
+            <button
+              type="button"
+              onClick={() => setShowSizeGuide(false)}
+              className="absolute right-3 top-3 p-2 text-black transition-colors hover:text-[#DF1721]"
+              aria-label="Close size guide"
+            >
+              <CloseIcon className="h-4 w-4" />
+            </button>
+
+            <div className="flex flex-wrap items-end justify-between gap-3 pr-8">
+              <div>
+                <h2 className="text-lg font-bold uppercase tracking-tight sm:text-xl">
+                  Size chart
+                </h2>
+              </div>
+              <div className="inline-flex overflow-hidden border border-black text-[12px] font-bold uppercase tracking-[0.12em]">
+                <button
+                  type="button"
+                  onClick={() => setSizeGuideUnit("in")}
+                  className={`px-3 py-1.5 transition-colors ${
+                    sizeGuideUnit === "in"
+                      ? "bg-black text-white"
+                      : "bg-white text-gray-600 hover:bg-[#F9F9F5]"
+                  }`}
+                >
+                  Inches
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSizeGuideUnit("cm")}
+                  className={`px-3 py-1.5 transition-colors ${
+                    sizeGuideUnit === "cm"
+                      ? "bg-black text-white"
+                      : "bg-white text-gray-600 hover:bg-[#F9F9F5]"
+                  }`}
+                >
+                  Cm
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 overflow-x-auto border border-gray-300">
+              <table className="w-full min-w-[640px] border-collapse text-center text-[13px]">
+                <thead>
+                  <tr className="bg-[#DF1721] text-white">
+                    <th className="border border-[#c4141d] px-3 py-3 text-[12px] font-bold">
+                      Size
+                    </th>
+                    {SIZE_GUIDE_COLUMNS.map((column) => (
+                      <th
+                        key={column.key}
+                        className="border border-[#c4141d] px-3 py-3 text-[12px] font-bold leading-snug"
+                      >
+                        {column.label} ({sizeGuideUnit === "cm" ? "cm" : "in"})
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SIZE_GUIDE_ROWS.map((row) => (
+                    <tr key={row.size} className="border-t border-gray-200 bg-white">
+                      <td className="border border-gray-200 px-3 py-2.5 font-bold text-black">
+                        {row.size}
+                      </td>
+                      {SIZE_GUIDE_COLUMNS.map((column) => (
+                        <td
+                          key={column.key}
+                          className="border border-gray-200 px-3 py-2.5 text-black"
+                        >
+                          {formatSizeGuideValue(row[column.key], sizeGuideUnit)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-4 text-center text-[12px] italic leading-relaxed text-gray-600">
+              {sizeGuideUnit === "cm"
+                ? "All measurements converted from inches. Slight variation of about 1–2.5 cm may occur due to manual measurement."
+                : SIZE_GUIDE_NOTE}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {!showSizeGuide && showStickyCta ? (
+        <div
+          data-sticky-cta
+          className="fixed inset-x-0 bottom-0 z-[120] border-t border-gray-200 bg-white/95 px-3 pt-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] backdrop-blur-md lg:hidden"
+        >
+          {buyError ? (
+            <p role="alert" className="mb-2 text-[12px] text-destructive">
+              {buyError}
+            </p>
+          ) : null}
+          <div className="flex gap-2">
+              {isInCart && ctaPending !== "add" ? (
+                <button
+                  type="button"
+                  onClick={() => useCartStore.getState().setDrawerOpen(true)}
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[12px] font-semibold"
+                >
+                  View bag
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={ctaDisabled || Boolean(ctaPending)}
+                  aria-busy={ctaPending === "add"}
+                  className="flex h-11 w-1/2 items-center justify-center rounded-lg border border-[#171717] bg-[#171717] text-white transition-colors hover:bg-black text-[12px] font-semibold disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-400"
+                >
+                  {ctaPending === "add" ? <CtaSpinner tone="light" /> : addLabel}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                onPointerEnter={prefetchBuyNow}
+                onTouchStart={prefetchBuyNow}
+                onFocus={prefetchBuyNow}
+                disabled={ctaDisabled || Boolean(ctaPending)}
+                aria-busy={ctaPending === "buy"}
+                className="flex h-11 w-1/2 items-center justify-center rounded-lg bg-[#D92D36] text-[12px] font-semibold text-white transition-colors hover:bg-[#BF2530] disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+              >
+                {ctaPending === "buy" ? <CtaSpinner tone="light" /> : "Buy now"}
+              </button>
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
+}

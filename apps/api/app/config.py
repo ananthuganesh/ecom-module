@@ -1,58 +1,96 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_CONFIG_FILE = Path(__file__).resolve()
+
+
+def _env_file_candidates() -> tuple[Path, ...]:
+    """Resolve .env for monorepo (.../apps/api/app) and Docker (/app/app)."""
+    parents = _CONFIG_FILE.parents
+    candidates: list[Path] = []
+    # Package root: monorepo apps/api or Docker /app
+    if len(parents) > 1:
+        candidates.append(parents[1] / ".env")
+    # Monorepo repo root: .../ecom-module/.env
+    if len(parents) > 3:
+        candidates.append(parents[3] / ".env")
+    candidates.append(Path(".env"))
+    # Dedupe while preserving order
+    seen: set[str] = set()
+    out: list[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return tuple(out)
+
+
+_ENV_FILES = tuple(str(path) for path in _env_file_candidates() if path.is_file())
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILES or ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     mongo_uri: str = "mongodb://127.0.0.1:27017/urbanaana"
     jwt_secret: str = "dev-secret-change-in-production"
-    jwt_expire_days: int = 30
-    port: int = 8000
+    jwt_expire_days: int = 7
     environment: str = "development"
     node_env: str = "development"
     allowed_origins: str = ""
 
-    razorpay_key_id: str = ""
-    razorpay_key_secret: str = ""
+    razorpay_live_api_key: str = ""
+    razorpay_live_key_secret: str = ""
     razorpay_webhook_secret: str = ""
 
-    aisensy_api_key: str = ""
-    aisensy_project_id: str = ""
-    aisensy_project_api_key: str = ""
-
-    shiprocket_email: str = ""
-    shiprocket_password: str = ""
-
-    encryption_key: str = ""
 
     r2_bucket: str = ""
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
     r2_endpoint: str = ""
     r2_public_url: str = ""
-    r2_account_id: str = ""
     r2_key_prefix: str = ""
 
-    openrouter_api_key: str = ""
-    openrouter_model: str = "google/gemini-3-pro-image"
+    delhivery_api_token: str = ""
+    delhivery_pickup_location: str = ""
+    # Time (IST, HH:MM:SS) we ask Delhivery's rider to come to the warehouse.
+    delhivery_pickup_time: str = "14:00:00"
 
-    ai_studio_style_prompt: str = ""
-    ai_studio_prompt: str = ""
+    # Cloudflare Turnstile (bot check on public forms). Both empty = off.
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
+    # Hard ceiling on contact-form messages per day, across all senders.
+    contact_daily_cap: int = 100
 
     resend_api_key: str = ""
     resend_from: str = "Urban Aana <noreply@urbanaana.com>"
 
-    gtm_id: str = ""
-    gtm_enabled: bool = True
-
     ga4_property_id: str = ""
+    # Server-side conversions. Reporting above reads GA4; these send to it.
+    ga4_measurement_id: str = ""
+    ga4_api_secret: str = ""
+    meta_pixel_id: str = ""
+    meta_capi_access_token: str = ""
+    # Set while testing to see events under Events Manager → Test events.
+    meta_capi_test_event_code: str = ""
+    meta_graph_version: str = "v23.0"
+    # Emailed OTP after the admin password. Only turn off in an emergency
+    # (e.g. email delivery is down and nobody can get into the admin).
+    admin_login_otp: bool = True
     ga4_credentials_json: str = ""
     ga4_credentials_file: str = ""
     ga4_enabled: bool = True
+
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 1.0
 
     def is_production(self) -> bool:
         return (
@@ -71,14 +109,6 @@ class Settings(BaseSettings):
             )
         if not str(self.razorpay_webhook_secret or "").strip():
             raise RuntimeError("RAZORPAY_WEBHOOK_SECRET is required in production")
-
-    @field_validator("shiprocket_password", mode="before")
-    @classmethod
-    def unescape_shiprocket_password(cls, value: object) -> object:
-        # docker-compose / dotenv often turn a real `$` into `$$`
-        if isinstance(value, str):
-            return value.replace("$$", "$")
-        return value
 
     @property
     def cors_origins(self) -> List[str] | None:

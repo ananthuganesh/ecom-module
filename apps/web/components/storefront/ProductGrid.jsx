@@ -1,56 +1,43 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { productService } from "@/api";
+import React, { useEffect, useRef } from "react";
 import ProductCard from "./ProductCard";
+import { trackViewItemList } from "@/lib/tracking";
 
-function normalizeProducts(data) {
-  if (Array.isArray(data?.products)) return data.products;
-  if (Array.isArray(data)) return data;
-  return [];
-}
-
-export default function ProductGrid() {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function ProductGrid({
+  products = [],
+  listName = "Latest Drops",
+  listId = "home-latest",
+  priorityCount = 4,
+}) {
+  const lastKeyRef = useRef("");
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const data = await productService.getProducts();
-        setProducts(normalizeProducts(data));
-      } catch (err) {
-        console.error("Failed to load products", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (!products.length) return;
+    const key = `${listId}:${products.map((p) => p._id || p.id).join(",")}`;
+    if (lastKeyRef.current === key) return;
+    lastKeyRef.current = key;
+    trackViewItemList(products, listName, listId);
+  }, [products, listName, listId]);
 
-    fetchProducts();
-  }, []);
-
-  if (loading) {
+  if (!products.length) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {[...Array(8)].map((_, i) => (
-          <div key={i} className="aspect-[2/3] bg-gray-100 animate-pulse rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-
-  if (products.length === 0) {
-    return (
-      <p className="text-center text-sm text-gray-500 uppercase tracking-widest py-12">
+      <p className="py-12 text-center text-sm tracking-widest text-gray-500 uppercase">
         No products available
       </p>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {products.map((product) => (
-        <ProductCard key={product._id} product={product} />
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3 lg:grid-cols-4 lg:gap-4">
+      {products.map((product, index) => (
+        <ProductCard
+          key={product._id || product.id || index}
+          product={product}
+          listName={listName}
+          listId={listId}
+          priority={index < priorityCount}
+        />
       ))}
     </div>
   );

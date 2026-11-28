@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { abandonedCheckoutService, adminOrderService } from "@/api";
-import { Search, Download } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { abandonedCheckoutService } from "@/api";
+import { Search, Download } from "@/components/icons";
 import { toast } from "sonner";
-import { displayCustomerName } from "@/utils/displayCustomerName";
-import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 import { unwrapPage } from "@/utils/unwrapPage";
 import {
   AdminListLayout,
@@ -14,13 +14,25 @@ import {
   AdminViewMenu,
   AdminDateRangeButton,
 } from "@/components/admin/list";
+import { ShoppingBag } from "@/components/admin/LocalIcons";
 import { DataTable } from "@/components/ui/data-table";
 import {
   createAbandonedColumns,
   emailStatus,
   recoveryStatus,
-  whatsappStatus,
 } from "./columns";
+import { abandonedListKey, useAdminAbandonedStore } from "@/store/useAdminAbandonedStore";
+
+function customerLabel(details) {
+  const d = details || {};
+  const name = String(d.name || "").trim();
+  if (name) return name;
+  const email = String(d.email || "").trim();
+  if (email) return email;
+  const phone = String(d.phone || "").trim();
+  if (phone) return phone;
+  return "Guest";
+}
 
 const PAGE_SIZE = 25;
 
@@ -29,46 +41,6 @@ function formatCheckoutId(id) {
   if (!s) return "";
   const short = s.length > 8 ? s.slice(-8).toUpperCase() : s.toUpperCase();
   return `#${short}`;
-}
-
-/** Unpaid payment-exit orders (previous abandoned list source). */
-function mapOrderToRow(order) {
-  const customer = order.customerId || {};
-  const ship = order.shippingAddress || {};
-  const items = (order.items || order.orderItems || []).map((i) => ({
-    name: i.productName || i.name || "Item",
-    quantity: Number(i.quantity ?? i.qty ?? 0),
-    qty: Number(i.quantity ?? i.qty ?? 0),
-    price: Number(i.price || 0),
-    image: i.image || i.thumbnail || "",
-  }));
-  const abandonedAt =
-    order.transactionDetails?.abandonedAt || order.updatedAt || order.createdAt;
-  return {
-    kind: "order",
-    _id: order._id,
-    checkoutId: null,
-    checkoutLabel: formatOrderNumber(order) || "",
-    recoveryUrl: null,
-    customerDetails: {
-      name: displayCustomerName(order),
-      email: customer.email || ship.email || "",
-      phone: customer.phone || ship.phone || "",
-      address: ship.address || ship.addressLine1 || "",
-      city: ship.city || "",
-      state: ship.state || "",
-      postalCode: ship.postalCode || ship.pincode || "",
-    },
-    items,
-    orderItems: items,
-    totalAmount: Number(order.finalPrice ?? order.total ?? 0),
-    lastActivityAt: abandonedAt,
-    status: "abandoned",
-    recoverySentAt: null,
-    recoveryLastResult: null,
-    emailSentAt: null,
-    emailStatus: null,
-  };
 }
 
 function mapCheckoutToRow(checkout) {
@@ -93,41 +65,76 @@ function mapCheckoutToRow(checkout) {
     status: checkout.status || "abandoned",
     recoverySentAt: checkout.recoverySentAt || null,
     recoveryLastResult: checkout.recoveryLastResult || null,
-    emailSentAt: checkout.emailSentAt || null,
+    emailSentAt:
+      checkout.emailSentAt ||
+      checkout.recoveryLastResult?.emailSentAt ||
+      null,
     emailStatus: checkout.emailStatus || null,
   };
 }
 
 export default function AbandonedCheckoutsPage() {
-  const [rows, setRows] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const qFromUrl = searchParams.get("q") || "";
+  const cached = useAdminAbandonedStore.getState();
+  const initialSearch = qFromUrl || cached.searchQ || "";
+  const initialView = cached.viewFilter || "abandoned";
+  const initialDate = cached.datePreset || "all";
+  const initialKey = abandonedListKey({
+    viewFilter: initialView,
+    datePreset: initialDate,
+    q: initialSearch,
+  });
+  const cacheHit = cached.cacheKey === initialKey && Array.isArray(cached.rows) && cached.rows.length > 0;
+
+  const [rows, setRows] = useState(() => (cacheHit ? cached.rows : []));
+  const [page, setPage] = useState(() => (cacheHit ? cached.page || 1 : 1));
+  const [hasMore, setHasMore] = useState(() => (cacheHit ? Boolean(cached.hasMore) : false));
+  const [loading, setLoading] = useState(() => !cacheHit);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQ, setSearchQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
-  const [viewFilter, setViewFilter] = useState("abandoned");
-  const [datePreset, setDatePreset] = useState("all");
+  const [searchQ, setSearchQ] = useState(() => initialSearch);
+  const [debouncedQ, setDebouncedQ] = useState(() => initialSearch.trim());
+  const [viewFilter, setViewFilter] = useState(() => initialView);
+  const [datePreset, setDatePreset] = useState(() => initialDate);
   const [rowSelection, setRowSelection] = useState({});
   const fetchGen = useRef(0);
+  const rowsRef = useRef([]);
+  rowsRef.current = rows;
+  const loadingMoreRef = useRef(false);
+  loadingMoreRef.current = loadingMore;
+  const lastLoadedAtRef = useRef(0);
+
+  useEffect(() => {
+    if (!qFromUrl) return;
+    setSearchQ(qFromUrl);
+    setDebouncedQ(qFromUrl.trim());
+  }, [qFromUrl]);
 
   const selectedIds = useMemo(
     () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
     [rowSelection]
   );
 
-  const rowKey = (item) => `${item.kind}-${item._id}`;
+  const rowKey = (item) => String(item._id);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQ]);
 
+  const listKey = abandonedListKey({
+    viewFilter,
+    datePreset,
+    q: debouncedQ,
+  });
+
   const fetchPage = useCallback(
-    async (pageNum, { append } = {}) => {
+    async (pageNum, { append, silent } = {}) => {
+      if (silent && loadingMoreRef.current) return;
+      if (silent && Date.now() - lastLoadedAtRef.current < 8_000) return;
       const gen = ++fetchGen.current;
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else if (!silent) setLoading(true);
       try {
         const checkoutParams = {
           page: pageNum,
@@ -137,55 +144,55 @@ export default function AbandonedCheckoutsPage() {
         if (datePreset && datePreset !== "all") checkoutParams.datePreset = datePreset;
         if (debouncedQ) checkoutParams.q = debouncedQ;
 
-        const includeOrders =
-          viewFilter === "converted"
-            ? Promise.resolve({ items: [], hasMore: false })
-            : adminOrderService
-                .getAll({
-                  status: "abandoned",
-                  page: pageNum,
-                  limit: PAGE_SIZE,
-                  ...(datePreset && datePreset !== "all" ? { datePreset } : {}),
-                  ...(debouncedQ ? { q: debouncedQ } : {}),
-                })
-                .catch(() => ({ items: [], hasMore: false }));
-
-        const [ordersRes, checkoutsRes] = await Promise.all([
-          includeOrders,
-          abandonedCheckoutService.getAll(checkoutParams).catch(() => ({
-            items: [],
-            hasMore: false,
-          })),
-        ]);
+        const checkoutsRes = await abandonedCheckoutService.getAll(checkoutParams);
         if (gen !== fetchGen.current) return;
+        lastLoadedAtRef.current = Date.now();
 
-        const ordersPage = unwrapPage(ordersRes, { fallbackLimit: PAGE_SIZE });
         const checkoutsPage = unwrapPage(checkoutsRes, { fallbackLimit: PAGE_SIZE });
-
-        let orderRows = ordersPage.items.map(mapOrderToRow);
-        if (viewFilter === "converted") orderRows = [];
-        else if (viewFilter === "abandoned") {
-          orderRows = orderRows.filter((r) => r.status === "abandoned");
-        }
-
         const checkoutRows = checkoutsPage.items.map(mapCheckoutToRow);
-        const batch = [...orderRows, ...checkoutRows].sort(
-          (a, b) => new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0)
-        );
-
-        setRows((prev) => {
-          if (!append) return batch;
+        const more = Boolean(checkoutsPage.hasMore);
+        const prev = rowsRef.current;
+        let next = checkoutRows;
+        if (append) {
           const seen = new Set(prev.map(rowKey));
-          return [...prev, ...batch.filter((r) => !seen.has(rowKey(r)))];
+          next = [...prev, ...checkoutRows.filter((r) => !seen.has(rowKey(r)))];
+        } else if (silent && prev.length > checkoutRows.length) {
+          const seen = new Set();
+          next = [];
+          for (const row of checkoutRows) {
+            next.push(row);
+            seen.add(rowKey(row));
+          }
+          for (const row of prev) {
+            if (!seen.has(rowKey(row))) next.push(row);
+          }
+        }
+        setRows(next);
+        if (append) {
+          setPage(pageNum);
+          setHasMore(more);
+        } else if (!(silent && prev.length > checkoutRows.length)) {
+          setPage(1);
+          setHasMore(more);
+        }
+        const store = useAdminAbandonedStore.getState();
+        store.saveSnapshot({
+          cacheKey: listKey,
+          rows: next,
+          page: append ? pageNum : silent && prev.length > checkoutRows.length ? store.page : 1,
+          hasMore: append ? more : silent && prev.length > checkoutRows.length ? store.hasMore : more,
+          viewFilter,
+          datePreset,
+          searchQ: debouncedQ,
         });
-        setPage(pageNum);
-        setHasMore(Boolean(ordersPage.hasMore || checkoutsPage.hasMore));
       } catch (error) {
         if (gen !== fetchGen.current) return;
         console.error("Error fetching abandoned list:", error);
-        toast.error("Failed to load abandoned carts");
-        if (!append) setRows([]);
-        setHasMore(false);
+        if (!append && !silent) {
+          toast.error("Failed to load abandoned carts");
+          setRows([]);
+          setHasMore(false);
+        }
       } finally {
         if (gen === fetchGen.current) {
           setLoading(false);
@@ -193,13 +200,30 @@ export default function AbandonedCheckoutsPage() {
         }
       }
     },
-    [viewFilter, datePreset, debouncedQ]
+    [viewFilter, datePreset, debouncedQ, listKey]
   );
 
   useEffect(() => {
     setRowSelection({});
-    fetchPage(1, { append: false });
-  }, [fetchPage]);
+    const hit =
+      useAdminAbandonedStore.getState().cacheKey === listKey &&
+      (useAdminAbandonedStore.getState().rows || []).length > 0;
+    fetchPage(1, { append: false, silent: hit });
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchPage(1, { append: false, silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    const pollId = window.setInterval(refreshIfVisible, 45_000);
+    return () => {
+      window.clearInterval(pollId);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+    };
+  }, [fetchPage, listKey]);
 
   const handleLoadMore = useCallback(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -231,7 +255,7 @@ export default function AbandonedCheckoutsPage() {
 
     const withLinks = await Promise.all(
       selected.map(async (item) => {
-        if (item.kind !== "checkout" || item.recoveryUrl) return item;
+        if (item.recoveryUrl) return item;
         try {
           const res = await abandonedCheckoutService.getRecoveryLink(item._id);
           return { ...item, recoveryUrl: res?.recoveryUrl || null };
@@ -249,7 +273,6 @@ export default function AbandonedCheckoutsPage() {
       "Phone",
       "Recovery",
       "Email status",
-      "WhatsApp",
       "Items",
       "Total",
       "Recovery URL",
@@ -263,19 +286,12 @@ export default function AbandonedCheckoutsPage() {
       );
       return {
         Checkout: item.checkoutLabel || "",
-        Date: item.lastActivityAt
-          ? new Date(item.lastActivityAt).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-          : "",
-        Customer: c.name || "Guest",
+        Date: formatAdminDateTime(item.lastActivityAt),
+        Customer: customerLabel(c),
         Email: c.email || "",
         Phone: c.phone || "",
         Recovery: recoveryStatus(item),
         "Email status": emailStatus(item),
-        WhatsApp: whatsappStatus(item),
         Items: itemCount || items.length || 0,
         Total: Number(item.totalAmount || 0).toFixed(2),
         "Recovery URL": item.recoveryUrl || "",
@@ -287,7 +303,7 @@ export default function AbandonedCheckoutsPage() {
   };
 
   return (
-    <AdminListLayout fill={false} title="Abandoned carts">
+    <AdminListLayout fill={false} title="Abandoned carts" icon={ShoppingBag}>
       <DataTable
         columns={columns}
         data={rows}
@@ -314,7 +330,7 @@ export default function AbandonedCheckoutsPage() {
                 <button
                   type="button"
                   onClick={() => setRowSelection({})}
-                  className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                  className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                 >
                   Clear
                 </button>
@@ -329,7 +345,10 @@ export default function AbandonedCheckoutsPage() {
             <>
               <AdminViewMenu
                 value={viewFilter}
-                onChange={setViewFilter}
+                onChange={(value) => {
+                  setViewFilter(value);
+                  useAdminAbandonedStore.getState().patch({ viewFilter: value });
+                }}
                 options={[
                   { value: "all", label: "All" },
                   { value: "abandoned", label: "Abandoned" },
@@ -349,7 +368,14 @@ export default function AbandonedCheckoutsPage() {
                   className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder-gray-400 focus:border-border focus:outline-none"
                 />
               </form>
-              <AdminDateRangeButton value={datePreset} onChange={setDatePreset} />
+              <AdminDateRangeButton
+                value={datePreset}
+                onChange={(next) => {
+                  const value = typeof next === "string" ? next : next?.preset || "all";
+                  setDatePreset(value);
+                  useAdminAbandonedStore.getState().patch({ datePreset: value });
+                }}
+              />
             </>
           )
         }

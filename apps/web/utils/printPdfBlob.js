@@ -1,15 +1,15 @@
 /**
- * Open the system print dialog for a PDF blob (no forced download).
- * Uses a hidden iframe so it still works after async network calls.
- * `filename` is used as the print job / Save as PDF suggested name when the browser supports it.
+ * Open a PDF blob and trigger the print dialog. Does not download a file.
  */
-export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
+export function printPdfBlob(blob, { filename = "document.pdf", autoPrint = true } = {}) {
   return new Promise((resolve, reject) => {
     if (!(blob instanceof Blob)) {
       reject(new Error("Invalid PDF"));
       return;
     }
-    const safeName = String(filename || "document.pdf").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "") || "document.pdf";
+    const safeName =
+      String(filename || "document.pdf").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "") ||
+      "document.pdf";
     const pdf =
       blob.type === "application/pdf"
         ? blob
@@ -19,49 +19,77 @@ export function printPdfBlob(blob, { filename = "document.pdf" } = {}) {
         ? new File([pdf], safeName, { type: "application/pdf" })
         : pdf;
     const url = URL.createObjectURL(named);
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("title", safeName.replace(/\.pdf$/i, ""));
-    iframe.style.cssText =
-      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
-    iframe.src = url;
 
     let cleaned = false;
+    let popup = null;
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
+      if (popup && !popup.closed) {
+        try {
+          popup.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      popup = null;
       URL.revokeObjectURL(url);
-      iframe.remove();
     };
 
-    iframe.onload = () => {
+    popup = window.open(url, "_blank");
+    if (!popup) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      reject(new Error("Allow pop-ups to print the PDF"));
+      return;
+    }
+
+    try {
+      popup.opener = null;
+    } catch {
+      /* ignore */
+    }
+
+    if (!autoPrint) {
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      resolve();
+      return;
+    }
+
+    const tryPrint = () => {
       try {
-        const win = iframe.contentWindow;
-        if (!win) throw new Error("Print window unavailable");
-        // Give the PDF viewer a moment to render before print().
-        window.setTimeout(() => {
-          try {
-            win.focus();
-            win.print();
-            resolve();
-          } catch (err) {
-            cleanup();
-            reject(err);
-          }
-          // Keep the iframe until the print dialog can finish reading it.
-          window.setTimeout(cleanup, 120_000);
-          window.addEventListener("focus", cleanup, { once: true });
-        }, 300);
-      } catch (err) {
-        cleanup();
-        reject(err);
+        popup.focus();
+        popup.print();
+      } catch {
+        /* user can print from the PDF tab */
       }
     };
 
-    iframe.onerror = () => {
-      cleanup();
-      reject(new Error("Failed to load label PDF"));
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      tryPrint();
+      if (attempts < 4 && popup && !popup.closed) {
+        window.setTimeout(tick, 400);
+      }
     };
+    window.setTimeout(tick, 600);
 
-    document.body.appendChild(iframe);
+    try {
+      popup.addEventListener("afterprint", cleanup, { once: true });
+    } catch {
+      /* ignore */
+    }
+
+    window.setTimeout(() => {
+      window.addEventListener(
+        "focus",
+        () => {
+          window.setTimeout(cleanup, 1500);
+        },
+        { once: true }
+      );
+    }, 1200);
+    window.setTimeout(cleanup, 180_000);
+    resolve();
   });
 }

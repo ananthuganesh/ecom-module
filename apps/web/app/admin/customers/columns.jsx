@@ -1,8 +1,9 @@
 "use client";
 
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff } from "@/components/icons";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
+import { displayCustomerName } from "@/utils/displayCustomerName";
 import { formatINR } from "@/utils/formatINR";
 
 export function isCustomer(record) {
@@ -10,12 +11,7 @@ export function isCustomer(record) {
 }
 
 export function customerName(customer) {
-  const full = String(customer.name || "").trim();
-  if (full) return full;
-  const parts = [customer.firstName, customer.lastName]
-    .map((x) => String(x || "").trim())
-    .filter(Boolean);
-  return parts.length ? parts.join(" ") : "";
+  return displayCustomerName(customer, "");
 }
 
 function customerAddress(customer) {
@@ -27,7 +23,7 @@ export function customerPhone(customer) {
   const top = String(customer.phone || "").trim();
   if (top) return top;
   const a = customerAddress(customer);
-  return String(a?.phone || "").trim();
+  return String(a?.phone || a?.contact || a?.mobile || "").trim();
 }
 
 function customerLocation(customer) {

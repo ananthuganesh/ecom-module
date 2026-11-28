@@ -7,22 +7,67 @@ export const authService = {
   login: (email, password) =>
     client.post(e.login, { email, password }).then((res) => res.data),
 
+  requestOtp: (email) =>
+    client.post(e.otpRequest, { email }).then((res) => res.data),
+
+  verifyOtp: (email, code) =>
+    client.post(e.otpVerify, { email, code }).then((res) => res.data),
+
+  /** Admin step 2: the emailed OTP turns the password challenge into a session. */
+  adminVerifyOtp: (challenge, code) =>
+    client.post(e.adminLoginVerify, { challenge, code }).then((res) => res.data),
+
+  adminResendOtp: (challenge) =>
+    client.post(e.adminLoginResend, { challenge }).then((res) => res.data),
+
+  adminLogin: (email, password) =>
+    client.post(e.adminLogin, { email, password }).then((res) => res.data),
+
   register: (name, email, password) =>
     client.post(e.register, { name, email, password }).then((res) => res.data),
 
   getProfile: () =>
     client.get(e.profile).then((res) => res.data),
 
+  getAdminProfile: () =>
+    client.get(e.adminProfile).then((res) => res.data),
+
   updateProfile: (data) =>
     client.put(e.profile, data).then((res) => res.data),
 
-  checkoutEmail: (email, name) =>
+  checkoutEmail: (email, name, prefs = {}) =>
     client
-      .post(e.checkoutEmail, { email, ...(name ? { name } : {}) })
+      .post(e.checkoutEmail, {
+        email,
+        ...(name ? { name } : {}),
+        ...(prefs.emailSubscribed !== undefined
+          ? { emailSubscribed: !!prefs.emailSubscribed }
+          : {}),
+        ...(prefs.whatsappSubscribed !== undefined
+          ? { whatsappSubscribed: !!prefs.whatsappSubscribed }
+          : {}),
+      })
       .then((res) => res.data),
+
+  listAddresses: () => client.get(e.addresses).then((res) => res.data),
+
+  addAddress: (data) => client.post(e.addresses, data).then((res) => res.data),
+
+  updateAddress: (id, data) =>
+    client.put(e.addressById(id), data).then((res) => res.data),
+
+  setDefaultAddress: (id) =>
+    client.post(e.addressDefault(id)).then((res) => res.data),
+
+  deleteAddress: (id) =>
+    client.delete(e.addressById(id)).then((res) => res.data),
 
   setPassword: (password) =>
     client.post(e.setPassword, { password }).then((res) => res.data),
+
+  logout: () => client.post(e.logout).then((res) => res.data),
+
+  adminLogout: () => client.post(e.adminLogout).then((res) => res.data),
 };
 
 export default authService;

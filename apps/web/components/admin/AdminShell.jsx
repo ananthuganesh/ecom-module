@@ -1,0 +1,173 @@
+"use client";
+
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useAdminAuthStore } from "@/store/useAdminAuthStore";
+import { authService } from "@/api";
+import AdminSidebar from "@/components/admin/Sidebar";
+import AdminSaveBar, { useSaveBarNavigationGuard } from "@/components/admin/AdminSaveBar";
+import { SiteHeader } from "@/components/site-header";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Spinner } from "@/components/ui/spinner";
+
+function AdminLoading() {
+  return (
+    <div
+      className="flex min-h-svh items-center justify-center bg-background"
+      data-admin-shell
+    >
+      <Spinner className="size-8 text-muted-foreground" />
+    </div>
+  );
+}
+
+function canAccessAdmin(user) {
+  return Boolean(user?.isAdmin || user?.roleId);
+}
+
+export default function AdminShell({ children }) {
+  const userInfo = useAdminAuthStore((s) => s.userInfo);
+  const setUserInfo = useAdminAuthStore((s) => s.setUserInfo);
+  const logout = useAdminAuthStore((s) => s.logout);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [hydrated, setHydrated] = useState(false);
+  const [verified, setVerified] = useState(false);
+
+  const isAdminLoginPage = pathname === "/admin/login";
+  const isSettingsPage = pathname.startsWith("/admin/settings");
+  useSaveBarNavigationGuard();
+  const hasStaffSession = canAccessAdmin(userInfo);
+
+  useEffect(() => {
+    const mark = () => setHydrated(true);
+    if (useAdminAuthStore.persist.hasHydrated()) {
+      mark();
+      return;
+    }
+    return useAdminAuthStore.persist.onFinishHydration(mark);
+  }, []);
+
+  // Revalidate admin session against the API (localStorage is not authoritative).
+  useEffect(() => {
+    if (!hydrated || isAdminLoginPage) {
+      setVerified(true);
+      return;
+    }
+
+    // No cached staff session — skip the profile call (avoids noisy 401s).
+    if (!hasStaffSession) {
+      setVerified(true);
+      router.replace("/admin/login");
+      return;
+    }
+
+    let cancelled = false;
+    setVerified(false);
+
+    (async () => {
+      try {
+        const profile = await authService.getAdminProfile();
+        if (cancelled) return;
+        if (!canAccessAdmin(profile)) {
+          logout();
+          router.replace("/admin/login");
+          return;
+        }
+        setUserInfo({
+          _id: profile._id,
+          name: profile.name,
+          email: profile.email,
+          isAdmin: profile.isAdmin,
+          roleId: profile.roleId || null,
+        });
+        setVerified(true);
+      } catch {
+        if (cancelled) return;
+        logout();
+        router.replace("/admin/login");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, isAdminLoginPage, hasStaffSession, logout, router, setUserInfo]);
+
+  useEffect(() => {
+    if (!hydrated || isAdminLoginPage || !verified) return;
+    if (!canAccessAdmin(userInfo)) {
+      router.replace("/admin/login");
+    }
+  }, [hydrated, userInfo, isAdminLoginPage, router, verified]);
+
+  useEffect(() => {
+    if (isAdminLoginPage || isSettingsPage) return;
+    try {
+      const next = `${pathname}${typeof window !== "undefined" ? window.location.search : ""}`;
+      sessionStorage.setItem("admin-settings-return", next);
+    } catch {
+      /* ignore */
+    }
+  }, [pathname, isAdminLoginPage, isSettingsPage]);
+
+  if (!hydrated) return <AdminLoading />;
+
+  if (isAdminLoginPage) {
+    return (
+      <TooltipProvider>
+        <div
+          className="min-h-svh !bg-white text-foreground"
+          data-admin-shell
+          style={{ "--background": "#ffffff" }}
+        >
+          {children}
+        </div>
+        <Toaster position="bottom-right" theme="light" />
+      </TooltipProvider>
+    );
+  }
+
+  if (!verified || !canAccessAdmin(userInfo)) {
+    return <AdminLoading />;
+  }
+
+  return (
+    <TooltipProvider>
+      <SidebarProvider
+        data-admin-shell
+        data-admin-frame
+        open
+        onOpenChange={() => {}}
+        className="flex h-svh max-h-svh flex-col overflow-hidden bg-(--p-color-app-bg)"
+        style={{
+          "--sidebar-width": "13.5rem", /* was 15rem (--pg-navigation-width) */
+          "--header-height": "3.5rem", /* --pg-top-bar-height */
+        }}
+      >
+        <SiteHeader className="md:hidden" />
+        <div className="relative flex min-h-0 w-full flex-1 overflow-hidden rounded-t-2xl bg-(--p-color-bg-fill) md:rounded-none md:bg-(--p-color-app-bg)">
+          <Suspense fallback={<Spinner className="m-4 size-5 text-muted-foreground" />}>
+            <AdminSidebar variant="sidebar" className="top-0! bottom-0! h-full!" />
+          </Suspense>
+          <SidebarInset className="min-h-0 min-w-0 overflow-y-auto overscroll-contain md:mt-2 md:rounded-tl-2xl">
+            {/* Zero-height sticky anchor: the save bar floats over the page, no layout shift */}
+            <div className="sticky top-0 z-40 hidden h-0 md:block">
+              <AdminSaveBar floating />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex min-w-0 flex-col gap-3 px-3 py-3 md:gap-4 md:px-4 md:pt-6 md:pb-4">
+                  {children}
+                </div>
+              </div>
+            </div>
+            <Toaster position="bottom-right" theme="light" />
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+    </TooltipProvider>
+  );
+}

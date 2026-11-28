@@ -1,30 +1,41 @@
 import api from "../../axios/client";
 
 export const adminShippingService = {
-  createShipment: async (orderId) => {
-    const response = await api.post(`/shipping/create/${orderId}`);
+  /** Carrier options for the booking dropdown (code, label, configured). */
+  getCarriers: async () => {
+    const response = await api.get(`/shipping/carriers`);
     return response.data;
   },
 
-  /** @deprecated use createShipment */
-  retryShipping: async (orderId) => {
-    const response = await api.post(`/shipping/create/${orderId}`);
+  /** Per-carrier serviceability for a destination pincode. */
+  checkServiceability: async (pincode) => {
+    const response = await api.get(`/shipping/serviceability/${pincode}`);
     return response.data;
   },
 
-  trackShipment: async (orderId) => {
-    const response = await api.get(`/shipping/track/${orderId}`);
+  createShipment: async (orderId, carrier) => {
+    const response = await api.post(
+      `/shipping/create/${orderId}`,
+      carrier ? { carrier } : {}
+    );
     return response.data;
   },
 
-  /** Soft-refresh DTDC statuses for open AWB orders; returns updated order payloads. */
-  syncStatuses: async (orderIds) => {
-    const response = await api.post(`/shipping/sync-statuses`, { orderIds });
-    return response.data;
-  },
-
+  /** Cancel the booked consignment only (order stays open; AWB is cleared so it can be rebooked). */
   cancelShipment: async (orderId) => {
     const response = await api.post(`/shipping/cancel/${orderId}`);
+    return response.data;
+  },
+
+  /** Ask the carrier to send a rider (Delhivery only; DTDC schedules on booking). */
+  requestPickup: async (orderId) => {
+    const response = await api.post(`/shipping/pickup/${orderId}`);
+    return response.data;
+  },
+
+  /** Soft-refresh carrier statuses for open AWB orders; returns updated order payloads. */
+  syncStatuses: async (orderIds) => {
+    const response = await api.post(`/shipping/sync-statuses`, { orderIds });
     return response.data;
   },
 

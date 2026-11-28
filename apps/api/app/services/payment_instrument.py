@@ -1,4 +1,8 @@
-"""Extract and persist Razorpay payment instrument details (card / UPI / netbanking)."""
+"""Extract and persist Razorpay payment instrument details (card / UPI / netbanking).
+
+Note: method label "wallet" means Razorpay's payment instrument type (e.g. Paytm wallet),
+not the removed store-credit wallet feature.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +18,6 @@ INSTRUMENT_LABELS = {
     "emi": "EMI",
     "cardless_emi": "Cardless EMI",
     "paylater": "Pay Later",
-    "cod": "Cash on delivery",
 }
 
 
@@ -36,7 +39,7 @@ def extract_instrument(payment: dict | None) -> dict[str, Any]:
         return {}
 
     method = str(payment.get("method") or "").strip().lower()
-    if not method or method == "cod":
+    if not method:
         return {}
 
     out: dict[str, Any] = {
@@ -115,7 +118,7 @@ def apply_instrument_to_order(order: Any, payment: dict | None) -> bool:
             td[key] = value
             changed = True
 
-    # Keep gateway method (cod / razorpay / razorpay_magic) separate from instrument.
+    # Keep gateway method (razorpay) separate from instrument (upi/card/…).
     if not td.get("paymentMethod") and getattr(order, "paymentMethod", None):
         td["paymentMethod"] = order.paymentMethod
         changed = True
@@ -133,9 +136,6 @@ def apply_instrument_to_order(order: Any, payment: dict | None) -> bool:
 def order_needs_instrument(order: Any) -> bool:
     td = order.transactionDetails or {}
     if td.get("instrument") or td.get("instrumentDisplay"):
-        return False
-    method = str(getattr(order, "paymentMethod", None) or td.get("paymentMethod") or "").lower()
-    if method in ("cod",):
         return False
     return True
 

@@ -1,88 +1,252 @@
 "use client";
 
-import { Facebook, Instagram, Mail, MapPin } from "lucide-react";
-const SUPPORT_EMAIL = "hello@urbanaana.com";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+import { contactService } from "@/api";
+import {
+  STORE_EMAIL,
+  STORE_PHONE,
+  STORE_PHONE_TEL,
+} from "@/lib/storeContact";
+import { userErrorMessage } from "@/lib/userMessage";
+import TurnstileWidget from "@/components/TurnstileWidget";
+
+const CONTACT_IMAGE = "/images/44.webp";
+
+const fieldClass =
+  "w-full rounded-lg border border-gray-200 bg-white px-3.5 py-3 text-sm text-black outline-none transition-colors placeholder:text-gray-400 focus:border-black";
 
 export default function ContactPage() {
-  const mailto = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Urban Aana inquiry")}`;
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState({ type: "", text: "" });
+  // Bot filters checked by the API (services/spam_guard.py).
+  const [website, setWebsite] = useState(""); // honeypot: people never see it
+  const startedAtRef = useRef(0);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileReset, setTurnstileReset] = useState(0);
+
+  useEffect(() => {
+    startedAtRef.current = Date.now();
+    let alive = true;
+    contactService
+      .getConfig()
+      .then((cfg) => {
+        if (alive) setTurnstileSiteKey(cfg?.turnstileSiteKey || "");
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (turnstileSiteKey && !turnstileToken) {
+      setStatus({ type: "error", text: "Please complete the verification below." });
+      return;
+    }
+    setSending(true);
+    setStatus({ type: "", text: "" });
+    try {
+      await contactService.submit({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        message: message.trim(),
+        website,
+        startedAt: startedAtRef.current,
+        turnstileToken: turnstileToken || undefined,
+      });
+      setName("");
+      setEmail("");
+      setPhone("");
+      setMessage("");
+      setStatus({
+        type: "success",
+        text: "Message sent. We’ll get back to you soon.",
+      });
+    } catch (err) {
+      setStatus({
+        type: "error",
+        text: userErrorMessage(
+          err,
+          "Couldn’t send your message. Please try again or email us directly."
+        ),
+      });
+    } finally {
+      setSending(false);
+      // Turnstile tokens are single-use.
+      if (turnstileSiteKey) setTurnstileReset((n) => n + 1);
+    }
+  }
 
   return (
-    <main className="min-h-screen bg-white">
-      <section className="container-site py-12 md:py-20">
-        <div className="mb-12 border-b-2 border-black pb-6">
-          <p className="text-[12px] font-bold uppercase tracking-[0.3em] text-brand-red">Get in touch</p>
-          <h1 className="mt-2 font-vina text-5xl uppercase leading-none sm:text-7xl">Contact</h1>
-          <p className="mt-3 max-w-xl text-sm text-gray-500">
-            Questions about orders, drops, or fit — write to the Urban Aana team.
-          </p>
+    <main className="min-h-screen bg-white text-black">
+      <section className="grid min-h-[calc(100vh-5rem)] lg:grid-cols-2">
+        {/* Left — image */}
+        <div className="relative min-h-[42vh] overflow-hidden bg-gray-100 lg:sticky lg:top-0 lg:h-[calc(100vh-5rem)] lg:min-h-full">
+          <Image
+            src={CONTACT_IMAGE}
+            alt="Urban Aana"
+            fill
+            priority
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-cover"
+          />
         </div>
 
-        <div className="grid gap-10 lg:grid-cols-2">
-          <div className="space-y-6">
-            <div className="flex gap-4 border border-black bg-[#F9F9F5] p-5">
-              <div className="mt-0.5">
-                <MapPin className="h-5 w-5 text-brand-red" />
-              </div>
-              <div>
-                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Location</p>
-                <p className="mt-1 text-sm font-medium text-black">Crafted in India</p>
-              </div>
-            </div>
-
-            <div className="flex gap-4 border border-black bg-[#F9F9F5] p-5">
-              <div className="mt-0.5">
-                <Mail className="h-5 w-5 text-brand-red" />
-              </div>
-              <div>
-                <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Email</p>
-                <a
-                  href={mailto}
-                  className="mt-1 block text-sm font-medium text-black hover:text-brand-red"
-                >
-                  {SUPPORT_EMAIL}
-                </a>
-                <a
-                  href="mailto:support@urbanaana.com"
-                  className="mt-1 block text-sm font-medium text-black hover:text-brand-red"
-                >
-                  support@urbanaana.com
-                </a>
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <a
-                href="https://www.instagram.com/urbanaana.in"
-                target="_blank"
-                rel="noreferrer"
-                className="grid h-10 w-10 place-items-center border border-black text-black transition-colors hover:bg-brand-red hover:text-white hover:border-brand-red"
-                aria-label="Instagram"
-              >
-                <Instagram size={16} />
-              </a>
-              <a
-                href="https://www.facebook.com/share/18vF3ZB3BJ/"
-                target="_blank"
-                rel="noreferrer"
-                className="grid h-10 w-10 place-items-center border border-black text-black transition-colors hover:bg-brand-red hover:text-white hover:border-brand-red"
-                aria-label="Facebook"
-              >
-                <Facebook size={16} />
-              </a>
-            </div>
-          </div>
-
-          <div className="border-2 border-black bg-white p-6 sm:p-8 flex flex-col justify-center">
-            <h2 className="text-[12px] font-bold uppercase tracking-[0.2em] text-brand-red">Email us</h2>
-            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
-              Prefer email? Reach us directly and we’ll reply as soon as we can.
+        {/* Right — title + form */}
+        <div className="flex items-center px-5 py-12 sm:px-10 md:px-14 lg:px-16 lg:py-16">
+          <div className="mx-auto w-full max-w-md">
+            <h1 className="text-2xl font-bold tracking-tight md:text-4xl">
+              Contact
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-gray-500">
+              Questions about orders, fit, or shipping — send a message and
+              we’ll reply as soon as we can.
             </p>
-            <a
-              href={mailto}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 bg-black py-3.5 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-brand-red"
-            >
-              <Mail size={14} /> Write to {SUPPORT_EMAIL}
-            </a>
+
+            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+              <div>
+                <label
+                  htmlFor="contact-name"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
+                >
+                  Name
+                </label>
+                <input
+                  id="contact-name"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={fieldClass}
+                  placeholder="Your name"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="contact-email"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
+                >
+                  Email
+                </label>
+                <input
+                  id="contact-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={fieldClass}
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="contact-phone"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
+                >
+                  Phone
+                </label>
+                <input
+                  id="contact-phone"
+                  type="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className={fieldClass}
+                  placeholder="+91"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="contact-message"
+                  className="mb-1.5 block text-[11px] font-bold tracking-[0.16em] text-gray-500 uppercase"
+                >
+                  Message
+                </label>
+                <textarea
+                  id="contact-message"
+                  required
+                  rows={5}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className={`${fieldClass} min-h-[120px] resize-y`}
+                  placeholder="Order number, question, or feedback…"
+                />
+              </div>
+
+              {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
+              <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+                <label htmlFor="contact-website">Website</label>
+                <input
+                  id="contact-website"
+                  type="text"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
+              </div>
+
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                onToken={setTurnstileToken}
+                resetKey={turnstileReset}
+                className="min-h-[65px]"
+              />
+
+              <button
+                type="submit"
+                disabled={sending}
+                className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-black px-5 py-3.5 text-[12px] font-bold tracking-[0.14em] text-white uppercase transition-colors hover:bg-[#DF1721] disabled:opacity-60"
+              >
+                {sending ? "Sending…" : "Send message"}
+              </button>
+
+              {status.text ? (
+                <p
+                  className={`text-sm ${
+                    status.type === "success" ? "text-emerald-700" : "text-red-600"
+                  }`}
+                  role="status"
+                >
+                  {status.text}
+                </p>
+              ) : null}
+            </form>
+
+            <div className="mt-10 space-y-2 border-t border-gray-200 pt-6 text-sm text-gray-500">
+              <p>
+                Or email{" "}
+                <a
+                  href={`mailto:${STORE_EMAIL}`}
+                  className="font-medium text-black hover:text-[#DF1721]"
+                >
+                  {STORE_EMAIL}
+                </a>
+              </p>
+              <p>
+                Call{" "}
+                <a
+                  href={`tel:${STORE_PHONE_TEL}`}
+                  className="font-medium text-black hover:text-[#DF1721]"
+                >
+                  {STORE_PHONE}
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       </section>

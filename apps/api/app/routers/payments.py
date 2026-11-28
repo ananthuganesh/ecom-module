@@ -6,14 +6,16 @@ from datetime import datetime
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.deps import AdminUser, CurrentUser
+from app.deps import CurrentUser
 from app.documents import Order, PaymentTransaction, User
+from app.routers.orders import assign_order_number
 from app.serializers import remap_order
+from app.services import magic_checkout
 from app.services import payment_instrument as pay_instrument
 from app.services import razorpay_cfg
 from app.services.fulfillment import process_full_order_flow
 from app.services.rate_limit import rate_limit_dependency
-from app.services.stock import apply_order_commitments, ensure_stock_for_payment, restock_order_stock
+from app.services.stock import apply_order_commitments, ensure_stock_for_payment
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -62,32 +64,84 @@ async def _upgrade_guest_customer_from_order(order: Order) -> None:
         await user.save()
 
 
-async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict | None:
-    """Best-effort full refund when we cannot fulfill after capture."""
-    if not payment_id:
-        return None
-    try:
-        key_id, key_secret = await _get_razorpay_creds()
-        import razorpay
+async def _auto_refund_razorpay_payment(payment_id: str, *, reason: str) -> dict:
+    """Full refund when we cannot fulfill after capture. Never invents success."""
+    from app.services.razorpay_refund import refund_razorpay_payment
 
-        client = razorpay.Client(auth=(key_id, key_secret))
-        payment = client.payment.fetch(payment_id)
-        amount_paid = int(payment.get("amount") or 0)
-        already_refunded = int(payment.get("amount_refunded") or 0)
-        remaining = amount_paid - already_refunded
-        if remaining <= 0:
-            return None
-        return client.payment.refund(
-            payment_id,
-            {
-                "amount": remaining,
-                "speed": "normal",
-                "notes": {"reason": reason[:200]},
-            },
-        )
+    return await refund_razorpay_payment(payment_id, reason=reason)
+
+
+def _apply_auto_refund_to_order(order: Order, *, reason: str, result: dict) -> None:
+    """Persist refund outcome. Only mark refunded when Razorpay confirms."""
+    from app.services.razorpay_refund import apply_refund_to_order
+
+    apply_refund_to_order(order, reason=reason, result=result)
+    # Keep legacy auto-refund keys for existing admin/ops views.
+    details = dict(order.transactionDetails or {})
+    if result.get("ok"):
+        refund = result.get("refund") or {}
+        if isinstance(refund, dict) and refund.get("id"):
+            details["autoRefundId"] = refund["id"]
+        if result.get("amount_refunded") is not None:
+            details["autoRefundAmount"] = result["amount_refunded"]
+        details["autoRefundReason"] = reason
+        order.transactionDetails = details
+    else:
+        details["autoRefundReason"] = reason
+        order.transactionDetails = details
+
+
+async def _prepare_magic_payment(order: Order, txn: PaymentTransaction, payment: dict, rz_order_id: str) -> bool:
+    """Magic Checkout: copy address/fee/coupon from Razorpay and check the amount.
+
+    The Razorpay order was created for the item total only; delivery and the
+    coupon were added in the popup, so the captured amount is checked against
+    our own rates instead of the transaction's original amount. Returns False
+    when the payment was refused (and refunded); True otherwise, including for
+    orders that are not Magic Checkout ones.
+    """
+    if not magic_checkout.is_magic_order(order):
+        return True
+    status = str(order.paymentStatus or "").lower()
+    if status == "paid":
+        return True
+    if status in {"refunded", "refund_pending", "partially_refunded"}:
+        return False
+
+    import razorpay
+
+    key_id, key_secret = await _get_razorpay_creds()
+    try:
+        rz_order = razorpay.Client(auth=(key_id, key_secret)).order.fetch(rz_order_id)
     except Exception as exc:
-        print(f"[Payment] Auto-refund failed for {payment_id}: {exc}")
-        return None
+        raise HTTPException(status_code=502, detail="Could not fetch order from payment provider") from exc
+
+    paid = int(payment.get("amount") or 0)
+    try:
+        await magic_checkout.prepare_paid_order(order, rz_order or {}, paid)
+    except magic_checkout.MagicAmountMismatch as exc:
+        rz_payment_id = str(payment.get("id") or "")
+        refund_result = await _auto_refund_razorpay_payment(rz_payment_id, reason="magic_amount_mismatch")
+        _apply_auto_refund_to_order(order, reason="magic_amount_mismatch", result=refund_result)
+        details = dict(order.transactionDetails or {})
+        details["magicMismatch"] = str(exc)
+        order.transactionDetails = details
+        await order.save()
+        txn.status = "failed"
+        txn.failureReason = f"Magic Checkout amount mismatch: {exc}"
+        txn.updatedAt = datetime.utcnow()
+        await txn.save()
+        print(f"[Payment] Magic Checkout refused {order.id}: {exc}")
+        return False
+
+    # One-click orders start without an account; attach one now the phone is verified.
+    linked = await magic_checkout.link_customer(order)
+    if linked is not None and not txn.userId:
+        txn.userId = linked.id
+    txn.amountInPaise = paid
+    txn.updatedAt = datetime.utcnow()
+    await txn.save()
+    return True
 
 
 async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dict, user: User | None = None) -> None:
@@ -102,6 +156,7 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
                 status_code=409,
                 detail="Order already paid; duplicate payment is being refunded",
             )
+        await assign_order_number(order)
         await apply_order_commitments(order)
         return
 
@@ -109,26 +164,30 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
     try:
         await ensure_stock_for_payment(order)
     except HTTPException as stock_exc:
-        await _auto_refund_razorpay_payment(rz_payment_id, reason="stock_unavailable_at_capture")
-        order.paymentStatus = "refunded"
-        order.transactionDetails = {
-            **(order.transactionDetails or {}),
-            "paymentStatus": "refunded",
-            "stockFailureReason": str(stock_exc.detail),
-            "autoRefundReason": "stock_unavailable_at_capture",
-        }
-        order.updatedAt = datetime.utcnow()
+        refund_result = await _auto_refund_razorpay_payment(
+            rz_payment_id, reason="stock_unavailable_at_capture"
+        )
+        _apply_auto_refund_to_order(
+            order, reason="stock_unavailable_at_capture", result=refund_result
+        )
+        details = dict(order.transactionDetails or {})
+        details["stockFailureReason"] = str(stock_exc.detail)
+        order.transactionDetails = details
         await order.save()
-        raise HTTPException(
-            status_code=409,
-            detail="Item no longer available. Payment has been refunded.",
-        ) from stock_exc
+        if refund_result.get("ok"):
+            detail = "Item no longer available. Payment has been refunded."
+        else:
+            detail = (
+                "Item no longer available. Automatic refund failed — "
+                "our team will refund you shortly."
+            )
+        raise HTTPException(status_code=409, detail=detail) from stock_exc
 
     col = Order.get_pymongo_collection()
     claim = await col.find_one_and_update(
         {
             "_id": order.id,
-            "paymentStatus": {"$nin": ["paid", "refunded", "partially_refunded"]},
+            "paymentStatus": {"$nin": ["paid", "refunded", "partially_refunded", "refund_pending"]},
         },
         {
             "$set": {
@@ -147,37 +206,48 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
                     rz_payment_id,
                     reason="duplicate_payment_race",
                 )
+            await assign_order_number(refreshed)
             await apply_order_commitments(refreshed)
+            order.orderNumber = refreshed.orderNumber
             order.paymentStatus = refreshed.paymentStatus
             order.transactionDetails = dict(refreshed.transactionDetails or {})
             return
         raise HTTPException(status_code=409, detail="Could not finalize payment status")
 
+    # Paid: now it earns a display number (UA1000…).
+    await assign_order_number(order)
     order = await Order.get(order.id) or order
     pay_instrument.apply_instrument_to_order(order, payment)
-    from app.services.order_abandon import revive_abandoned_on_payment
+    from app.services.order_abandon import (
+        mark_checkouts_converted_for_order,
+        revive_abandoned_on_payment,
+    )
 
     revive_abandoned_on_payment(order)
     order.updatedAt = datetime.utcnow()
     await order.save()
 
     try:
+        await mark_checkouts_converted_for_order(order, user=user)
+    except Exception as exc:
+        print(f"[Payment] Abandoned checkout convert failed: {exc}")
+
+    try:
         await apply_order_commitments(order)
     except Exception as commit_exc:
-        await _auto_refund_razorpay_payment(rz_payment_id, reason="stock_commit_failed")
-        order.paymentStatus = "refunded"
-        order.transactionDetails = {
-            **(order.transactionDetails or {}),
-            "paymentStatus": "refunded",
-            "autoRefundReason": "stock_commit_failed",
-            "stockCommitError": str(commit_exc),
-        }
-        order.updatedAt = datetime.utcnow()
+        refund_result = await _auto_refund_razorpay_payment(
+            rz_payment_id, reason="stock_commit_failed"
+        )
+        _apply_auto_refund_to_order(order, reason="stock_commit_failed", result=refund_result)
         await order.save()
-        raise HTTPException(
-            status_code=409,
-            detail="Could not allocate stock. Payment has been refunded.",
-        ) from commit_exc
+        if refund_result.get("ok"):
+            detail = "Could not allocate stock. Payment has been refunded."
+        else:
+            detail = (
+                "Could not allocate stock. Automatic refund failed — "
+                "our team will refund you shortly."
+            )
+        raise HTTPException(status_code=409, detail=detail) from commit_exc
 
     await _upgrade_guest_customer_from_order(order)
     try:
@@ -193,13 +263,21 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
     except Exception as exc:
         order.shippingStatus = "Shipping Sync Failed"
         await order.save()
-        print(f"[Payment] Shiprocket failed: {exc}")
+        print(f"[Payment] Fulfillment update failed: {exc}")
+    # Server-side purchase for GA4 and Meta. Reached once per order: the atomic
+    # paymentStatus claim above lets only one of verify/webhook get this far.
     try:
-        from app.services import aisensy as aisensy_svc
+        from app.services import conversions
+
+        conv_user = user or (await User.get(order.customerId) if order.customerId else None)
+        await conversions.send_purchase(order, conv_user)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Conversions] purchase: {exc}")
+
+    try:
         from app.services import email_resend as email_svc
 
         notify_user = user or (await User.get(order.customerId) if order.customerId else None)
-        await aisensy_svc.notify_order_event_once("orderPaid", order, notify_user)
         await email_svc.notify_order_email_once("CONFIRMED", order, notify_user)
         await email_svc.notify_staff_new_order(order, notify_user)
     except Exception as exc:
@@ -210,50 +288,76 @@ async def _finalize_paid_order(order: Order, *, rz_payment_id: str, payment: dic
 async def payment_config():
     """Public checkout config (no secrets)."""
     prefs = await razorpay_cfg.get_prefs()
-    return {"razorpayConfigured": prefs["isConnected"]}
+    return {
+        "razorpayConfigured": prefs["isConnected"],
+        "magicCheckout": bool(prefs["isConnected"] and await magic_checkout.is_enabled()),
+    }
 
 
-@router.post("/create-order")
-async def create_razorpay_order(body: dict, user: CurrentUser):
-    local_order_id = body.get("localOrderId") or body.get("orderId")
-    if not local_order_id or not ObjectId.is_valid(str(local_order_id)):
-        raise HTTPException(status_code=400, detail="localOrderId required")
-    order = await Order.get(ObjectId(local_order_id))
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if str(order.customerId) != str(user.id) and not user.isAdmin:
-        raise HTTPException(status_code=403, detail="Unauthorized: This order does not belong to you")
-    if order.paymentStatus == "paid":
-        raise HTTPException(status_code=400, detail="This order has already been paid")
-
+async def open_razorpay_order(order: Order, *, user_id=None) -> dict:
+    """Razorpay order for an unpaid local order, reusing an open one on retry."""
+    local_order_id = str(order.id)
+    user_ref = str(user_id) if user_id else ""
     # Reuse open Razorpay order to avoid duplicate captures on retry.
     if order.razorpayOrderId:
         existing_txn = await PaymentTransaction.find_one(
             PaymentTransaction.orderId == order.id,
             PaymentTransaction.razorpayOrderId == order.razorpayOrderId,
         )
-        if existing_txn and str(existing_txn.status or "").lower() in ("created", "attempted", ""):
-            key_id, _ = await _get_razorpay_creds()
-            return {
-                "razorpayOrder": {
-                    "id": order.razorpayOrderId,
-                    "amount": int(existing_txn.amountInPaise or 0),
-                    "currency": existing_txn.currency or "INR",
-                },
-                "keyId": key_id,
-                "razorpayOrderId": order.razorpayOrderId,
-                "amount": int(existing_txn.amountInPaise or 0),
-                "currency": existing_txn.currency or "INR",
-                "reused": True,
-            }
+        expected_paise = int(round(float(order.finalPrice) * 100))
+        txn_paise = int(existing_txn.amountInPaise or 0) if existing_txn else 0
+        reusable = (
+            existing_txn
+            and str(existing_txn.status or "").lower() in ("created", "attempted", "")
+            and txn_paise == expected_paise
+            and expected_paise >= 100
+        )
+        if reusable:
+            # Confirm the Razorpay order is still open; otherwise create a fresh one.
+            try:
+                import razorpay
+
+                key_id, key_secret = await _get_razorpay_creds()
+                client = razorpay.Client(auth=(key_id, key_secret))
+                remote = client.order.fetch(order.razorpayOrderId)
+                remote_status = str((remote or {}).get("status") or "").lower()
+                if remote_status in ("created", "attempted"):
+                    return {
+                        "razorpayOrder": {
+                            "id": order.razorpayOrderId,
+                            "amount": txn_paise,
+                            "currency": existing_txn.currency or "INR",
+                        },
+                        "keyId": key_id,
+                        "razorpayOrderId": order.razorpayOrderId,
+                        "amount": txn_paise,
+                        "currency": existing_txn.currency or "INR",
+                        "reused": True,
+                    }
+            except Exception:
+                # Fall through and create a new Razorpay order.
+                pass
+            # Stale / paid / missing remote order — clear for recreation.
+            order.razorpayOrderId = None
+            await order.save()
+            if existing_txn and str(existing_txn.status or "").lower() in ("created", "attempted", ""):
+                existing_txn.status = "superseded"
+                existing_txn.updatedAt = datetime.utcnow()
+                await existing_txn.save()
 
     key_id, key_secret = await _get_razorpay_creds()
-    payload: dict = {
-        "currency": "INR",
-        "amount": int(round(float(order.finalPrice) * 100)),
-        "receipt": str(local_order_id)[:40],
-        "notes": {"localOrderId": str(local_order_id), "userId": str(user.id)},
-    }
+    amount_paise = int(round(float(order.finalPrice) * 100))
+    if amount_paise < 100:
+        raise HTTPException(status_code=400, detail="Order amount is too low for online payment")
+    if magic_checkout.is_magic_order(order):
+        payload: dict = await magic_checkout.order_payload(order, user_id=user_ref)
+    else:
+        payload = {
+            "currency": "INR",
+            "amount": amount_paise,
+            "receipt": str(local_order_id)[:40],
+            "notes": {"localOrderId": str(local_order_id), "userId": user_ref},
+        }
 
     try:
         import razorpay
@@ -261,11 +365,11 @@ async def create_razorpay_order(body: dict, user: CurrentUser):
         client = razorpay.Client(auth=(key_id, key_secret))
         rz_order = client.order.create(payload)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Razorpay error: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Payment provider error") from exc
 
     await PaymentTransaction(
         orderId=order.id,
-        userId=user.id,
+        userId=user_id,
         razorpayOrderId=rz_order["id"],
         amountInPaise=int(payload["amount"]),
         currency="INR",
@@ -280,11 +384,36 @@ async def create_razorpay_order(body: dict, user: CurrentUser):
         "razorpayOrderId": rz_order["id"],
         "amount": int(payload["amount"]),
         "currency": "INR",
+        "magicCheckout": magic_checkout.is_magic_order(order),
     }
 
 
+@router.post("/create-order")
+async def create_razorpay_order(
+    body: dict,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("pay-create", limit=30)),
+):
+    local_order_id = body.get("localOrderId") or body.get("orderId")
+    if not local_order_id or not ObjectId.is_valid(str(local_order_id)):
+        raise HTTPException(status_code=400, detail="localOrderId required")
+    order = await Order.get(ObjectId(local_order_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if str(order.customerId) != str(user.id) and not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Unauthorized: This order does not belong to you")
+    if order.paymentStatus == "paid":
+        raise HTTPException(status_code=400, detail="This order has already been paid")
+
+    return await open_razorpay_order(order, user_id=user.id)
+
+
 @router.post("/verify")
-async def verify_payment(body: dict, user: CurrentUser):
+async def verify_payment(
+    body: dict,
+    user: CurrentUser,
+    _: None = Depends(rate_limit_dependency("pay-verify", limit=30)),
+):
     rz_order_id = body.get("razorpay_order_id") or body.get("razorpayOrderId")
     rz_payment_id = body.get("razorpay_payment_id") or body.get("razorpayPaymentId")
     rz_signature = body.get("razorpay_signature") or body.get("razorpaySignature")
@@ -332,7 +461,7 @@ async def verify_payment(body: dict, user: CurrentUser):
         txn.status = "failed"
         txn.failureReason = f"Razorpay fetch failed: {exc}"
         await txn.save()
-        raise HTTPException(status_code=502, detail=f"Could not fetch Razorpay payment: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Could not verify payment with provider") from exc
 
     if str(order.paymentStatus or "").lower() == "paid":
         # Already finalized — idempotent success (same or missing payment id).
@@ -351,6 +480,12 @@ async def verify_payment(body: dict, user: CurrentUser):
         txn.failureReason = f"Unexpected payment status: {pay_status}"
         await txn.save()
         raise HTTPException(status_code=400, detail=f"Payment not captured (status={pay_status})")
+
+    if not await _prepare_magic_payment(order, txn, payment, rz_order_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Payment amount does not match the order. It is being refunded.",
+        )
 
     amount = int(payment.get("amount") or 0)
     if amount != int(txn.amountInPaise or 0):
@@ -373,151 +508,6 @@ async def verify_payment(body: dict, user: CurrentUser):
 
     await _finalize_paid_order(order, rz_payment_id=rz_payment_id, payment=payment, user=user)
     return {"success": True, "order": remap_order(order)}
-
-
-@router.post("/refund")
-async def refund_payment(body: dict, admin: AdminUser):
-    """Admin: full or partial Razorpay refund for a captured payment."""
-    local_order_id = body.get("localOrderId") or body.get("orderId")
-    if not local_order_id or not ObjectId.is_valid(str(local_order_id)):
-        raise HTTPException(status_code=400, detail="localOrderId required")
-
-    order = await Order.get(ObjectId(str(local_order_id)))
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    payment_id = order.razorpayPaymentId
-    if not payment_id:
-        txn = await PaymentTransaction.find_one(PaymentTransaction.orderId == order.id)
-        if txn and txn.razorpayPaymentId:
-            payment_id = txn.razorpayPaymentId
-            order.razorpayPaymentId = payment_id
-    if not payment_id:
-        raise HTTPException(status_code=400, detail="No Razorpay payment on this order to refund")
-
-    pay_status = (order.paymentStatus or (order.transactionDetails or {}).get("paymentStatus") or "").lower()
-    if pay_status not in ("paid", "partially_refunded", "refunded"):
-        raise HTTPException(status_code=400, detail="Order payment must be paid before refunding")
-    if pay_status == "refunded":
-        raise HTTPException(status_code=400, detail="Order is already fully refunded")
-
-    key_id, key_secret = await _get_razorpay_creds()
-    import razorpay
-
-    client = razorpay.Client(auth=(key_id, key_secret))
-    try:
-        payment = client.payment.fetch(payment_id)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not fetch Razorpay payment: {exc}") from exc
-
-    amount_paid = int(payment.get("amount") or 0)
-    already_refunded = int(payment.get("amount_refunded") or 0)
-    remaining = amount_paid - already_refunded
-    if remaining <= 0:
-        order.paymentStatus = "refunded"
-        order.transactionDetails = {
-            **(order.transactionDetails or {}),
-            "paymentStatus": "refunded",
-        }
-        await order.save()
-        raise HTTPException(status_code=400, detail="Nothing left to refund on this payment")
-
-    if body.get("amount") is None or body.get("amount") == "":
-        refund_paise = remaining
-    else:
-        try:
-            refund_paise = int(round(float(body.get("amount")) * 100))
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid refund amount") from exc
-        if refund_paise <= 0:
-            raise HTTPException(status_code=400, detail="Refund amount must be greater than 0")
-        if refund_paise > remaining:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Refund exceeds remaining amount (₹{remaining / 100:.2f})",
-            )
-
-    notes = {
-        "localOrderId": str(order.id),
-        "adminId": str(admin.id),
-        "reason": str(body.get("reason") or "Admin refund")[:200],
-    }
-    try:
-        refund = client.payment.refund(
-            payment_id,
-            {
-                "amount": refund_paise,
-                "speed": "normal",
-                "notes": notes,
-            },
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Razorpay refund failed: {exc}") from exc
-
-    refund_record = {
-        "id": refund.get("id"),
-        "amountInPaise": refund_paise,
-        "amount": refund_paise / 100.0,
-        "status": refund.get("status"),
-        "speed": refund.get("speed") or "normal",
-        "paymentId": payment_id,
-        "reason": notes["reason"],
-        "createdAt": datetime.utcnow().isoformat(),
-        "createdBy": str(admin.id),
-        "raw": {
-            "id": refund.get("id"),
-            "entity": refund.get("entity"),
-            "amount": refund.get("amount"),
-            "currency": refund.get("currency"),
-            "status": refund.get("status"),
-        },
-    }
-
-    details = dict(order.transactionDetails or {})
-    refunds = list(details.get("refunds") or [])
-    refunds.append(refund_record)
-    total_refunded_paise = already_refunded + refund_paise
-    new_status = "refunded" if total_refunded_paise >= amount_paid else "partially_refunded"
-
-    details["paymentStatus"] = new_status
-    details["refunds"] = refunds
-    details["refundedAmount"] = total_refunded_paise / 100.0
-    details["refundedAmountInPaise"] = total_refunded_paise
-
-    order.paymentStatus = new_status
-    order.transactionDetails = details
-    order.updatedAt = datetime.utcnow()
-    await order.save()
-
-    # Full refund on unfulfilled orders restocks by default.
-    restock = body.get("restock")
-    if restock is None:
-        restock = new_status == "refunded"
-    if restock:
-        try:
-            await restock_order_stock(order)
-        except Exception as exc:
-            print(f"[Payment] Restock after refund failed for {order.id}: {exc}")
-
-    txn = await PaymentTransaction.find_one(PaymentTransaction.razorpayPaymentId == payment_id)
-    if not txn:
-        txn = await PaymentTransaction.find_one(PaymentTransaction.orderId == order.id)
-    if txn:
-        txn.status = new_status
-        txn.updatedAt = datetime.utcnow()
-        payload = dict(txn.webhookPayload or {})
-        payload_refunds = list(payload.get("refunds") or [])
-        payload_refunds.append(refund_record)
-        payload["refunds"] = payload_refunds
-        txn.webhookPayload = payload
-        await txn.save()
-
-    return {
-        "success": True,
-        "refund": refund_record,
-        "order": remap_order(order),
-        "remainingAmount": max(0, amount_paid - total_refunded_paise) / 100.0,
-    }
 
 
 async def _order_from_webhook_payload(payload: dict) -> Order | None:
@@ -558,6 +548,9 @@ async def razorpay_webhook(
         txn = await PaymentTransaction.find_one(PaymentTransaction.razorpayOrderId == rz_order_id)
         if not txn:
             raise HTTPException(status_code=400, detail="Unknown Razorpay order for webhook")
+        # Refused Magic Checkout payments are refunded; acknowledge so Razorpay stops retrying.
+        if order and not await _prepare_magic_payment(order, txn, payment, rz_order_id):
+            return {"status": "ok"}
         if payment.get("amount") is not None:
             if int(payment.get("amount") or 0) != int(txn.amountInPaise or 0):
                 raise HTTPException(status_code=400, detail="Webhook payment amount does not match transaction")

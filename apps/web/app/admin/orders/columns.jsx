@@ -6,6 +6,9 @@ import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
 import { formatOrderNumber } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
 import { estimateDtdcSurfaceCost } from "@/utils/dtdcEstCost";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
+import { displayCustomerName } from "@/utils/displayCustomerName";
+import { returnStatusDisplay } from "@/lib/returnStatus";
 
 const STATUS_LABELS = {
   // Order status — package / fulfillment wording
@@ -31,13 +34,18 @@ const STATUS_LABELS = {
 /**
  * Single source for list + detail fulfillment badge.
  * No AWB ⇒ Unfulfilled (stale "Awaiting Shipment" from import is ignored).
- * With AWB ⇒ DTDC shippingStatus label.
+ * With AWB ⇒ DTDC shippingStatus label; honor isDelivered / order status when ship field is empty.
  */
 export function resolveFulfillmentDisplay(order) {
   const awb = String(order?.awbCode || order?.awb || "").trim();
   const ship = String(order?.shippingStatus || "").trim();
   const shipKey = ship.toLowerCase();
   const orderStatus = String(order?.status || "").trim().toLowerCase();
+  const delivered =
+    Boolean(order?.isDelivered) ||
+    orderStatus === "delivered" ||
+    shipKey === "delivered" ||
+    shipKey.includes("delivered");
 
   if (orderStatus === "cancelled" || shipKey === "cancelled") {
     return {
@@ -47,19 +55,24 @@ export function resolveFulfillmentDisplay(order) {
     };
   }
 
+  // A return under way replaces "Delivered" with where the return is.
+  const returnDisplay = returnStatusDisplay(order);
+  if (returnDisplay) return returnDisplay;
+
+  if (delivered) {
+    return {
+      key: "Delivered",
+      label: "Delivered",
+      tone: "success",
+    };
+  }
+
   if (!awb) {
     if (shipKey === "payment pending") {
       return {
         key: "Payment Pending",
         label: "Payment pending",
         tone: "warning",
-      };
-    }
-    if (orderStatus === "delivered" || shipKey === "delivered") {
-      return {
-        key: "Delivered",
-        label: "Delivered",
-        tone: "success",
       };
     }
     return {
@@ -75,6 +88,24 @@ export function resolveFulfillmentDisplay(order) {
     label,
     tone: shippingTone(ship || "Awaiting Shipment"),
   };
+}
+
+export function orderHasAwb(order) {
+  return Boolean(String(order?.awbCode || order?.awb || "").trim());
+}
+
+/** Same gate as the order page: book DTDC (Mark as fulfilled) only when still Unfulfilled. */
+export function canFulfillOrder(order) {
+  return resolveFulfillmentDisplay(order).key === "Unfulfilled" && !orderHasAwb(order);
+}
+
+/** Invoice and shipping label print after a consignment exists. */
+export function canPrintOrderInvoice(order) {
+  return orderHasAwb(order);
+}
+
+export function canPrintOrderLabel(order) {
+  return orderHasAwb(order);
 }
 
 /** Fulfillment / shipping status → pill tone (pastel palette). */
@@ -132,7 +163,9 @@ export function isMutedFulfillmentRow(order) {
     if (s.includes("awaiting") || s.includes("ready")) return false;
     return true;
   }
-  const key = resolveFulfillmentDisplay(order).key.toLowerCase();
+  const display = resolveFulfillmentDisplay(order);
+  if (display.needsAction) return false; // a return waiting on the team
+  const key = display.key.toLowerCase();
   if (key === "unfulfilled" || key === "payment pending") return false;
   if (key.includes("awaiting") || key.includes("ready")) return false;
   return true;
@@ -140,15 +173,30 @@ export function isMutedFulfillmentRow(order) {
 
 function attributionTag(order) {
   const touch = order?.attribution?.lastTouch || order?.attribution?.firstTouch || {};
-  const source = String(touch.source || "").trim();
-  if (!source || source.toLowerCase() === "direct") return "Direct";
-  return source;
+  return channelDisplayName(touch.source);
+}
+
+function channelDisplayName(source) {
+  const raw = String(source || "").trim();
+  const s = raw.toLowerCase();
+  if (!s || ["direct", "(direct)", "none", "n/a", "(none)"].includes(s)) return "Direct";
+  if (s === "ig" || s.includes("instagram")) return "Instagram";
+  if (s === "fb" || s === "meta" || s.includes("facebook") || s.includes("fbclid")) {
+    return "Facebook";
+  }
+  if (s.includes("whatsapp") || s === "wa") return "WhatsApp";
+  if (s.includes("youtube") || s === "yt") return "YouTube";
+  if (s.includes("google") || s === "gclid") return "Google";
+  if (s.includes("tiktok")) return "TikTok";
+  if (s.includes("pinterest")) return "Pinterest";
+  if (s.includes("linkedin")) return "LinkedIn";
+  if (s === "x" || s.includes("twitter")) return "X";
+  return raw.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function paymentLabel(status) {
   const s = String(status || "pending").toLowerCase();
   if (s === "paid") return "Paid";
-  if (s === "pay_on_delivery") return "COD";
   if (s === "refunded") return "Refunded";
   if (s === "partially_refunded") return "Partial refund";
   return status || "Pending";
@@ -157,29 +205,17 @@ function paymentLabel(status) {
 function paymentTone(status) {
   const s = String(status || "pending").toLowerCase();
   if (s === "paid") return "success";
-  if (s === "pay_on_delivery") return "info";
   if (s === "refunded" || s === "partially_refunded") return "review";
   if (s === "failed" || s === "cancelled") return "danger";
   return "warning";
 }
 
 function customerName(order) {
-  return (
-    order.shippingAddress?.name ||
-    order.customerId?.name ||
-    order.customerId?.email ||
-    ""
-  );
+  return displayCustomerName(order, "");
 }
 
 function formatOrderDate(order) {
-  return order.createdAt
-    ? new Date(order.createdAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "";
+  return formatAdminDateTime(order.createdAt);
 }
 
 function orderCellMeta(order) {
@@ -314,16 +350,18 @@ function locationColumn({ widthClass, size } = {}) {
   };
 }
 
-function totalColumn() {
+function totalColumn({ widthClass = "w-[100px]", size = 100 } = {}) {
   return {
     id: "total",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => Number(row.finalPrice ?? row.total ?? 0),
     header: "Total",
     cell: ({ row }) => {
       const order = row.original;
       const { ink, wt } = orderCellMeta(order);
       return (
-        <span className={`text-[13px] ${wt} ${ink}`}>
+        <span className={`text-[13px] tabular-nums ${wt} ${ink}`}>
           {formatINR(order.finalPrice ?? order.total ?? 0)}
         </span>
       );
@@ -359,9 +397,11 @@ function dtdcEstColumn({ widthClass, size } = {}) {
   };
 }
 
-function paymentColumn() {
+function paymentColumn({ widthClass = "w-[124px]", size = 124 } = {}) {
   return {
     id: "payment",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) =>
       row.paymentStatus || row.transactionDetails?.paymentStatus || "pending",
     header: "Payment",
@@ -378,11 +418,13 @@ function paymentColumn() {
   };
 }
 
-function fulfillmentColumn() {
+function fulfillmentColumn({ widthClass = "w-[148px]", size = 148 } = {}) {
   return {
     id: "fulfillment",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => resolveFulfillmentDisplay(row).key,
-    header: "Fulfillment",
+    header: "Fulfilment",
     cell: ({ row }) => {
       const display = resolveFulfillmentDisplay(row.original);
       return (
@@ -394,9 +436,11 @@ function fulfillmentColumn() {
   };
 }
 
-function itemsColumn() {
+function itemsColumn({ widthClass = "w-[88px]", size = 88 } = {}) {
   return {
     id: "items",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => (row.items || row.orderItems || []).length,
     header: "Items",
     cell: ({ row }) => {
@@ -411,15 +455,17 @@ function itemsColumn() {
   };
 }
 
-function tagColumn() {
+function tagColumn({ widthClass = "w-[120px]", size = 120 } = {}) {
   return {
     id: "tag",
+    size,
+    meta: { className: widthClass },
     accessorFn: (row) => attributionTag(row),
     header: "Tag",
     cell: ({ row }) => {
       const tag = attributionTag(row.original);
       return (
-        <span className="inline-flex h-6 items-center rounded-[0.5rem] bg-black/[0.06] px-2 text-[0.75rem] font-[550] leading-4 text-[#616161] capitalize">
+        <span className="inline-flex h-6 max-w-full items-center truncate rounded-[0.5rem] bg-black/[0.06] px-2 text-[0.75rem] font-medium leading-4 text-(--p-color-text-secondary)">
           {tag}
         </span>
       );
@@ -498,16 +544,16 @@ export function createOrderColumns({ isShipmentScope = false } = {}) {
   }
 
   return [
-    selectColumn({ size: 40, ...stickyLead }),
-    orderNumberColumn({ widthClass: "w-[120px]", size: 120, ...stickyLead }),
-    dateColumn(),
-    customerColumn(),
-    locationColumn(),
-    totalColumn(),
-    paymentColumn(),
-    fulfillmentColumn(),
-    itemsColumn(),
-    tagColumn(),
+    selectColumn({ widthClass: "w-10", size: 40, ...stickyLead }),
+    orderNumberColumn({ widthClass: "w-[112px]", size: 112, ...stickyLead }),
+    dateColumn({ widthClass: "w-[148px]", size: 148 }),
+    customerColumn({ widthClass: "w-[168px]", size: 168 }),
+    locationColumn({ widthClass: "w-[168px]", size: 168 }),
+    totalColumn({ widthClass: "w-[100px]", size: 100 }),
+    paymentColumn({ widthClass: "w-[124px]", size: 124 }),
+    fulfillmentColumn({ widthClass: "w-[148px]", size: 148 }),
+    itemsColumn({ widthClass: "w-[88px]", size: 88 }),
+    tagColumn({ widthClass: "w-[120px]", size: 120 }),
   ];
 }
 
@@ -516,6 +562,6 @@ export {
   paymentTone,
   paymentLabel,
   attributionTag,
+  channelDisplayName,
   STATUS_LABELS,
-  resolveFulfillmentDisplay,
 };

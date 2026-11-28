@@ -1,105 +1,129 @@
 "use client";
 
 import React from "react";
+import { FOOTER_ID } from "./WhatsAppButton";
 import Link from "next/link";
 import Image from "next/image";
+import {
+  STORE_EMAIL,
+  STORE_PHONE,
+  STORE_PHONE_TEL,
+  whatsappChatUrl,
+} from "@/lib/storeContact";
 
 const FOOTER_INK = "rgb(243, 241, 236)";
-const FOOTER_BG = "#222222";
+const FOOTER_BG = "#121212";
 const FOOTER_LINK =
-  "footer-link relative inline-block w-fit text-[13px] font-medium opacity-90 transition-colors duration-300 hover:text-gray-400";
+  "footer-link relative inline-block w-fit text-[15px] leading-6 font-normal antialiased text-white transition-colors duration-300 hover:text-gray-400";
+const FOOTER_HEADING =
+  "inline-block w-fit -ml-2 bg-brand-red px-2 py-1 text-[14px] font-semibold leading-[14px] tracking-[1.4px] uppercase text-white";
 
-const InstagramIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
-    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
-  </svg>
-);
+const PAYMENT_ICONS = [
+  { src: "/payment-icons/visa.png", label: "Visa" },
+  { src: "/payment-icons/mastercard.png", label: "Mastercard" },
+  { src: "/payment-icons/googlepay.png", label: "Google Pay" },
+  { src: "/payment-icons/applepay.png", label: "Apple Pay" },
+  { src: "/payment-icons/amazonpay.png", label: "Amazon Pay" },
+];
 
-const FacebookIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-  </svg>
-);
+
+const SOCIAL_LINKS = [
+  { href: "https://www.instagram.com/urbanaana.in", icon: "/social/instagram.png", label: "Instagram" },
+  { href: "https://www.facebook.com/share/18vF3ZB3BJ/", icon: "/social/facebook.png", label: "Facebook" },
+  { href: whatsappChatUrl(), icon: "/social/whatsapp.png", label: "WhatsApp" },
+];
 
 const Footer = () => {
   return (
-    <footer className="w-full" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
-      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 pt-14 pb-10">
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr] gap-x-6 gap-y-10 lg:gap-x-12">
-          <div className="col-span-2 sm:col-span-2 lg:col-span-1 flex flex-col gap-5">
+    <footer id={FOOTER_ID} className="w-full font-[family-name:var(--font-archivo-narrow)]" style={{ color: FOOTER_INK, backgroundColor: FOOTER_BG }}>
+      <div className="w-full px-4 lg:px-8 pt-14 pb-10">
+        <div className="grid grid-cols-1 gap-y-10 sm:grid-cols-2 sm:gap-x-6 lg:grid-cols-[repeat(4,max-content)] lg:justify-start lg:gap-x-20 xl:gap-x-28">
+          <div className="flex flex-col gap-5 sm:col-span-2 lg:col-span-1">
             <Link href="/" className="inline-block w-fit">
               <Image
-                src="/urban/Logo.png"
+                src="/brand/logo-dark.png"
                 alt="URBAN AANA"
                 width={140}
                 height={50}
-                className="object-contain h-10 w-auto brightness-0 invert"
+                className="object-contain h-14 w-auto"
                 priority={false}
               />
             </Link>
 
-            <p className="text-[12px] uppercase tracking-widest opacity-70">Crafted in India</p>
+            <p className="text-[15px] leading-6 font-normal antialiased text-white">Where Style Meets Strength</p>
 
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => window.open("https://www.instagram.com/urbanaana.in", "_blank", "noopener,noreferrer")}
-                className="w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:text-brand-red"
-                style={{ borderColor: "rgba(243, 241, 236, 0.25)", color: FOOTER_INK }}
-                aria-label="Instagram"
-              >
-                <InstagramIcon />
-              </button>
+            <div className="flex flex-col gap-1 text-[15px] leading-6 font-normal antialiased text-white">
               <a
-                href="https://www.facebook.com/share/18vF3ZB3BJ/"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-200 hover:border-brand-red hover:text-brand-red"
-                style={{ borderColor: "rgba(243, 241, 236, 0.25)", color: FOOTER_INK }}
-                aria-label="Facebook"
+                href={`mailto:${STORE_EMAIL}`}
+                className="w-fit transition-colors hover:text-brand-red hover:opacity-100"
               >
-                <FacebookIcon />
+                Email: {STORE_EMAIL}
               </a>
+              <a
+                href={`tel:${STORE_PHONE_TEL}`}
+                className="w-fit transition-colors hover:text-brand-red hover:opacity-100"
+              >
+                Phone: {STORE_PHONE}
+              </a>
+            </div>
+
+            <div className="-ml-2 flex items-center gap-1">
+              {SOCIAL_LINKS.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-9 w-9 items-center justify-center opacity-80 transition-opacity duration-200 hover:opacity-100"
+                  aria-label={item.label}
+                  title={item.label}
+                >
+                  <Image src={item.icon} alt="" width={18} height={18} className="h-[18px] w-[18px]" />
+                </a>
+              ))}
             </div>
           </div>
 
           <div className="flex flex-col gap-4">
-            <p
-              className="inline-block w-fit bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]"
-              style={{ color: FOOTER_INK }}
-            >
-              Shop
+            <p className={FOOTER_HEADING}>
+              Collection
             </p>
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
               <li>
                 <Link href="/all-products" className={FOOTER_LINK}>
                   All Products
                 </Link>
               </li>
               <li>
-                <Link href="/#latest-drops" className={FOOTER_LINK}>
-                  Latest Drops
+                <Link href="/collections/new-arrivals" className={FOOTER_LINK}>
+                  New Arrivals
+                </Link>
+              </li>
+              <li>
+                <Link href="/collections/best-sellers" className={FOOTER_LINK}>
+                  Best Sellers
+                </Link>
+              </li>
+              <li>
+                <Link href="/collections/t-shirt" className={FOOTER_LINK}>
+                  Oversized T-Shirt
                 </Link>
               </li>
             </ul>
           </div>
 
           <div className="flex flex-col gap-4">
-            <p
-              className="inline-block w-fit bg-brand-red px-2 py-1 text-[12px] font-bold uppercase tracking-[0.2em]"
-              style={{ color: FOOTER_INK }}
-            >
+            <p className={FOOTER_HEADING}>
               About
             </p>
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
               <li>
                 <Link href="/about" className={FOOTER_LINK}>
-                  Our Story
+                  About Us
                 </Link>
               </li>
               <li>
-                <Link href="/profile" className={FOOTER_LINK}>
+                <Link href="/account" className={FOOTER_LINK}>
                   My Account
                 </Link>
               </li>
@@ -110,37 +134,74 @@ const Footer = () => {
               </li>
             </ul>
           </div>
+
+          <div className="flex flex-col gap-4">
+            <p className={FOOTER_HEADING}>
+              Policies
+            </p>
+            <ul className="flex flex-col gap-2">
+              <li>
+                <Link href="/privacy-policy" className={FOOTER_LINK}>
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms-and-conditions" className={FOOTER_LINK}>
+                  Terms and Condition
+                </Link>
+              </li>
+              <li>
+                <Link href="/return-refund" className={FOOTER_LINK}>
+                  Returns &amp; Shipping
+                </Link>
+              </li>
+            </ul>
+            <ul className="mt-2 flex flex-wrap items-center gap-2" aria-label="Payment methods we accept">
+              {PAYMENT_ICONS.map((icon) => (
+                <li key={icon.src}>
+                  <Image
+                    src={icon.src}
+                    alt={icon.label}
+                    title={icon.label}
+                    width={35}
+                    height={24}
+                    className="h-6 w-[35px]"
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
 
-      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12">
+      <div className="w-full px-4 lg:px-8">
         <div className="border-t" style={{ borderColor: "rgba(243, 241, 236, 0.15)" }} />
       </div>
 
-      <div className="max-w-[1640px] mx-auto px-5 sm:px-8 lg:px-12 py-5">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-[12px] tracking-wide opacity-80 text-center sm:text-left">
+      <div className="w-full px-4 lg:px-8 py-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <p className="text-[15px] leading-6 font-normal antialiased text-[#cecece] text-left">
             © {new Date().getFullYear()} Urban Aana. All rights reserved.
           </p>
-          <p className="text-[12px] tracking-wide opacity-80 text-center sm:text-right">
-            Design &amp; Development by{" "}
+          <p className="text-[13px] leading-[21px] font-normal antialiased text-[#cecece] text-left sm:text-right">
+            Designed &amp; developed by{" "}
             <a
-              href="https://bridnetwork.in"
+              href="https://www.bridnetwork.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-brand-red transition-colors"
+              className="underline-offset-4 hover:underline hover:text-brand-red transition-colors"
             >
-              Brid Network
+              BRID NETWORK LLP
             </a>
           </p>
         </div>
       </div>
 
       <div
-        className="w-full overflow-hidden select-none pt-6 md:pt-8 pb-0"
+        className="footer-marquee-edge w-full overflow-hidden select-none pt-6 md:pt-8 pb-0"
         aria-hidden="true"
       >
-        <div className="flex w-max items-end">
+        <div className="footer-marquee-shift flex w-max items-end">
           {[0, 1].map((copy) => (
             <div
               key={copy}
@@ -149,12 +210,9 @@ const Footer = () => {
               {Array.from({ length: 6 }).map((_, i) => (
                 <span
                   key={`${copy}-${i}`}
-                  className="footer-marquee-text font-knewave px-6 text-[clamp(1.25rem,4vw,2.75rem)] font-normal uppercase italic leading-none tracking-tight block"
+                  className="footer-marquee-text px-8 text-[clamp(3rem,12vw,8rem)] font-normal leading-none tracking-tight block uppercase"
                 >
-                  Where Style Meets Strength
-                  <span className="footer-marquee-sep mx-6 inline-block align-baseline" aria-hidden>
-                    /
-                  </span>
+                  Urban Aana
                 </span>
               ))}
             </div>
@@ -165,28 +223,28 @@ const Footer = () => {
             0% { transform: translateX(0); }
             100% { transform: translateX(-100%); }
           }
+          .footer-marquee-edge {
+            line-height: 0;
+          }
+          .footer-marquee-shift {
+            /* Drop text so ~10% of letter height is clipped at the bottom edge */
+            transform: translateY(10%);
+          }
           .footer-marquee {
             animation: footer-marquee 40s linear infinite;
             will-change: transform;
           }
           .footer-marquee-text {
-            font-family: var(--font-archivo-black), "Archivo Black", sans-serif;
+            font-family: var(--font-archivo-narrow), "Archivo Narrow", sans-serif;
             color: ${FOOTER_BG};
-            -webkit-text-stroke: 2px ${FOOTER_INK};
+            -webkit-text-stroke: 3px ${FOOTER_INK};
             paint-order: stroke fill;
-            text-shadow: 3px 3px 0 ${FOOTER_INK};
-          }
-          .footer-marquee-sep {
-            font-family: var(--font-archivo-black), "Archivo Black", sans-serif;
-            color: ${FOOTER_BG};
-            -webkit-text-stroke: 2px ${FOOTER_INK};
-            text-shadow: 3px 3px 0 ${FOOTER_INK};
+            text-shadow: 4px 4px 0 ${FOOTER_INK};
           }
           @media (max-width: 768px) {
-            .footer-marquee-text,
-            .footer-marquee-sep {
-              -webkit-text-stroke-width: 1.5px;
-              text-shadow: 2px 2px 0 ${FOOTER_INK};
+            .footer-marquee-text {
+              -webkit-text-stroke-width: 2px;
+              text-shadow: 3px 3px 0 ${FOOTER_INK};
             }
           }
           @media (prefers-reduced-motion: reduce) {

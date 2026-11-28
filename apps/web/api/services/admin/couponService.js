@@ -1,18 +1,13 @@
-import axiosInstance from '../../axios/client.js';
+import axiosInstance from "../../axios/client.js";
 
 export const adminCouponService = {
   getAll: async () => {
-    const response = await axiosInstance.get('/admin/coupons');
-    return response.data;
-  },
-
-  getById: async (id) => {
-    const response = await axiosInstance.get(`/admin/coupons/${id}`);
+    const response = await axiosInstance.get("/admin/coupons");
     return response.data;
   },
 
   create: async (couponData) => {
-    const response = await axiosInstance.post('/admin/coupons', couponData);
+    const response = await axiosInstance.post("/admin/coupons", couponData);
     return response.data;
   },
 
@@ -26,8 +21,11 @@ export const adminCouponService = {
     return response.data;
   },
 
-  validate: async (code, amount) => {
-    const response = await axiosInstance.post('/admin/coupons/validate', { code, amount });
-    return response.data;
+  /** Customers for the "Specific customers" picker: `{ q }` to search, `{ ids }` to resolve. */
+  customers: async ({ q = "", ids = [] } = {}) => {
+    const response = await axiosInstance.get("/admin/coupons/customers", {
+      params: { q: q || undefined, ids: ids.length ? ids.join(",") : undefined },
+    });
+    return Array.isArray(response.data) ? response.data : [];
   },
 };

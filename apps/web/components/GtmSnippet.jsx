@@ -1,24 +1,22 @@
 /**
- * GTM helpers. Head script + noscript are injected by middleware
- * (not React) to avoid hydration / script-tag console errors.
+ * GTM helpers kept for compatibility. Injection is handled by GtmClient.
+ * No hardcoded container IDs — use NEXT_PUBLIC_GTM_ID / GTM_ID.
  */
 
-export const DEFAULT_GTM_ID = "GTM-WVQMZLZF";
-
-function normalizeGtmId(gtmId) {
-  const id = String(gtmId || DEFAULT_GTM_ID)
+export function normalizeGtmId(gtmId) {
+  const id = String(gtmId || "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9-]/g, "");
   return id.startsWith("GTM-") ? id : "";
 }
 
-/** @deprecated Middleware injects head snippet. */
+/** @deprecated Use GtmClient */
 export function GtmHead() {
   return null;
 }
 
-/** @deprecated Middleware injects noscript. */
+/** @deprecated Use GtmClient */
 export function GtmBody() {
   return null;
 }
@@ -26,5 +24,3 @@ export function GtmBody() {
 export default function GtmSnippet() {
   return null;
 }
-
-export { normalizeGtmId };

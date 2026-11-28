@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adminProductService, adminCategoryService } from "@/api";
-import { ChevronDown, Download, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Download, GripVertical, Loader2, Search, Trash2 } from "@/components/icons";
 import { toast } from "sonner";
+import { userErrorMessage } from "@/lib/userMessage";
+import { Package } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminMetricRow,
@@ -12,6 +14,7 @@ import {
   AdminHeaderButton,
 } from "@/components/admin/list";
 import { DataTable } from "@/components/ui/data-table";
+import ProductReorderList from "@/components/admin/ProductReorderList";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { adminProductHref } from "@/utils/formatProductUrl";
 import { downloadCsv, rowsToCsv } from "@/utils/downloadCsv";
+import { bustStorefrontCatalogCache } from "@/lib/bustStorefrontCatalogCache";
 import {
   createProductColumns,
   productStatus,
@@ -40,6 +44,9 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true);
   const [statusTab, setStatusTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [reordering, setReordering] = useState(false);
+  const [draftOrder, setDraftOrder] = useState([]);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [rowSelection, setRowSelection] = useState({});
   const [bulkLoading, setBulkLoading] = useState(false);
 
@@ -55,14 +62,8 @@ export default function AdminProductsPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const data = await adminProductService.getProducts();
-      setProducts(
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data?.products)
-            ? data.products
-            : []
-      );
+      const data = await adminProductService.getAllProducts();
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching admin products:", error);
       setProducts([]);
@@ -114,6 +115,34 @@ export default function AdminProductsPage() {
       products: products.length,
     };
   }, [products]);
+
+  const startReorder = () => {
+    // Arrange the whole catalogue, not the filtered view: positions are saved
+    // for every product, so a filtered subset would renumber hidden ones.
+    setDraftOrder(products);
+    setReordering(true);
+  };
+
+  const cancelReorder = () => {
+    setReordering(false);
+    setDraftOrder([]);
+  };
+
+  const saveOrder = async () => {
+    setSavingOrder(true);
+    try {
+      await adminProductService.reorder(draftOrder.map((p) => p._id));
+      setProducts(draftOrder);
+      await bustStorefrontCatalogCache();
+      toast.success("Product order saved");
+      setReordering(false);
+      setDraftOrder([]);
+    } catch (error) {
+      toast.error(userErrorMessage(error, "Couldn’t save the order"));
+    } finally {
+      setSavingOrder(false);
+    }
+  };
 
   const filteredProducts = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -221,6 +250,7 @@ export default function AdminProductsPage() {
       }
       await fetchProducts();
       setRowSelection({});
+      await bustStorefrontCatalogCache();
       if (failed) {
         toast.error(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}`);
       } else {
@@ -241,15 +271,12 @@ export default function AdminProductsPage() {
       });
       await fetchProducts();
       setRowSelection({});
+      await bustStorefrontCatalogCache();
       const label =
         STATUS_OPTIONS.find((o) => o.value === status)?.label || status;
       toast.success(`Updated status to ${label}`);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.detail ||
-          err?.message ||
-          "Failed to update status"
-      );
+      toast.error(userErrorMessage(err, "Couldn’t update product status"));
     } finally {
       setBulkLoading(false);
     }
@@ -260,10 +287,34 @@ export default function AdminProductsPage() {
       <AdminListLayout
         fill={false}
         title="Products"
+        icon={Package}
         actions={
-          <AdminHeaderButton variant="primary" onClick={handleAddProduct}>
-            Add product
-          </AdminHeaderButton>
+          reordering ? (
+            <>
+              <AdminHeaderButton variant="outline" onClick={cancelReorder}>
+                Cancel
+              </AdminHeaderButton>
+              <AdminHeaderButton
+                variant="primary"
+                disabled={savingOrder}
+                onClick={saveOrder}
+              >
+                {savingOrder ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : null}
+                Save order
+              </AdminHeaderButton>
+            </>
+          ) : (
+            <>
+              <AdminHeaderButton variant="outline" onClick={startReorder}>
+                <GripVertical className="w-3.5 h-3.5" /> Reorder
+              </AdminHeaderButton>
+              <AdminHeaderButton variant="primary" onClick={handleAddProduct}>
+                Add product
+              </AdminHeaderButton>
+            </>
+          )
         }
         metrics={
           <AdminMetricRow
@@ -292,13 +343,22 @@ export default function AdminProductsPage() {
               {
                 value: metrics.products.toLocaleString("en-IN"),
                 label: "Total products",
-                detail: "Products in catalog",
+                detail: "Products in catalogue",
                 hint: "Includes draft and archived",
               },
             ]}
           />
         }
       >
+        {reordering ? (
+          <div className="flex flex-col gap-3 pb-6">
+            <p className="text-[13px] text-muted-foreground">
+              Drag to set the order shoppers see, top first. Search and status
+              filters are ignored here so every product keeps a position.
+            </p>
+            <ProductReorderList products={draftOrder} onChange={setDraftOrder} />
+          </div>
+        ) : (
         <DataTable
           columns={columns}
           data={filteredProducts}
@@ -323,7 +383,7 @@ export default function AdminProductsPage() {
                   <button
                     type="button"
                     onClick={() => setRowSelection({})}
-                    className="text-[13px] font-[550] text-[#005bd3] hover:underline"
+                    className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
                   >
                     Clear
                   </button>
@@ -345,7 +405,7 @@ export default function AdminProductsPage() {
                           variant="secondary"
                           size="lg"
                           disabled={bulkLoading}
-                          className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4]"
+                          className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-(--p-color-button-bg-fill) px-3 text-[0.8125rem] font-medium leading-5 text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active) aria-expanded:bg-(--p-color-button-bg-fill-hover)"
                         />
                       }
                     >
@@ -403,6 +463,7 @@ export default function AdminProductsPage() {
             )
           }
         />
+        )}
       </AdminListLayout>
     </>
   );

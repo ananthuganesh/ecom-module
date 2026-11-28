@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/icons";
 import { toast } from "sonner";
 import { abandonedCheckoutService } from "@/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusText } from "@/components/admin/list";
 import OrderItemsCell from "@/components/admin/list/OrderItemsCell";
 import { formatINR } from "@/utils/formatINR";
+import { formatAdminDateTime } from "@/utils/formatAdminDateTime";
 
 export function channelFromResult(result) {
   if (!result || typeof result !== "object") return null;
@@ -33,22 +34,30 @@ export function channelTone(status) {
   return "neutral";
 }
 
-export function whatsappStatus(row) {
-  const fromResult = channelFromResult(row?.recoveryLastResult);
-  if (fromResult) return fromResult;
-  if (row?.recoverySentAt) return "Sent";
-  return "Not sent";
+function normalizeStoredStatus(stored) {
+  if (stored == null || stored === "") return null;
+  const s = String(stored).toLowerCase();
+  if (s === "sent" || s === "ok") return "Sent";
+  if (s === "failed" || s === "error") return "Failed";
+  if (s === "skipped") return "Skipped";
+  return null;
+}
+
+function nestedChannel(result, key) {
+  if (!result || typeof result !== "object") return null;
+  const nested = result[key];
+  return nested && typeof nested === "object" ? nested : null;
 }
 
 export function emailStatus(row) {
-  const stored = row?.emailStatus || row?.recoveryLastResult?.emailStatus;
-  if (stored) {
-    const s = String(stored).toLowerCase();
-    if (s === "sent" || s === "ok") return "Sent";
-    if (s === "failed") return "Failed";
-    if (s === "skipped") return "Skipped";
-  }
-  if (row?.emailSentAt) return "Sent";
+  const last = row?.recoveryLastResult;
+  const nested = channelFromResult(nestedChannel(last, "email"));
+  if (nested) return nested;
+  const stored = normalizeStoredStatus(
+    row?.emailStatus || last?.emailStatus
+  );
+  if (stored) return stored;
+  if (row?.emailSentAt || last?.emailSentAt) return "Sent";
   return "Not sent";
 }
 
@@ -113,9 +122,9 @@ function CheckoutCopyCell({ label, recoveryUrl, checkoutId }) {
       </span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {copied ? (
-          <Check className="size-3 text-[#047b5d]" aria-hidden />
+          <Check className="size-3 text-(--p-color-text-success-accent)" aria-hidden />
         ) : (
-          <Copy className="size-3 text-[#8a8a8a]" aria-hidden />
+          <Copy className="size-3 text-(--p-color-text-tertiary)" aria-hidden />
         )}
       </span>
     </button>
@@ -154,11 +163,24 @@ function selectColumn() {
   };
 }
 
+function customerLabel(details) {
+  const d = details || {};
+  const name = String(d.name || "").trim();
+  if (name) return name;
+  const email = String(d.email || "").trim();
+  if (email) return email;
+  const phone = String(d.phone || "").trim();
+  if (phone) return phone;
+  return "Guest";
+}
+
 export function createAbandonedColumns() {
   return [
     selectColumn(),
     {
       id: "checkout",
+      size: 160,
+      meta: { className: "w-[160px]" },
       accessorFn: (row) => row.checkoutLabel,
       header: "Checkout",
       cell: ({ row }) => (
@@ -177,17 +199,12 @@ export function createAbandonedColumns() {
     },
     {
       id: "date",
+      size: 148,
+      meta: { className: "w-[148px]" },
       accessorFn: (row) => row.lastActivityAt,
       header: "Date",
       cell: ({ row }) => {
-        const iso = row.original.lastActivityAt;
-        const dateLabel = iso
-          ? new Date(iso).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-          : "";
+        const dateLabel = formatAdminDateTime(row.original.lastActivityAt);
         return (
           <span className="whitespace-nowrap text-[13px] font-medium text-muted-foreground">
             {dateLabel}
@@ -197,16 +214,20 @@ export function createAbandonedColumns() {
     },
     {
       id: "customer",
-      accessorFn: (row) => row.customerDetails?.name || "Guest",
+      size: 168,
+      meta: { className: "w-[168px]" },
+      accessorFn: (row) => customerLabel(row.customerDetails),
       header: "Customer",
       cell: ({ row }) => (
         <span className="block truncate text-[13px] font-medium text-foreground">
-          {row.original.customerDetails?.name || "Guest"}
+          {customerLabel(row.original.customerDetails)}
         </span>
       ),
     },
     {
       id: "recovery",
+      size: 132,
+      meta: { className: "w-[132px]" },
       accessorFn: (row) => recoveryStatus(row),
       header: "Recovery",
       cell: ({ row }) => {
@@ -220,6 +241,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "email",
+      size: 108,
+      meta: { className: "w-[108px]" },
       accessorFn: (row) => emailStatus(row),
       header: "Email",
       cell: ({ row }) => {
@@ -232,20 +255,9 @@ export function createAbandonedColumns() {
       },
     },
     {
-      id: "whatsapp",
-      accessorFn: (row) => whatsappStatus(row),
-      header: "WhatsApp",
-      cell: ({ row }) => {
-        const status = whatsappStatus(row.original);
-        return (
-          <AdminStatusText tone={channelTone(status)} dot>
-            {status}
-          </AdminStatusText>
-        );
-      },
-    },
-    {
       id: "items",
+      size: 88,
+      meta: { className: "w-[88px]" },
       accessorFn: (row) => (row.items || row.orderItems || []).length,
       header: "Items",
       cell: ({ row }) => (
@@ -256,6 +268,8 @@ export function createAbandonedColumns() {
     },
     {
       id: "total",
+      size: 100,
+      meta: { className: "w-[100px]" },
       accessorFn: (row) => Number(row.totalAmount || 0),
       header: "Total",
       cell: ({ row }) => (

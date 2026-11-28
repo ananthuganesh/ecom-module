@@ -2,19 +2,23 @@ import Image from "next/image";
 import Link from "next/link";
 
 /**
- * Urban Aana wordmark — shown as provided (no filters / no chip).
+ * Urban Aana wordmark.
+ * - variant="light" → for light backgrounds (dark AANA)
+ * - variant="dark"  → for dark backgrounds (white AANA)
  */
 export default function BrandLogo({
   href = "/",
   className = "",
   height = 28,
   priority = false,
+  variant = "light",
 }) {
-  const width = Math.round((height * 130) / 59);
+  const width = Math.round((height * 1558) / 708);
+  const src = variant === "dark" ? "/urban/logo-dark.png" : "/urban/logo.png";
 
   const img = (
     <Image
-      src="/urban/Logo.png"
+      src={src}
       alt="Urban Aana"
       width={width}
       height={height}

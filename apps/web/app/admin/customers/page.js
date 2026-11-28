@@ -1,15 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { adminUserService } from "@/api";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "@/components/icons";
 import { toast } from "sonner";
+import { Users } from "@/components/admin/LocalIcons";
 import {
   AdminListLayout,
   AdminHeaderButton,
 } from "@/components/admin/list";
 import { DataTable } from "@/components/ui/data-table";
 import CreateCustomerSheet from "@/components/admin/CreateCustomerSheet";
+import { adminCustomerHref } from "@/utils/formatCustomerUrl";
 import {
   createCustomerColumns,
   customerName,
@@ -18,8 +21,10 @@ import {
 } from "./columns";
 
 export default function AdminCustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [rowSelection, setRowSelection] = useState({});
   const [createOpen, setCreateOpen] = useState(false);
@@ -28,9 +33,19 @@ export default function AdminCustomersPage() {
 
   const fetchCustomers = useCallback(async () => {
     try {
-      const data = await adminUserService.getUsers();
-      const list = (Array.isArray(data) ? data : []).filter(isCustomer);
-      setCustomers(list);
+      // Paginate through admin users API (max 200/page) instead of a single unbounded dump.
+      const pageSize = 200;
+      let page = 1;
+      const all = [];
+      for (;;) {
+        const data = await adminUserService.getUsers({ page, limit: pageSize });
+        const batch = Array.isArray(data) ? data : [];
+        all.push(...batch.filter(isCustomer));
+        if (batch.length < pageSize) break;
+        page += 1;
+        if (page > 50) break; // hard safety cap
+      }
+      setCustomers(all);
     } catch (error) {
       console.error("Error fetching customers:", error);
       setCustomers([]);
@@ -63,6 +78,21 @@ export default function AdminCustomersPage() {
     });
   }, [customers, searchTerm]);
 
+  const selectedIds = useMemo(
+    () => Object.keys(rowSelection).filter((id) => rowSelection[id]),
+    [rowSelection]
+  );
+
+  const selectedCustomers = useMemo(
+    () => customers.filter((c) => selectedIds.includes(c._id)),
+    [customers, selectedIds]
+  );
+
+  const deletableSelected = useMemo(
+    () => selectedCustomers.filter((c) => Number(c.ordersCount || 0) === 0),
+    [selectedCustomers]
+  );
+
   useEffect(() => {
     const ids = new Set(filteredCustomers.map((c) => c._id));
     setRowSelection((prev) => {
@@ -78,11 +108,54 @@ export default function AdminCustomersPage() {
     });
   }, [filteredCustomers]);
 
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.length || bulkLoading) return;
+
+    const blocked = selectedCustomers.length - deletableSelected.length;
+    if (!deletableSelected.length) {
+      toast.error("Customers with orders can’t be deleted.");
+      return;
+    }
+
+    const n = deletableSelected.length;
+    const confirmMsg =
+      blocked > 0
+        ? `Delete ${n} customer${n === 1 ? "" : "s"} with no orders? ${blocked} with orders will be skipped.`
+        : `Delete ${n} customer${n === 1 ? "" : "s"}? This cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setBulkLoading(true);
+    try {
+      let failed = 0;
+      for (const customer of deletableSelected) {
+        try {
+          await adminUserService.deleteUser(customer._id);
+        } catch {
+          failed += 1;
+        }
+      }
+      await fetchCustomers();
+      setRowSelection({});
+      if (failed) {
+        toast.error(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}`);
+      } else if (blocked > 0) {
+        toast.success(
+          `Deleted ${n} customer${n === 1 ? "" : "s"}; skipped ${blocked} with orders`
+        );
+      } else {
+        toast.success(`Deleted ${n} customer${n === 1 ? "" : "s"}`);
+      }
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   return (
     <>
       <AdminListLayout
         fill={false}
         title="Customers"
+        icon={Users}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <AdminHeaderButton
@@ -111,24 +184,60 @@ export default function AdminCustomersPage() {
           showSelectionCount={false}
           infiniteScroll
           rowHeightClass="h-8"
-          tableClassName="min-w-[1480px]"
+          tableClassName="min-w-[1372px]"
           emptyTitle="No customers found"
           emptyDescription="Add a customer to get started."
           pageSize={25}
+          onRowClick={(customer) => router.push(adminCustomerHref(customer))}
           toolbar={
-            <form
-              className="relative min-w-0 flex-1"
-              onSubmit={(e) => e.preventDefault()}
-            >
-              <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search customers"
-                className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder-gray-400 focus:border-border focus:outline-none"
-              />
-            </form>
+            selectedIds.length > 0 ? (
+              <>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-[13px] font-medium text-foreground">
+                    {selectedIds.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRowSelection({})}
+                    className="text-[13px] font-medium text-(--p-color-text-link) hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <AdminHeaderButton
+                    variant="outline"
+                    disabled={bulkLoading || deletableSelected.length === 0}
+                    onClick={handleDeleteSelected}
+                    title={
+                      deletableSelected.length === 0
+                        ? "Customers with orders can’t be deleted"
+                        : undefined
+                    }
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                    {deletableSelected.length > 0 &&
+                    deletableSelected.length !== selectedIds.length
+                      ? ` (${deletableSelected.length})`
+                      : ""}
+                  </AdminHeaderButton>
+                </div>
+              </>
+            ) : (
+              <form
+                className="relative min-w-0 flex-1"
+                onSubmit={(e) => e.preventDefault()}
+              >
+                <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search customers"
+                  className="h-8 w-full rounded-lg border border-border bg-card pr-3 pl-9 text-[13px] font-normal text-foreground placeholder-gray-400 focus:border-border focus:outline-none"
+                />
+              </form>
+            )
           }
         />
       </AdminListLayout>
@@ -136,7 +245,10 @@ export default function AdminCustomersPage() {
       <CreateCustomerSheet
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSuccess={() => fetchCustomers()}
+        onSuccess={(created) => {
+          fetchCustomers();
+          if (created) router.push(adminCustomerHref(created));
+        }}
       />
     </>
   );

@@ -7,9 +7,11 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
-MAX_EDGE_PX = 2400
-WEBP_QUALITY = 80
+MAX_IMAGE_BYTES = 25 * 1024 * 1024  # 25 MB
+# Keep enough resolution for PDP / zoom; only downscale very large camera dumps.
+MAX_EDGE_PX = 3600
+# Higher quality WebP — 80 was visibly soft on fashion product photography.
+WEBP_QUALITY = 92
 ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 
@@ -19,7 +21,7 @@ def optimize_image_to_webp(
     filename: str | None = None,
 ) -> tuple[bytes, str, str]:
     """
-    Validate size, convert to optimized WebP.
+    Validate size, convert to high-quality WebP.
 
     Returns (webp_bytes, safe_filename_stem_with_webp, content_type).
     """
@@ -28,7 +30,7 @@ def optimize_image_to_webp(
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(
             status_code=400,
-            detail="Image must be 10 MB or smaller",
+            detail="Image must be 25 MB or smaller",
         )
 
     ext = Path(filename or "image.jpg").suffix.lower() or ".jpg"
@@ -49,12 +51,11 @@ def optimize_image_to_webp(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="Invalid or corrupt image file") from exc
 
-    # Flatten transparency onto white for formats that need it when converting
-    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-        rgba = img.convert("RGBA")
-        background = Image.new("RGB", rgba.size, (255, 255, 255))
-        background.paste(rgba, mask=rgba.split()[-1])
-        img = background
+    has_alpha = img.mode in ("RGBA", "LA") or (
+        img.mode == "P" and "transparency" in img.info
+    )
+    if has_alpha:
+        img = img.convert("RGBA")
     elif img.mode != "RGB":
         img = img.convert("RGB")
 
@@ -68,13 +69,15 @@ def optimize_image_to_webp(
         )
 
     out = io.BytesIO()
-    img.save(
-        out,
-        format="WEBP",
-        quality=WEBP_QUALITY,
-        method=6,
-        optimize=True,
-    )
+    save_kwargs: dict = {
+        "format": "WEBP",
+        "quality": WEBP_QUALITY,
+        "method": 4,
+    }
+    if has_alpha:
+        # Keep transparency instead of flattening onto white.
+        save_kwargs["lossless"] = False
+    img.save(out, **save_kwargs)
     webp = out.getvalue()
     if not webp:
         raise HTTPException(status_code=500, detail="Failed to encode WebP")

@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 
 export default function NotFound() {
     return (
-        <main className="min-h-screen bg-[#fcfcfc] flex flex-col pt-16 md:pt-20">
+        <main className="min-h-screen bg-white flex flex-col pt-16 md:pt-20">
 
             <section className="flex-1 flex items-center justify-center py-20 px-6 relative overflow-hidden">
                 {/* Large Background Deco Text */}
@@ -32,7 +32,7 @@ export default function NotFound() {
                         <div className="w-16 h-[1px] bg-accent mx-auto mb-10" />
                         
                         <p className="max-w-md mx-auto text-sm md:text-base text-gray-500 leading-relaxed mb-12 font-sans italic">
-                            "True elegance is when the page you seek is as modest as our collection, but unfortunately, this one has vanished."
+                            &ldquo;True elegance is when the page you seek is as modest as our collection, but unfortunately, this one has vanished.&rdquo;
                         </p>
 
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

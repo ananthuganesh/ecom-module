@@ -1,4 +1,5 @@
-import { gstRateForUnitPrice, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { orderCouponCode, orderDiscountNames } from "@/lib/orderDiscount";
 
 function esc(value) {
   return String(value ?? "")
@@ -153,7 +154,7 @@ function mapCompany(company = {}) {
     name: company.name || company.tradeName || company.storeName || company.legalName || "Urban Aana",
     lines: companyAddressLines(company),
     phone: company.phone || "9037381610",
-    email: company.email || "hello@urbanaana.com",
+    email: company.email || "info@urbanaana.com",
     website: company.website || company.siteUrl || "urbanaana.com",
     gstin: company.gstin || "",
     stateCode: company.stateCode || "",
@@ -193,23 +194,15 @@ function paymentDetails(order, grand) {
   ).toLowerCase();
   const td = order?.transactionDetails || {};
 
-  const isCod =
-    methodRaw === "cod" ||
-    methodRaw === "cash_on_delivery" ||
-    methodRaw.includes("cash on delivery") ||
-    statusRaw === "pay_on_delivery";
-
   let paymentStatus = "PAYMENT PENDING";
   if (statusRaw === "paid" || statusRaw === "captured") paymentStatus = "PAID";
   else if (statusRaw === "refunded") paymentStatus = "REFUNDED";
   else if (statusRaw === "partially_refunded") paymentStatus = "PARTIALLY REFUNDED";
-  else if (isCod) paymentStatus = "PAYMENT PENDING";
   else if (statusRaw === "failed") paymentStatus = "FAILED";
   else if (statusRaw === "pending" || !statusRaw) paymentStatus = "PAYMENT PENDING";
 
   let paymentMethod = "—";
-  if (isCod) paymentMethod = "Cash on Delivery";
-  else if (instrument.includes("upi")) paymentMethod = "Razorpay / UPI";
+  if (instrument.includes("upi")) paymentMethod = "Razorpay / UPI";
   else if (instrument.includes("card")) paymentMethod = "Razorpay / Card";
   else if (instrument.includes("netbanking") || instrument.includes("net_banking"))
     paymentMethod = "Razorpay / Netbanking";
@@ -234,7 +227,7 @@ function paymentDetails(order, grand) {
 
   const paidLike = paymentStatus === "PAID" || paymentStatus === "PARTIALLY REFUNDED";
   const paymentMade = paidLike ? grand : 0;
-  const balanceDue = paidLike ? 0 : isCod ? grand : grand;
+  const balanceDue = paidLike ? 0 : grand;
 
   return {
     paymentStatus,
@@ -243,7 +236,6 @@ function paymentDetails(order, grand) {
     paymentDate,
     paymentMade,
     balanceDue,
-    isCod,
   };
 }
 
@@ -300,7 +292,8 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
   const invItems = Array.isArray(invoice?.items) && invoice.items.length ? invoice.items : null;
   const orderItems = order?.items || order?.orderItems || [];
 
-  const resolveLineRate = (unitPrice) => gstRateForUnitPrice(unitPrice);
+  // Slab from sale value per piece after discount (≤ ₹2,500 → 5%).
+  const resolveLineRate = (lineValue, qty) => gstRateForLine(lineValue, qty);
 
   const lineRows = [];
   if (invItems) {
@@ -314,7 +307,7 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
       const unitPrice = Number(item.unitPrice || 0);
       const lineDiscount = Number(item.discount || item.discountAmount || 0);
       const gross = Math.max(0, unitPrice * qty - lineDiscount);
-      const taxRate = resolveLineRate(unitPrice);
+      const taxRate = resolveLineRate(gross, qty);
       const split = splitInclusive(gross, taxRate);
       const taxable = split.taxable;
       const taxAmt = split.tax;
@@ -346,7 +339,7 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
       const unitPrice = Number(item.price || item.unitPrice || 0);
       const lineDiscount = Number(item.discount || item.discountAmount || 0);
       const gross = Math.max(0, unitPrice * qty - lineDiscount);
-      const taxRate = resolveLineRate(unitPrice);
+      const taxRate = resolveLineRate(gross, qty);
       const inclusive = (product.priceTaxMode || "inclusive") !== "exclusive";
       let taxable;
       let taxAmt;
@@ -407,9 +400,14 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
       : lineTaxableSum || Math.max(0, lineGrossSum - discount);
 
   let taxTotal = useLineTax ? lineTaxSum : storedTaxTotal;
-  let cgst = useLineTax ? 0 : Number(invoice?.cgst || 0);
-  let sgst = useLineTax ? 0 : Number(invoice?.sgst || 0);
-  let igst = useLineTax ? 0 : Number(invoice?.igst || 0);
+  // Keep the saved invoice's CGST/SGST/IGST when it agrees with the line tax,
+  // so the paise split on paper matches the stored record.
+  const storedSplit =
+    Number(invoice?.cgst || 0) + Number(invoice?.sgst || 0) + Number(invoice?.igst || 0);
+  const useStoredSplit = storedSplit > 0 && Math.abs(storedSplit - taxTotal) < 0.005;
+  let cgst = useStoredSplit ? Number(invoice?.cgst || 0) : 0;
+  let sgst = useStoredSplit ? Number(invoice?.sgst || 0) : 0;
+  let igst = useStoredSplit ? Number(invoice?.igst || 0) : 0;
 
   // If invoice has tax total but no CGST/SGST/IGST split, derive from place of supply
   if (taxTotal > 0 && cgst + sgst + igst <= 0) {
@@ -484,10 +482,18 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
 
   const emptyRow = `<tr><td colspan="9" class="empty">No items</td></tr>`;
 
+  const couponCode = String(invoice?.couponCode || "").trim().toUpperCase() || orderCouponCode(order);
   const taxCalcRows = [];
   if (discount > 0) {
+    const names = orderDiscountNames(order);
+    const discountKey =
+      couponCode && (!names.length || (names.length === 1 && names[0] === couponCode))
+        ? `Coupon Discount (${couponCode})`
+        : names.length
+          ? `Discount (${names.join(", ")})`
+          : "Discount";
     taxCalcRows.push(
-      `<div class="tot-row"><span class="tot-k">Discount</span><span class="tot-v">${esc(moneyNeg(discount))}</span></div>`
+      `<div class="tot-row"><span class="tot-k">${esc(discountKey)}</span><span class="tot-v">${esc(moneyNeg(discount))}</span></div>`
     );
   }
   taxCalcRows.push(
@@ -523,6 +529,9 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
     ["Payment Terms", terms],
     ["Due Date", fmtDate(dueDate)],
   ];
+  if (couponCode) {
+    metaPairs.push(["Coupon", couponCode]);
+  }
   if (isGst) {
     metaPairs.push(["Reverse Charge", reverseCharge]);
   }
@@ -977,7 +986,7 @@ export function buildInvoicePrintHtml({ order, invoice, company = {}, taxClasses
     <p class="footer-title">Terms &amp; Conditions</p>
     <ul>
       <li>Goods once sold are subject to the applicable return policy.</li>
-      <li>For returns or support, contact ${esc(co.email || "hello@urbanaana.com")}.</li>
+      <li>For returns or support, contact ${esc(co.email || "info@urbanaana.com")}.</li>
       <li>Please retain this invoice for warranty and return purposes.</li>
     </ul>
   </footer>
@@ -1018,14 +1027,25 @@ export function buildMultiInvoicePrintHtml(entries) {
   <title>Invoices (${list.length})</title>
   <style>
     ${styles}
-    .invoice-page { padding: 0; }
+    @page { size: A4; margin: 10mm; }
+    body { padding: 0 !important; margin: 0 !important; background: #fff; }
+    .invoice-page {
+      padding: 24px 32px 32px;
+      box-sizing: border-box;
+      break-after: page;
+      page-break-after: always;
+    }
+    .invoice-page:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
     @media print {
       .invoice-page { break-after: page; page-break-after: always; }
       .invoice-page:last-child { break-after: auto; page-break-after: auto; }
     }
   </style>
 </head>
-<body style="padding:0;margin:0">
+<body>
   ${pages}
 </body>
 </html>`;

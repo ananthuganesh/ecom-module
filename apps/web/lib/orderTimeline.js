@@ -1,3 +1,6 @@
+import { returnTimelineSteps } from "./returnStatus.js";
+import { ADMIN_TIME_ZONE, parseAdminDate } from "../utils/formatAdminDateTime.js";
+
 function touchKey(t) {
   if (!t) return "";
   return [t.source, t.medium, t.campaign, t.content, t.term, t.gclid, t.fbclid]
@@ -27,14 +30,33 @@ function awbCode(order) {
   return String(order.awbCode || order.awb || "").trim() || null;
 }
 
-function dtdcBookedAt(order) {
+/** Carrier holding the parcel — DTDC or Delhivery — for timeline copy. */
+function carrierLabel(order) {
+  return (
+    order.courierName ||
+    order.courier ||
+    order.transactionDetails?.dtdc?.courier_partner ||
+    "Courier"
+  );
+}
+
+function shipmentBookedAt(order) {
   return firstPresent(
+    // Resolved server-side from whichever carrier booked it.
+    order.shipmentTimestamps?.createdAt,
     order.transactionDetails?.dtdc?.createdAt,
     order.shippedAt,
     order.shipmentCreatedAt,
     order.shippingCreatedAt,
     order.transactionDetails?.shipment?.createdAt,
     order.transactionDetails?.shipping?.createdAt
+  );
+}
+
+function shipmentShippedAt(order) {
+  return firstPresent(
+    order.shipmentTimestamps?.shippedAt,
+    order.transactionDetails?.dtdc?.shippedAt
   );
 }
 
@@ -114,43 +136,56 @@ function isInTransitLike(order) {
   );
 }
 
-/** Local calendar day key YYYY-MM-DD for grouping. */
+/** India calendar day key YYYY-MM-DD for grouping. */
 export function timelineDayKey(iso) {
-  if (!iso) return "unknown";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "unknown";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const d = parseAdminDate(iso);
+  if (!d) return "unknown";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ADMIN_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 /** Shopify-style day label: Today / Yesterday / July 26 */
 export function formatTimelineDayLabel(iso, now = new Date()) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  const d = parseAdminDate(iso);
+  if (!d) return "";
 
-  const startOf = (date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dayMs = 24 * 60 * 60 * 1000;
-  const diffDays = Math.round((startOf(now) - startOf(d)) / dayMs);
+  const dayKey = (date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: ADMIN_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  const todayKey = dayKey(now);
+  const thatKey = dayKey(d);
+  if (thatKey === todayKey) return "Today";
+
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (thatKey === dayKey(yesterday)) return "Yesterday";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: ADMIN_TIME_ZONE,
+  }).format(d);
 }
 
 /** Time only, e.g. 9:55 PM */
 export function formatTimelineTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("en-US", {
+  const d = parseAdminDate(iso);
+  if (!d) return "";
+  return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  });
+    timeZone: ADMIN_TIME_ZONE,
+  })
+    .format(d)
+    .replace(/\u202f/g, " ");
 }
 
 /**
@@ -162,8 +197,8 @@ export function groupTimelineByDay(steps, now = new Date()) {
   const timeOf = (step) => {
     const raw = step?.sortAt || step?.at;
     if (!raw) return Number.NEGATIVE_INFINITY;
-    const t = new Date(raw).getTime();
-    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+    const t = parseAdminDate(raw)?.getTime();
+    return t == null || Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
   };
 
   const withIndex = (steps || []).map((step, index) => ({ step, index }));
@@ -229,10 +264,67 @@ export function groupTimelineByDay(steps, now = new Date()) {
   return groups;
 }
 
+function customerEmail(order) {
+  const customer =
+    order?.customerId && typeof order.customerId === "object"
+      ? order.customerId
+      : order?.user && typeof order.user === "object"
+        ? order.user
+        : null;
+  const fromDetails = order?.transactionDetails?.customerDetails?.email;
+  const email =
+    [customer?.email, order?.customerEmail, order?.email, fromDetails]
+      .map((v) => String(v || "").trim())
+      .find((v) => v && v.includes("@")) || "";
+  return email;
+}
+
+function resendSentAt(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : value;
+  }
+  if (typeof value === "object") {
+    const raw = value.at || value.sentAt || value.timestamp;
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : String(raw);
+  }
+  return null;
+}
+
+const EMAIL_ACTIVITY = [
+  {
+    key: "orderConfirmed",
+    id: "email_orderConfirmed",
+    title: "Confirmation email sent",
+    seq: 32,
+  },
+  {
+    key: "staffNewOrder",
+    id: "email_staffNewOrder",
+    title: "Staff new-order email sent",
+    seq: 33,
+  },
+  {
+    key: "orderShipped",
+    id: "email_orderShipped",
+    title: "Shipping email sent",
+    seq: 55,
+  },
+  {
+    key: "orderDelivered",
+    id: "email_orderDelivered",
+    title: "Delivery email sent",
+    seq: 85,
+  },
+];
+
 /**
  * Order activity timeline (ops-focused):
- * Order placed → Confirmation → Payment → Fulfilled → DTDC AWB →
- * DTDC shipped → DTDC delivered → Cancel / Refund
+ * Order placed → Confirmation → Payment → Emails → Fulfilled → carrier AWB →
+ * shipped → delivered → Cancel / Refund
  */
 export function buildOrderTimeline(order) {
   if (!order) return [];
@@ -241,6 +333,7 @@ export function buildOrderTimeline(order) {
   const updatedAt = order.updatedAt || createdAt;
   const ref = orderRef(order);
   const customer = customerDisplayName(order);
+  const emailTo = customerEmail(order);
   const payStatus = payStatusOf(order);
   const amountText = formatMoneyINR(order.finalPrice ?? order.total ?? order.amount);
   const method = String(
@@ -249,7 +342,7 @@ export function buildOrderTimeline(order) {
   const paidAt =
     order.transactionDetails?.paidAt || order.paidAt || createdAt || null;
   const awb = awbCode(order);
-  const bookedAt = dtdcBookedAt(order);
+  const bookedAt = shipmentBookedAt(order);
   const shipLabel = shippingStatusOf(order);
   const deliveredAt = order.deliveredAt || null;
 
@@ -259,10 +352,10 @@ export function buildOrderTimeline(order) {
     confirmation: 20,
     payment: 30,
     fulfilled: 40,
-    dtdc_awb: 50,
-    dtdc_shipped: 60,
-    dtdc_ofd: 70,
-    dtdc_delivered: 80,
+    shipment_awb: 50,
+    shipment_shipped: 60,
+    shipment_ofd: 70,
+    shipment_delivered: 80,
     cancelled: 90,
     refund: 100,
   };
@@ -292,12 +385,12 @@ export function buildOrderTimeline(order) {
   });
 
   // 3) Payment
-  if (payStatus === "paid" || payStatus === "pay_on_delivery") {
+  if (payStatus === "paid") {
     steps.push({
       id: "payment",
       type: "payment",
       seq: SEQ.payment,
-      title: payStatus === "pay_on_delivery" ? "Cash on delivery" : "Payment received",
+      title: "Payment received",
       subtitle: [amountText, method ? method.toUpperCase() : null].filter(Boolean).join(" · ") || null,
       at: paidAt,
       sortAt: paidAt,
@@ -315,26 +408,52 @@ export function buildOrderTimeline(order) {
     });
   }
 
-  // 4–7) Fulfillment / DTDC — never use updatedAt for early steps (it jumps after delivery)
+  // Email sends (from transactionDetails.resend timestamps)
+  const resend = { ...(order.transactionDetails?.resend || {}) };
+  // Prefer orderConfirmed; fall back to legacy keys used by older sends.
+  if (!resend.orderConfirmed && (resend.orderConfirmation || resend.orderPlaced)) {
+    resend.orderConfirmed = resend.orderConfirmation || resend.orderPlaced;
+  }
+  for (const evt of EMAIL_ACTIVITY) {
+    const raw = resend[evt.key];
+    const at = resendSentAt(raw);
+    if (!at) continue;
+    const recipient =
+      (typeof raw === "object" && raw?.to) ||
+      (evt.key === "staffNewOrder" ? null : emailTo);
+    steps.push({
+      id: evt.id,
+      type: "email",
+      seq: evt.seq,
+      title: evt.title,
+      subtitle: recipient ? `To · ${recipient}` : null,
+      at,
+      sortAt: at,
+      tone: "info",
+    });
+  }
+
+  // 4–7) Fulfillment / carrier — never use updatedAt for early steps (it jumps after delivery)
   if (hasAwb(order)) {
     const fulfillAt = bookedAt || paidAt || createdAt;
+    const carrier = carrierLabel(order);
     steps.push({
       id: "fulfilled",
       type: "fulfilled",
       seq: SEQ.fulfilled,
       title: "Marked as fulfilled",
-      subtitle: "DTDC consignment booked",
+      subtitle: `${carrier} consignment booked`,
       at: bookedAt || null,
       sortAt: fulfillAt,
       tone: "success",
     });
 
     steps.push({
-      id: "dtdc_awb",
+      id: "shipment_awb",
       type: "shipped",
-      seq: SEQ.dtdc_awb,
-      title: `DTDC assigned AWB ${awb}`,
-      subtitle: order.courier || order.transactionDetails?.dtdc?.courier_partner || "DTDC",
+      seq: SEQ.shipment_awb,
+      title: `${carrier} assigned AWB ${awb}`,
+      subtitle: null,
       at: bookedAt || null,
       sortAt: fulfillAt,
       tone: "info",
@@ -342,16 +461,14 @@ export function buildOrderTimeline(order) {
 
     if (isInTransitLike(order) || isDelivered(order)) {
       const shippedWhen =
-        order.transactionDetails?.dtdc?.shippedAt ||
-        (isDelivered(order) ? deliveredAt : null) ||
-        fulfillAt;
+        shipmentShippedAt(order) || (isDelivered(order) ? deliveredAt : null) || fulfillAt;
       steps.push({
-        id: "dtdc_shipped",
+        id: "shipment_shipped",
         type: "shipped",
-        seq: SEQ.dtdc_shipped,
-        title: "DTDC shipped",
+        seq: SEQ.shipment_shipped,
+        title: `${carrier} shipped`,
         subtitle: shipLabel && !/^delivered$/i.test(shipLabel) ? shipLabel : "In transit",
-        at: order.transactionDetails?.dtdc?.shippedAt || null,
+        at: shipmentShippedAt(order) || null,
         sortAt: shippedWhen,
         tone: "success",
       });
@@ -359,10 +476,10 @@ export function buildOrderTimeline(order) {
 
     if (shippingStatusKey(order).includes("out for delivery")) {
       steps.push({
-        id: "dtdc_ofd",
+        id: "shipment_ofd",
         type: "shipped",
-        seq: SEQ.dtdc_ofd,
-        title: "DTDC out for delivery",
+        seq: SEQ.shipment_ofd,
+        title: `${carrier} out for delivery`,
         subtitle: null,
         at: deliveredAt || fulfillAt,
         sortAt: deliveredAt || fulfillAt,
@@ -372,10 +489,10 @@ export function buildOrderTimeline(order) {
 
     if (isDelivered(order)) {
       steps.push({
-        id: "dtdc_delivered",
+        id: "shipment_delivered",
         type: "delivered",
-        seq: SEQ.dtdc_delivered,
-        title: "DTDC delivered",
+        seq: SEQ.shipment_delivered,
+        title: `${carrier} delivered`,
         subtitle: null,
         at: deliveredAt,
         sortAt: deliveredAt || fulfillAt,
@@ -386,13 +503,34 @@ export function buildOrderTimeline(order) {
 
   // Cancel
   if (isCancelled(order)) {
-    const cancelledAt = order.cancelledAt || updatedAt || createdAt;
+    const cancelledAt =
+      order.cancelledAt ||
+      order.transactionDetails?.cancelledAt ||
+      updatedAt ||
+      createdAt;
+    const cancelledAwb =
+      order.transactionDetails?.dtdcCancelled?.reference_number ||
+      order.transactionDetails?.dtdcCancel?.reference_number ||
+      order.transactionDetails?.delhiveryCancelled?.waybill ||
+      (hasAwb(order) ? awb : null);
+    const shipmentCancelled = Boolean(
+      order.transactionDetails?.dtdcCancelled ||
+        order.transactionDetails?.delhiveryCancelled ||
+        order.transactionDetails?.shipmentCancelled
+    );
+    const cancelCarrier = carrierLabel(order);
     steps.push({
       id: "cancelled",
       type: "cancelled",
       seq: SEQ.cancelled,
       title: "Order cancelled",
-      subtitle: hasAwb(order) ? `AWB ${awb}` : null,
+      subtitle: shipmentCancelled
+        ? cancelledAwb
+          ? `${cancelCarrier} cancelled · AWB ${cancelledAwb}`
+          : `${cancelCarrier} consignment cancelled`
+        : cancelledAwb
+          ? `AWB ${cancelledAwb}`
+          : "Stock restocked · order archived",
       at: cancelledAt,
       sortAt: cancelledAt,
       tone: "critical",
@@ -400,7 +538,16 @@ export function buildOrderTimeline(order) {
   }
 
   // Refund
-  if (payStatus === "refunded" || payStatus === "partially_refunded") {
+  const refundEntries = Array.isArray(order.transactionDetails?.refunds)
+    ? order.transactionDetails.refunds
+    : [];
+  // Return refunds get their own step (with the return number) below.
+  const onlyReturnRefunds =
+    refundEntries.length > 0 && refundEntries.every((entry) => entry?.returnNumber);
+  if (
+    !onlyReturnRefunds &&
+    (payStatus === "refunded" || payStatus === "partially_refunded" || payStatus === "refund_pending")
+  ) {
     const refundedAmount = formatMoneyINR(
       order.refundedAmount ?? order.transactionDetails?.refundedAmount
     );
@@ -413,13 +560,26 @@ export function buildOrderTimeline(order) {
       id: "refund",
       type: "refund",
       seq: SEQ.refund,
-      title: payStatus === "partially_refunded" ? "Partial refund issued" : "Refund issued",
-      subtitle: refundedAmount ? `${refundedAmount} refunded` : null,
+      title:
+        payStatus === "refund_pending"
+          ? "Refund pending"
+          : payStatus === "partially_refunded"
+            ? "Partial refund issued"
+            : "Refund issued",
+      subtitle:
+        payStatus === "refund_pending"
+          ? order.transactionDetails?.autoRefundError || "Razorpay refund in progress"
+          : refundedAmount
+            ? `${refundedAmount} refunded`
+            : null,
       at: refundAt,
       sortAt: refundAt,
       tone: "critical",
     });
   }
+
+  // Returns: requested → approved (pickup) → picked up → received, or rejected.
+  steps.push(...returnTimelineSteps(order));
 
   return steps;
 }

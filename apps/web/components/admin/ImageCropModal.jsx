@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Cropper from "react-easy-crop";
-import { Check } from "lucide-react";
+import { Check } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

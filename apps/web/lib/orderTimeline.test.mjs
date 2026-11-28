@@ -63,8 +63,8 @@ describe("buildOrderTimeline", () => {
         "confirmation",
         "payment",
         "fulfilled",
-        "dtdc_awb",
-        "dtdc_shipped",
+        "shipment_awb",
+        "shipment_shipped",
       ]
     );
     assert.equal(
@@ -72,8 +72,54 @@ describe("buildOrderTimeline", () => {
       "Confirmation #UA1242 was generated for this order."
     );
     assert.equal(steps.find((s) => s.id === "order_placed").title, "Order placed");
-    assert.match(steps.find((s) => s.id === "dtdc_awb").title, /DTDC assigned AWB 7X117566894/);
-    assert.equal(steps.find((s) => s.id === "dtdc_shipped").title, "DTDC shipped");
+    assert.match(steps.find((s) => s.id === "shipment_awb").title, /assigned AWB 7X117566894/);
+    assert.match(steps.find((s) => s.id === "shipment_shipped").title, /shipped$/);
+  });
+
+  it("names the carrier that actually holds the parcel", () => {
+    // Regression: every fulfilment step said "DTDC" regardless of carrier, so a
+    // Delhivery booking showed "DTDC assigned AWB ..." on the order activity.
+    const delhivery = buildOrderTimeline({
+      _id: "b1",
+      createdAt: "2026-09-08T10:00:00Z",
+      awb: "63413910000011",
+      courierName: "Delhivery",
+      carrier: "delhivery",
+      shippingStatus: "In Transit",
+      status: "shipped",
+    });
+    assert.match(
+      delhivery.find((s) => s.id === "shipment_awb").title,
+      /^Delhivery assigned AWB 63413910000011$/
+    );
+    assert.equal(
+      delhivery.find((s) => s.id === "fulfilled").subtitle,
+      "Delhivery consignment booked"
+    );
+    assert.match(delhivery.find((s) => s.id === "shipment_shipped").title, /^Delhivery shipped$/);
+
+    const dtdc = buildOrderTimeline({
+      _id: "b2",
+      createdAt: "2026-09-08T10:00:00Z",
+      awb: "7X117566894",
+      courierName: "DTDC",
+      shippingStatus: "In Transit",
+      status: "shipped",
+    });
+    assert.match(dtdc.find((s) => s.id === "shipment_awb").title, /^DTDC assigned AWB/);
+  });
+
+  it("reads shipment timestamps from either carrier", () => {
+    const steps = buildOrderTimeline({
+      _id: "b3",
+      createdAt: "2026-09-08T10:00:00Z",
+      awb: "63413910000011",
+      courierName: "Delhivery",
+      shipmentTimestamps: { createdAt: "2026-09-08T17:56:00Z" },
+      shippingStatus: "Awaiting Shipment",
+      status: "processing",
+    });
+    assert.equal(steps.find((s) => s.id === "fulfilled").at, "2026-09-08T17:56:00Z");
   });
 
   it("includes delivered and refund/cancel when present", () => {
@@ -94,7 +140,7 @@ describe("buildOrderTimeline", () => {
       },
     });
     const ids = steps.map((s) => s.id);
-    assert.ok(ids.includes("dtdc_delivered"));
+    assert.ok(ids.includes("shipment_delivered"));
     assert.ok(ids.includes("cancelled"));
     assert.ok(ids.includes("refund"));
   });
@@ -111,6 +157,35 @@ describe("buildOrderTimeline", () => {
       steps.map((s) => s.id),
       ["order_placed", "confirmation", "payment"]
     );
+  });
+
+  it("includes email sent rows from transactionDetails.resend", () => {
+    const steps = buildOrderTimeline({
+      orderNumber: "UA1271",
+      createdAt: "2026-08-05T07:00:00.000Z",
+      customerEmail: "justin@example.com",
+      paymentStatus: "paid",
+      status: "order placed",
+      finalPrice: 2198,
+      transactionDetails: {
+        paidAt: "2026-08-05T07:01:00.000Z",
+        resend: {
+          orderConfirmed: "2026-08-05T07:01:05.000Z",
+          orderShipped: { at: "2026-08-05T08:10:00.000Z", to: "justin@example.com" },
+          staffNewOrder: "2026-08-05T07:01:06.000Z",
+        },
+        dtdc: { createdAt: "2026-08-05T08:00:00.000Z" },
+      },
+      awb: "7X117566901",
+      shippingStatus: "Awaiting Shipment",
+    });
+    const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+    assert.equal(byId.email_orderConfirmed.title, "Confirmation email sent");
+    assert.equal(byId.email_orderConfirmed.subtitle, "To · justin@example.com");
+    assert.equal(byId.email_orderShipped.title, "Shipping email sent");
+    assert.equal(byId.email_staffNewOrder.title, "Staff new-order email sent");
+    assert.ok(steps.map((s) => s.id).includes("email_orderConfirmed"));
+    assert.ok(steps.map((s) => s.id).includes("email_orderShipped"));
   });
 
   it("orders DTDC lifecycle Delivered → Shipped → AWB → Fulfilled", () => {
@@ -133,9 +208,9 @@ describe("buildOrderTimeline", () => {
     });
     const groups = groupTimelineByDay(steps, new Date("2026-07-31T12:00:00"));
     const ids = groups.flatMap((g) => g.steps.map((s) => s.id));
-    const iDelivered = ids.indexOf("dtdc_delivered");
-    const iShipped = ids.indexOf("dtdc_shipped");
-    const iAwb = ids.indexOf("dtdc_awb");
+    const iDelivered = ids.indexOf("shipment_delivered");
+    const iShipped = ids.indexOf("shipment_shipped");
+    const iAwb = ids.indexOf("shipment_awb");
     const iFulfilled = ids.indexOf("fulfilled");
     assert.ok(iDelivered < iShipped);
     assert.ok(iShipped < iAwb);
@@ -144,12 +219,12 @@ describe("buildOrderTimeline", () => {
 });
 
 describe("formatTimelineDayLabel", () => {
-  const now = new Date("2026-07-30T12:00:00");
+  const now = new Date("2026-07-30T06:30:00.000Z"); // 12:00 IST
 
   it("returns Today / Yesterday / month day", () => {
-    assert.equal(formatTimelineDayLabel("2026-07-30T09:00:00", now), "Today");
-    assert.equal(formatTimelineDayLabel("2026-07-29T09:00:00", now), "Yesterday");
-    assert.equal(formatTimelineDayLabel("2026-07-26T09:00:00", now), "July 26");
+    assert.equal(formatTimelineDayLabel("2026-07-30T03:30:00.000Z", now), "Today");
+    assert.equal(formatTimelineDayLabel("2026-07-29T03:30:00.000Z", now), "Yesterday");
+    assert.equal(formatTimelineDayLabel("2026-07-26T03:30:00.000Z", now), "July 26");
   });
 });
 
@@ -162,13 +237,15 @@ describe("formatTimelineTime", () => {
 
 describe("groupTimelineByDay", () => {
   it("groups newest-first by calendar day with labels on groups", () => {
+    // parseAdminDate treats naive ISO as UTC, then labels use Asia/Kolkata.
+    const now = new Date("2026-07-30T06:30:00.000Z"); // 12:00 IST
     const groups = groupTimelineByDay(
       [
-        { id: "a", title: "A", at: "2026-07-29T21:55:00" },
-        { id: "b", title: "B", at: "2026-07-29T21:50:00" },
-        { id: "c", title: "C", at: "2026-07-26T21:54:00" },
+        { id: "a", title: "A", at: "2026-07-29T16:25:00.000Z" },
+        { id: "b", title: "B", at: "2026-07-29T16:20:00.000Z" },
+        { id: "c", title: "C", at: "2026-07-26T16:24:00.000Z" },
       ],
-      new Date("2026-07-30T12:00:00")
+      now
     );
     assert.equal(groups.length, 2);
     assert.equal(groups[0].label, "Yesterday");

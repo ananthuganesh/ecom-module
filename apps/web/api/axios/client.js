@@ -1,5 +1,9 @@
 import axios from "axios";
-import { AUTH_STORAGE_KEY, ensureStorageKey } from "@/lib/storageKeys";
+import {
+  ADMIN_AUTH_STORAGE_KEY,
+  AUTH_STORAGE_KEY,
+  ensureStorageKey,
+} from "@/lib/storageKeys";
 
 const getApiUrl = () => {
   // In the browser, always use relative path to allow Next.js proxying
@@ -22,51 +26,75 @@ export const BASE_URL =
 
 const client = axios.create({
   baseURL: API_URL,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
     "ngrok-skip-browser-warning": "69420", // Bypass ngrok browser warning page
   },
 });
 
-// Attach auth token from persisted store
-client.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const auth = localStorage.getItem(ensureStorageKey(AUTH_STORAGE_KEY));
-    let token = null;
+// Session is HttpOnly cookie (`withCredentials`). Do not attach Bearer from localStorage.
 
-    if (auth) {
-      try {
-        const parsed = JSON.parse(auth);
-        token = parsed.state?.userInfo?.token;
-      } catch (err) {
-        console.error("Axios Interceptor: Error parsing auth storage", err);
-      }
-    }
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.warn("Axios Interceptor: No auth token found for request to", config.url);
-    }
+function requestPath(error) {
+  const raw = String(error?.config?.url || "");
+  // axios may give "users/profile" or "/api/users/profile"
+  try {
+    if (raw.startsWith("http")) return new URL(raw).pathname;
+  } catch {
+    /* ignore */
   }
-  return config;
-});
+  return raw;
+}
 
-// Handle 401 Unauthorized globally
+function normalizeApiPath(path) {
+  return String(path || "")
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/api\//, "")
+    .replace(/^\//, "")
+    .split("?")[0];
+}
+
+function isAdminAuthRequest(path) {
+  const p = normalizeApiPath(path);
+  return p === "users/admin/profile" || p.startsWith("admin/");
+}
+
+function isCustomerAuthRequest(path) {
+  const p = normalizeApiPath(path);
+  return (
+    p === "users/profile" ||
+    p === "orders/myorders" ||
+    p === "orders" ||
+    p.startsWith("payments/")
+  );
+}
+
+// Handle 401 Unauthorized globally — clear the matching session only.
+// Key off the request URL (not the current page) so a late admin 401 after
+// navigating to the storefront does not wipe the customer session.
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      console.error("Axios Response Interceptor: 401 Unauthorized detected.");
-      if (typeof window !== "undefined") {
-        const path = window.location.pathname;
-        const onAuthPage = path === "/login" || path === "/admin/login";
-        if (!onAuthPage) {
-          localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
-          if (path.startsWith("/admin")) {
-            window.location.href = "/admin/login";
-          }
+    if (error.response?.status === 401 && typeof window !== "undefined") {
+      const path = requestPath(error);
+      const pagePath = window.location.pathname;
+      const onAuthPage = pagePath === "/login" || pagePath === "/admin/login";
+
+      if (!onAuthPage && isAdminAuthRequest(path)) {
+        localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+        fetch(`${API_URL}/users/admin/logout`, {
+          method: "POST",
+          credentials: "include",
+        }).catch(() => {});
+        if (pagePath.startsWith("/admin")) {
+          window.location.href = "/admin/login";
         }
+      } else if (!onAuthPage && isCustomerAuthRequest(path)) {
+        localStorage.removeItem(ensureStorageKey(AUTH_STORAGE_KEY));
+        fetch(`${API_URL}/users/logout`, {
+          method: "POST",
+          credentials: "include",
+        }).catch(() => {});
       }
     }
     return Promise.reject(error);

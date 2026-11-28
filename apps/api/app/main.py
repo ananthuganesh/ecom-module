@@ -1,32 +1,74 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import sentry_sdk
 from fastapi import FastAPI
+from bson.errors import InvalidId
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pymongo.errors import ConnectionFailure
 
 from app.config import get_settings
 from app.db import close_db, init_db
-from app.routers import abandoned, admin, collections, coupons, erp, gtm, media, orders, payments, products, shipping, stock_admin, users
+from app.routers import abandoned, admin, collections, contact, coupons, erp, magic_checkout, media, orders, payments, products, returns, reviews, shipping, stock_admin, store_theme, tracking, users
+
+logger = logging.getLogger(__name__)
+
+
+def _init_sentry() -> None:
+    """Initialize Sentry before the FastAPI app is created (auto FastAPI integration)."""
+    settings = get_settings()
+    dsn = str(settings.sentry_dsn or "").strip()
+    if not dsn:
+        return
+    rate = float(settings.sentry_traces_sample_rate)
+    if settings.is_production() and rate >= 1.0:
+        rate = 0.1
+    sentry_sdk.init(
+        dsn=dsn,
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/
+        send_default_pii=True,
+        traces_sample_rate=max(0.0, min(1.0, rate)),
+        environment=str(settings.environment or settings.node_env or "development"),
+    )
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     import asyncio
 
-    from app.services import aisensy as aisensy_svc
+    from app.services import abandoned_recovery
 
     get_settings().assert_production_secrets()
     await init_db()
+    from app.services.collection_rules import ensure_default_auto_collections
+
+    try:
+        created = await ensure_default_auto_collections()
+        if created:
+            logger.info("Created automatic collections: %s", ", ".join(created))
+    except Exception:  # never block startup on this
+        logger.exception("Couldn't create default automatic collections")
     stop_event = asyncio.Event()
-    abandoned_task = asyncio.create_task(aisensy_svc.abandoned_recovery_loop(stop_event))
+    abandoned_task = asyncio.create_task(abandoned_recovery.abandoned_recovery_loop(stop_event))
     from app.services.stock_reserve_sweeper import stock_reserve_sweeper_loop
 
     stock_task = asyncio.create_task(stock_reserve_sweeper_loop(stop_event))
-    from app.services.dtdc_status_sync import shipment_status_sync_loop
+    from app.services.shipment_status_sync import shipment_status_sync_loop
 
     dtdc_sync_task = asyncio.create_task(shipment_status_sync_loop(stop_event))
+    from app.services.monthly_report import monthly_report_loop
+
+    monthly_report_task = asyncio.create_task(monthly_report_loop(stop_event))
+    from app.services.stock_alerts import stock_alert_sweep_loop
+
+    stock_alert_task = asyncio.create_task(stock_alert_sweep_loop(stop_event))
+    from app.services.sale_pricing import sale_sweep_loop
+
+    sale_task = asyncio.create_task(sale_sweep_loop(stop_event))
     try:
         yield
     finally:
@@ -34,7 +76,10 @@ async def lifespan(_: FastAPI):
         abandoned_task.cancel()
         stock_task.cancel()
         dtdc_sync_task.cancel()
-        for task in (abandoned_task, stock_task, dtdc_sync_task):
+        monthly_report_task.cancel()
+        stock_alert_task.cancel()
+        sale_task.cancel()
+        for task in (abandoned_task, stock_task, dtdc_sync_task, monthly_report_task, stock_alert_task, sale_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -44,17 +89,37 @@ async def lifespan(_: FastAPI):
 
 def create_app(*, with_lifespan: bool = True) -> FastAPI:
     settings = get_settings()
+    docs_url = None if settings.is_production() else "/docs"
+    redoc_url = None if settings.is_production() else "/redoc"
+    openapi_url = None if settings.is_production() else "/openapi.json"
     app = FastAPI(
         title="Urban Aana API",
         version="2.0.0",
         lifespan=lifespan if with_lifespan else None,
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
     )
+
+    @app.exception_handler(InvalidId)
+    async def invalid_object_id(_request, _exc: InvalidId):
+        # A malformed id in a URL is a bad request, not a server error.
+        return JSONResponse(status_code=400, content={"detail": "Invalid id"})
+
+    @app.exception_handler(ConnectionFailure)
+    async def mongodb_unavailable(_request, exc: ConnectionFailure):
+        logger.warning("MongoDB connection failure: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database temporarily unavailable"},
+        )
 
     origins = settings.cors_origins
     if origins is None:
+        # Dev only: reflect common local origins (never wildcard + credentials).
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -68,6 +133,15 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
             allow_headers=["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         )
 
+    # Added last so it runs first: refuse forged cross-origin writes before CORS.
+    from app.services.web_security import BrowserSecurityMiddleware
+
+    app.add_middleware(
+        BrowserSecurityMiddleware,
+        allowed_origins=origins or ["http://localhost:3000", "http://127.0.0.1:3000"],
+        production=settings.is_production(),
+    )
+
     @app.get("/")
     async def root():
         return {"message": "Urban Aana FastAPI backend"}
@@ -76,23 +150,35 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     async def health():
         return {"status": "ok", "backend": "fastapi"}
 
-    @app.api_route("/api/stripe/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    async def stripe_gone(path: str = ""):
-        return JSONResponse({"detail": "Stripe removed; use Razorpay"}, status_code=410)
+    # Dev-only Sentry smoke test — never expose in production.
+    if str(settings.sentry_dsn or "").strip() and not settings.is_production():
+        @app.get("/sentry-debug")
+        async def trigger_error():
+            division_by_zero = 1 / 0  # noqa: F841
 
     app.include_router(users.router)
     app.include_router(products.router)
+    app.include_router(collections.router)
+    app.include_router(collections.admin_router)
     app.include_router(orders.router)
     app.include_router(payments.router)
+    app.include_router(magic_checkout.router)
     app.include_router(shipping.router)
     app.include_router(coupons.router)
-    app.include_router(collections.router)
+    app.include_router(contact.router)
     app.include_router(admin.router)
     app.include_router(media.router)
+    app.include_router(media.public_router)
     app.include_router(stock_admin.router)
     app.include_router(erp.router)
     app.include_router(abandoned.router)
-    app.include_router(gtm.router)
+    app.include_router(returns.router)
+    app.include_router(returns.admin_router)
+    app.include_router(reviews.router)
+    app.include_router(reviews.admin_router)
+    app.include_router(store_theme.router)
+    app.include_router(store_theme.admin_router)
+    app.include_router(tracking.router)
 
     upload_root = Path(__file__).resolve().parent.parent / "uploads"
     upload_root.mkdir(parents=True, exist_ok=True)
@@ -100,4 +186,5 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     return app
 
 
+_init_sentry()
 app = create_app()

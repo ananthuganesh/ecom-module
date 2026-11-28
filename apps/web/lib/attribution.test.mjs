@@ -40,6 +40,16 @@ describe("parseTouchFromLocation", () => {
     assert.ok(!t.landingPath.includes("token="));
     assert.ok(!t.landingPath.includes("email="));
   });
+
+  it("attaches referrer when a touch is captured", () => {
+    const t = parseTouchFromLocation({
+      search: "?utm_source=ig",
+      pathname: "/shop",
+      referrer: "https://instagram.com/",
+      nowIso: "2026-07-26T00:00:00.000Z",
+    });
+    assert.equal(t.referrer, "https://instagram.com/");
+  });
 });
 
 describe("applyTouchToState", () => {

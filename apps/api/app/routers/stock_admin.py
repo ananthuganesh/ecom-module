@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Annotated
 
 from bson import ObjectId
@@ -13,86 +12,6 @@ router = APIRouter(prefix="/api/admin", tags=["admin-stock"])
 StockWriter = Annotated[User, Depends(require_permission("stock.write"))]
 
 
-@router.get("/warehouses")
-async def list_warehouses(_: AdminUser):
-    await stock_service.ensure_default_warehouse()
-    rows = await Warehouse.find_all().sort([("isDefault", -1), ("name", 1)]).to_list()
-    return [doc_to_dict(w) for w in rows]
-
-
-@router.post("/warehouses", status_code=201)
-async def create_warehouse(body: dict, _: AdminUser):
-    name = (body.get("name") or "").strip()
-    code = (body.get("code") or "").strip().upper()
-    if not name or not code:
-        raise HTTPException(status_code=400, detail="name and code are required")
-    existing = await Warehouse.find_one(Warehouse.code == code)
-    if existing:
-        raise HTTPException(status_code=400, detail="Warehouse code already exists")
-    is_default = bool(body.get("isDefault"))
-    wh = Warehouse(
-        name=name,
-        code=code,
-        addressLine1=body.get("addressLine1") or None,
-        city=body.get("city") or None,
-        stateName=body.get("stateName") or None,
-        stateCode=body.get("stateCode") or None,
-        pincode=body.get("pincode") or None,
-        isDefault=is_default,
-        isActive=bool(body.get("isActive", True)),
-    )
-    await wh.insert()
-    if is_default:
-        await stock_service._clear_other_default_warehouses(wh.id)
-    return doc_to_dict(wh)
-
-
-@router.put("/warehouses/{warehouse_id}")
-async def update_warehouse(warehouse_id: str, body: dict, _: AdminUser):
-    wh = await Warehouse.get(ObjectId(warehouse_id))
-    if not wh:
-        raise HTTPException(status_code=404, detail="Warehouse not found")
-    if "name" in body:
-        name = (body.get("name") or "").strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="name is required")
-        wh.name = name
-    if "code" in body:
-        code = (body.get("code") or "").strip().upper()
-        if not code:
-            raise HTTPException(status_code=400, detail="code is required")
-        clash = await Warehouse.find_one(Warehouse.code == code)
-        if clash and clash.id != wh.id:
-            raise HTTPException(status_code=400, detail="Warehouse code already exists")
-        wh.code = code
-    for key in ("addressLine1", "city", "stateName", "stateCode", "pincode"):
-        if key in body:
-            setattr(wh, key, body.get(key) or None)
-    if "isActive" in body:
-        wh.isActive = bool(body.get("isActive"))
-    if "isDefault" in body:
-        wh.isDefault = bool(body.get("isDefault"))
-    wh.updatedAt = datetime.utcnow()
-    await wh.save()
-    if wh.isDefault:
-        await stock_service._clear_other_default_warehouses(wh.id)
-    return doc_to_dict(wh)
-
-
-@router.delete("/warehouses/{warehouse_id}")
-async def delete_warehouse(warehouse_id: str, _: AdminUser):
-    wh = await Warehouse.get(ObjectId(warehouse_id))
-    if not wh:
-        raise HTTPException(status_code=404, detail="Warehouse not found")
-    if wh.isDefault:
-        raise HTTPException(status_code=400, detail="Cannot delete the default warehouse")
-    balances = await StockBalance.find(StockBalance.warehouseId == warehouse_id).count()
-    if balances:
-        raise HTTPException(status_code=409, detail="Warehouse has stock balances; transfer or adjust to zero first")
-    await wh.delete()
-    return {"message": "Warehouse removed"}
-
-
 @router.get("/stock")
 async def list_stock(
     _: AdminUser,
@@ -102,7 +21,8 @@ async def list_stock(
     threshold: int = Query(10, ge=0),
 ):
     await stock_service.ensure_default_warehouse()
-    await stock_service.backfill_opening_from_products()
+    await stock_service.ensure_inventory_balances_for_catalog(seed_from_product=True)
+    await stock_service.cleanup_duplicate_inventory_rows()
 
     query: dict = {}
     if warehouseId:
@@ -111,6 +31,21 @@ async def list_stock(
         query["productId"] = productId
 
     balances = await StockBalance.find(query).to_list() if query else await StockBalance.find_all().to_list()
+
+    # Hide empty blank-SKU rows when variant balances exist (non-zero blanks kept).
+    variant_keys = {
+        (b.productId, b.warehouseId)
+        for b in balances
+        if (b.variantSku or "").strip()
+    }
+    balances = [
+        b
+        for b in balances
+        if (b.variantSku or "").strip()
+        or (b.productId, b.warehouseId) not in variant_keys
+        or int(b.quantity or 0) != 0
+        or int(b.reserved or 0) != 0
+    ]
 
     product_ids = list({b.productId for b in balances if ObjectId.is_valid(b.productId)})
     products = {}
@@ -133,14 +68,13 @@ async def list_stock(
             continue
         image = None
         if product:
-            image = (product.thumbnails or [None])[0]
-            if not image and product.variants:
-                for variant in product.variants:
-                    if variant.images:
-                        image = variant.images[0]
-                        break
+            # Product has thumbnails; images live on variants only.
+            image = next((u for u in (product.thumbnails or []) if u), None)
             if not image:
-                image = (product.images or [None])[0]
+                for variant in product.variants or []:
+                    image = next((u for u in (variant.images or []) if u), None)
+                    if image:
+                        break
 
         rows.append(
             {
@@ -242,30 +176,9 @@ async def adjust_stock(body: dict, admin: StockWriter):
     )
 
 
-@router.post("/stock/transfer")
-async def transfer_stock(body: dict, admin: StockWriter):
-    product_id = body.get("productId")
-    from_id = body.get("fromWarehouseId")
-    to_id = body.get("toWarehouseId")
-    if not product_id or not from_id or not to_id:
-        raise HTTPException(status_code=400, detail="productId, fromWarehouseId, toWarehouseId are required")
-    try:
-        quantity = int(body.get("quantity"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="quantity must be an integer")
-    return await stock_service.transfer_stock(
-        product_id=str(product_id),
-        from_warehouse_id=str(from_id),
-        to_warehouse_id=str(to_id),
-        quantity=quantity,
-        variant_sku=body.get("variantSku") or "",
-        reason=body.get("reason"),
-        created_by=str(admin.id),
-    )
-
-
 @router.post("/stock/backfill")
 async def backfill_stock(_: StockWriter):
-    # Force backfill even if balances exist for products without balances — only fills empty ledger
-    count = await stock_service.backfill_opening_from_products()
-    return {"created": count}
+    # Create missing ledger rows for products/variants that have none yet.
+    count = await stock_service.ensure_inventory_balances_for_catalog(seed_from_product=True)
+    cleaned = await stock_service.cleanup_duplicate_inventory_rows()
+    return {"created": count, **cleaned}

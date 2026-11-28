@@ -1,50 +1,329 @@
 "use client";
 
-import { ClipboardList, LogOut, MapPin } from "lucide-react";
 import {
   AccountIcon,
-  CartIcon,
-  HeartBagIcon,
+  BagIcon,
+  CloseIcon,
   MenuIcon,
-  StoreIcon
+  SearchIcon,
 } from "@/components/icons/storeIcons";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { productService } from "@/api";
 import { useCartStore } from "@/store/useCartStore";
 import { useAuthStore } from "@/store/useAuthStore";
-import CartDrawer from "./CartDrawer";
+import { useWishlistStore } from "@/store/useWishlistStore";
 import { motion, AnimatePresence } from "framer-motion";
+import { Heart } from "@/components/icons";
+
+const CartDrawer = dynamic(() => import("./CartDrawer"), { ssr: false });
+const LoginBottomSheet = dynamic(() => import("@/components/auth/LoginBottomSheet"), { ssr: false });
+
+/** Phones sign in on a sheet over the current page; wider screens use /login. Matches the sheet's md:hidden. */
+function signInOnSheet() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+}
+const SearchPopularProducts = dynamic(() => import("./SearchPopularProducts"), { ssr: false });
+const SearchProductGrid = dynamic(() => import("./SearchProductGrid"), { ssr: false });
 
 const NAVBAR_HEIGHT = 56;
 
+const MENU_LINKS = [
+  { href: "/all-products", label: "All Products" },
+  { href: "/collections/new-arrivals", label: "New Arrivals" },
+  { href: "/collections/best-sellers", label: "Best Sellers" },
+  { href: "/collections/t-shirt", label: "Oversized T-Shirt" },
+  { href: "/contact", label: "Contact Us" },
+];
+
+function DrawerAccountCard({ onClose, onLogin }) {
+  const userInfo = useAuthStore((s) => s.userInfo);
+  const logout = useAuthStore((s) => s.logout);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const isAuthenticated = Boolean(
+    userInfo?.authenticated ||
+      userInfo?.token ||
+      userInfo?._id ||
+      userInfo?.id ||
+      userInfo?.phone
+  );
+  const userName = userInfo?.name || "";
+  const userEmail = userInfo?.email || "";
+  const userPhone = userInfo?.phone || "";
+
+  const handleConfirmLogout = () => {
+    setConfirmLogout(false);
+    logout();
+    onClose();
+  };
+
+  if (isAuthenticated) {
+    return (
+      <>
+        <div className="mx-2 mb-0 rounded-xl border border-gray-200 bg-[#F8F8F8] p-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-gray-900">
+              {userName || "Customer"}
+            </p>
+            {userEmail ? (
+              <p className="mt-0.5 truncate text-xs text-gray-500">{userEmail}</p>
+            ) : null}
+            {userPhone ? (
+              <p className="mt-0.5 truncate text-xs text-gray-500">{userPhone}</p>
+            ) : null}
+          </div>
+          <div className="mt-3 space-y-1 border-t border-gray-100 pt-3">
+            <Link
+              href="/account"
+              onClick={onClose}
+              className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              My Account
+            </Link>
+            <Link
+              href="/account/orders"
+              onClick={onClose}
+              className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              My Orders
+            </Link>
+            <Link
+              href="/account/addresses"
+              onClick={onClose}
+              className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              Saved Addresses
+            </Link>
+            <Link
+              href="/wishlist"
+              onClick={onClose}
+              className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              Wishlist
+            </Link>
+            <Link
+              href="/account/settings"
+              onClick={onClose}
+              className="block rounded-lg px-2 py-2 text-sm text-gray-800 transition-colors hover:bg-gray-50"
+            >
+              Settings
+            </Link>
+            <button
+              type="button"
+              onClick={() => setConfirmLogout(true)}
+              className="flex w-full items-center rounded-lg px-2 py-2 text-left text-sm text-[#DF1721] transition-colors hover:bg-red-50"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {confirmLogout ? (
+            <>
+              <motion.div
+                key="logout-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm"
+                onClick={() => setConfirmLogout(false)}
+              />
+              <motion.div
+                key="logout-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="logout-confirm-title"
+                initial={{ opacity: 0, scale: 0.96, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 8 }}
+                transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
+                className="fixed top-1/2 left-1/2 z-[210] w-[min(100%-2rem,22rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-gray-200 bg-white p-5 shadow-2xl"
+              >
+                <h3
+                  id="logout-confirm-title"
+                  className="text-[16px] font-semibold text-gray-900"
+                >
+                  Logout?
+                </h3>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500">
+                  Are you sure you want to log out of your account?
+                </p>
+                <div className="mt-5 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmLogout(false)}
+                    className="flex h-10 flex-1 items-center justify-center rounded-md border border-gray-200 bg-white text-[13px] font-semibold text-gray-800 transition-colors hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmLogout}
+                    className="flex h-10 flex-1 items-center justify-center rounded-md bg-[#DF1721] text-[13px] font-semibold text-white transition-colors hover:bg-black"
+                  >
+                    Yes
+                  </button>
+                </div>
+              </motion.div>
+            </>
+          ) : null}
+        </AnimatePresence>
+      </>
+    );
+  }
+
+  return (
+    <div className="mx-2 mb-0 rounded-xl border border-gray-200 bg-[#F8F8F8] p-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-gray-900">Welcome</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
+          Sign in to track orders, manage addresses, and checkout faster.
+        </p>
+      </div>
+      <div className="mt-3">
+        <Link
+          href="/login"
+          onClick={(e) => {
+            onClose();
+            if (onLogin && signInOnSheet()) {
+              e.preventDefault();
+              onLogin();
+            }
+          }}
+          className="flex h-10 w-full items-center justify-center rounded-md bg-[#222222] text-[13px] font-semibold text-white transition-colors hover:bg-black"
+        >
+          Login
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 const Navbar = () => {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const isHome = pathname === "/";
 
   const cartItems = useCartStore((s) => s.cartItems);
   const setDrawerOpen = useCartStore((s) => s.setDrawerOpen);
+  const wishlistCount = useWishlistStore((s) => s.items.length);
   const userInfo = useAuthStore((s) => s.userInfo);
-  const logout = useAuthStore((s) => s.logout);
-
-  const isAuthenticated = Boolean(userInfo?.token || userInfo?._id || userInfo?.id || userInfo?.phone);
+  const isAuthenticated = Boolean(
+    userInfo?.authenticated ||
+      userInfo?.token ||
+      userInfo?._id ||
+      userInfo?.id ||
+      userInfo?.phone
+  );
   const userName = userInfo?.name || "";
 
   const cartCount = cartItems.reduce((n, i) => n + (i.qty || 0), 0);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [loginSheetOpen, setLoginSheetOpen] = useState(false);
+  // Mounted from the first open (loads its code only then) and kept so it can animate closed.
+  const [loginSheetUsed, setLoginSheetUsed] = useState(false);
+  useEffect(() => {
+    if (loginSheetOpen) setLoginSheetUsed(true);
+  }, [loginSheetOpen]);
+  // From the drawer: open on the next tick so the drawer's scroll unlock runs first
+  // and the sheet's own body lock wins.
+  const openLoginSheet = () => window.setTimeout(() => setLoginSheetOpen(true), 0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
   const [overHero, setOverHero] = useState(isHome);
+  const searchInputRef = useRef(null);
+  const suggestGen = useRef(0);
 
   const closeMenu = () => setIsMobileMenuOpen(false);
+  const closeSearch = () => {
+    setIsSearchOpen(false);
+    setSuggestions([]);
+    setSuggestLoading(false);
+  };
+
+  const openSearch = () => {
+    closeMenu();
+    setSearchQuery(searchParams.get("search") || "");
+    setSuggestions([]);
+    setIsSearchOpen(true);
+  };
+
+  const submitSearch = (e) => {
+    e?.preventDefault?.();
+    const q = searchQuery.trim();
+    closeSearch();
+    if (q) {
+      router.push(`/all-products?search=${encodeURIComponent(q)}`);
+    } else {
+      router.push("/all-products");
+    }
+  };
 
   useEffect(() => {
-    document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
+    document.body.style.overflow =
+      isMobileMenuOpen || isSearchOpen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isMobileMenuOpen]);
+  }, [isMobileMenuOpen, isSearchOpen]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+    const t = window.setTimeout(() => searchInputRef.current?.focus(), 50);
+    return () => window.clearTimeout(t);
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen && !isSearchOpen) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (isSearchOpen) closeSearch();
+      else closeMenu();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isMobileMenuOpen, isSearchOpen]);
+
+  // Live product suggestions while typing.
+  useEffect(() => {
+    if (!isSearchOpen) return;
+    const q = searchQuery.trim();
+    if (q.length < 1) {
+      setSuggestions([]);
+      setSuggestLoading(false);
+      return;
+    }
+    const gen = ++suggestGen.current;
+    setSuggestLoading(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const data = await productService.getSuggestions(q);
+        if (gen !== suggestGen.current) return;
+        setSuggestions(Array.isArray(data) ? data : []);
+      } catch {
+        if (gen !== suggestGen.current) return;
+        setSuggestions([]);
+      } finally {
+        if (gen === suggestGen.current) setSuggestLoading(false);
+      }
+    }, 220);
+    return () => window.clearTimeout(t);
+  }, [searchQuery, isSearchOpen]);
+
+  useEffect(() => {
+    closeSearch();
+    closeMenu();
+  }, [pathname]);
 
   useEffect(() => {
     if (!isHome) {
@@ -55,11 +334,12 @@ const Navbar = () => {
     const update = () => {
       const hero = document.querySelector("[data-home-hero]");
       if (!hero) {
-        setOverHero(false);
+        setOverHero((prev) => (prev === false ? prev : false));
         return;
       }
       const { bottom } = hero.getBoundingClientRect();
-      setOverHero(bottom > NAVBAR_HEIGHT);
+      const next = bottom > NAVBAR_HEIGHT;
+      setOverHero((prev) => (prev === next ? prev : next));
     };
 
     update();
@@ -71,93 +351,124 @@ const Navbar = () => {
     };
   }, [isHome]);
 
-  const transparent = isHome && overHero && !isMobileMenuOpen;
+  const transparent = isHome && overHero && !isSearchOpen;
+  const iconTone = transparent ? "text-white" : "text-gray-900";
+  const navBtnClass = `inline-flex items-center gap-1.5 rounded-lg p-2 text-[12px] font-medium transition-colors md:px-2 md:py-1.5 ${iconTone} ${
+    transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
+  }`;
 
   return (
     <>
       <nav
-        className={`fixed top-0 left-0 right-0 z-[100] w-full transition-colors duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-[100] w-full border-b transition-[background-color,border-color] duration-300 ${
           transparent
-            ? "bg-transparent border-transparent"
-            : "bg-white border-b border-gray-100"
+            ? "border-transparent bg-transparent"
+            : "border-gray-200 bg-[#ffffff]"
         }`}
       >
-        <div className="max-w-[1440px] mx-auto px-4 md:px-16 grid grid-cols-3 items-center h-14">
-          <div className="flex items-center justify-start">
+        <div className="mx-auto grid h-14 w-full grid-cols-3 items-center px-4 lg:px-8">
+          <div className="flex items-center justify-start gap-0.5 sm:gap-1">
             <button
+              type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`p-2 rounded-lg transition-colors ${
-                transparent ? "text-white hover:bg-white/10" : "hover:bg-gray-50"
-              }`}
+              className={navBtnClass}
               aria-label="Menu"
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="storefront-menu"
             >
-              <MenuIcon size={20} />
+              <MenuIcon size={18} />
+              <span className="hidden md:inline">Menu</span>
+            </button>
+            <button
+              type="button"
+              onClick={openSearch}
+              className={navBtnClass}
+              aria-label="Search"
+              aria-expanded={isSearchOpen}
+              aria-controls="navbar-search-suggestions"
+            >
+              <SearchIcon size={18} />
+              <span className="hidden md:inline">Search</span>
             </button>
           </div>
 
           <div className="flex items-center justify-center">
-            <Link href="/" onClick={closeMenu} className="flex items-center">
+            <Link href="/" onClick={closeMenu} className="flex items-center" aria-label="Urban Aana home">
               <Image
-                src="/urban/Logo.png"
+                src={transparent ? "/brand/logo-dark.png" : "/brand/logo.png"}
                 alt="URBAN AANA"
-                width={100}
-                height={36}
+                width={96}
+                height={34}
                 priority
-                className="object-contain py-1"
+                className="h-8 w-auto object-contain"
               />
             </Link>
           </div>
 
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex items-center justify-end gap-0.5 sm:gap-1">
             {isAuthenticated ? (
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                className={`flex items-center gap-1.5 p-1.5 rounded-lg transition-colors ${
-                  transparent ? "hover:bg-white/10" : "hover:bg-gray-50"
-                }`}
-              >
-                <div className="w-7 h-7 bg-black rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs font-medium uppercase">
-                    {userName?.charAt(0) || "U"}
-                  </span>
-                </div>
-                <span
-                  className={`hidden md:block text-sm font-medium ${
-                    transparent ? "text-white" : "text-gray-700"
-                  }`}
-                >
-                  {userName?.split(" ")[0]}
-                </span>
-              </button>
-            ) : (
               <Link
-                href="/login"
-                className={`p-2 rounded-lg transition-colors ${
-                  transparent ? "text-white hover:bg-white/10" : "hover:bg-gray-50"
-                }`}
+                href="/account"
+                className={navBtnClass}
+                aria-label={userName?.split(" ")[0] || "Account"}
               >
-                <AccountIcon size={19} />
+                <AccountIcon size={18} />
+                <span className="hidden max-w-[5.5rem] truncate md:inline">
+                  {userName?.split(" ")[0] || "Account"}
+                </span>
               </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => (signInOnSheet() ? setLoginSheetOpen(true) : setIsMobileMenuOpen(true))}
+                className={navBtnClass}
+                aria-label="Account"
+              >
+                <AccountIcon size={18} />
+                <span className="hidden md:inline">Account</span>
+              </button>
             )}
 
+            <Link
+              href="/wishlist"
+              className={navBtnClass}
+              aria-label={`Wishlist, ${wishlistCount} items`}
+            >
+              <span className="relative inline-flex">
+                <Heart size={18} strokeWidth={2} />
+                {wishlistCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#DF1721] px-0.5 text-[9px] font-bold leading-none text-white ring-1 ring-white"
+                  >
+                    {wishlistCount > 99 ? "99+" : wishlistCount}
+                  </motion.span>
+                )}
+              </span>
+              <span className="hidden md:inline">Wishlist</span>
+            </Link>
+
             <button
+              type="button"
               onClick={() => setDrawerOpen(true)}
-              className={`p-2 relative rounded-lg transition-colors ${
-                transparent ? "text-white hover:bg-white/10" : "hover:bg-gray-50"
-              }`}
+              className={navBtnClass}
               aria-label={`Cart, ${cartCount} items`}
             >
-              <CartIcon size={19} />
-              {cartCount > 0 && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  className="absolute -top-1 -right-1 bg-brand-red text-white text-[12px] font-bold h-5 w-5 flex items-center justify-center rounded-full"
-                >
-                  {cartCount}
-                </motion.span>
-              )}
+              <span className="relative inline-flex">
+                <BagIcon size={18} />
+                {cartCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[#DF1721] px-0.5 text-[9px] font-bold leading-none text-white ring-1 ring-white"
+                  >
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </motion.span>
+                )}
+              </span>
+              <span className="hidden md:inline">Cart</span>
             </button>
           </div>
         </div>
@@ -167,134 +478,187 @@ const Navbar = () => {
       {!isHome && <div style={{ height: NAVBAR_HEIGHT }} aria-hidden />}
 
       <AnimatePresence>
-        {isMobileMenuOpen && (
+        {isSearchOpen ? (
           <>
             <motion.div
+              key="search-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
+              onClick={closeSearch}
+              className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              key="search-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Search products"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed top-0 right-0 left-0 z-[160] border-b border-gray-200 bg-[#ffffff] shadow-lg"
+            >
+              <form
+                onSubmit={submitSearch}
+                className="mx-auto flex h-14 w-full items-center gap-2 px-4 lg:px-8"
+              >
+                <SearchIcon size={18} className="shrink-0 text-gray-400" />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search products"
+                  className="h-10 min-w-0 flex-1 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
+                  autoComplete="off"
+                  enterKeyHint="search"
+                  aria-autocomplete="list"
+                  aria-controls="navbar-search-suggestions"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery("");
+                      searchInputRef.current?.focus();
+                    }}
+                    className="shrink-0 px-2 py-1 text-[13px] font-medium text-gray-600 underline-offset-4 transition-colors hover:text-gray-900 hover:underline"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeSearch}
+                  className="rounded-full p-2 text-gray-600 transition-colors hover:bg-gray-100"
+                  aria-label="Close search"
+                >
+                  <CloseIcon size={20} />
+                </button>
+              </form>
+
+              <div
+                id="navbar-search-suggestions"
+                className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain"
+              >
+                {searchQuery.trim() ? (
+                  <div className="mx-auto w-full px-4 pt-4 pb-8 lg:px-8 lg:pt-6 lg:pb-10">
+                    {suggestLoading && suggestions.length === 0 ? (
+                      <p className="mb-4 text-[13px] text-gray-500">Searching…</p>
+                    ) : suggestions.length > 0 ? (
+                      <>
+                        <h2 className="mb-4 text-[15px] font-medium text-gray-900 md:mb-6 md:text-[17px]">
+                          Products
+                        </h2>
+                        <SearchProductGrid
+                          products={suggestions}
+                          onNavigate={closeSearch}
+                          listId="search-results"
+                          listName="Search results"
+                        />
+                      </>
+                    ) : !suggestLoading ? (
+                      <p className="mb-2 text-[14px] text-gray-500">
+                        No products match “{searchQuery.trim()}”
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={submitSearch}
+                      className="mt-6 flex items-center gap-2 text-[14px] font-medium text-gray-900 underline-offset-4 hover:underline"
+                    >
+                      <SearchIcon size={16} className="text-gray-400" />
+                      <span>Search all products for “{searchQuery.trim()}”</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mx-auto w-full px-4 pt-4 pb-8 lg:px-8 lg:pt-6 lg:pb-10">
+                    <SearchPopularProducts onNavigate={closeSearch} />
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isMobileMenuOpen ? (
+          <>
+            <motion.div
+              key="menu-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               onClick={closeMenu}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[98]"
-              style={{ top: NAVBAR_HEIGHT }}
+              className="fixed inset-0 z-[150] bg-black/50"
             />
             <motion.aside
+              key="menu-drawer"
+              id="storefront-menu"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="storefront-menu-title"
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
-              transition={{ type: "tween", duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed left-0 bottom-0 w-[280px] bg-white z-[99] flex flex-col shadow-2xl"
-              style={{ top: NAVBAR_HEIGHT }}
+              transition={{ type: "tween", duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed inset-y-0 left-0 z-[160] flex h-dvh max-h-dvh w-full max-w-[320px] flex-col overflow-hidden bg-[#ffffff] shadow-2xl will-change-transform"
             >
-              <div className="p-5 bg-gradient-to-br from-gray-900 to-black text-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center">
-                    <AccountIcon size={22} className="text-white" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm">
-                      {isAuthenticated ? userName?.split(" ")[0] || "User" : "Guest User"}
-                    </p>
-                    <p className="text-xs text-white/60">
-                      {isAuthenticated ? userInfo?.email || userInfo?.phone : "Sign in to your account"}
-                    </p>
-                  </div>
-                </div>
-                {!isAuthenticated && (
-                  <Link
-                    href="/login"
-                    onClick={closeMenu}
-                    className="block mt-4 text-center py-2 bg-white/10 rounded-lg text-xs font-medium hover:bg-white/20 transition-colors"
-                  >
-                    Sign In
-                  </Link>
-                )}
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3.5">
+                <h2 id="storefront-menu-title" className="text-lg font-semibold text-gray-900">
+                  Menu
+                </h2>
+                <button
+                  type="button"
+                  onClick={closeMenu}
+                  className="rounded-full p-2 transition-colors hover:bg-gray-100"
+                  aria-label="Close menu"
+                >
+                  <CloseIcon size={20} className="text-gray-600" />
+                </button>
               </div>
 
-              <nav className="flex-1 py-3 overflow-y-auto">
-                <Link
-                  href="/"
-                  onClick={closeMenu}
-                  className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <StoreIcon size={18} />
-                  <span className="text-sm">Home</span>
-                </Link>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+                <nav>
+                  <ul>
+                    {MENU_LINKS.map((item) => (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          onClick={closeMenu}
+                          className="group block px-3 py-3.5 text-[15px] font-medium text-gray-900"
+                        >
+                          {/* Underline draws in from the left on hover / keyboard focus. */}
+                          <span className="relative inline-block after:absolute after:-bottom-0.5 after:left-0 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-current after:transition-transform after:duration-300 after:ease-out group-hover:after:scale-x-100 group-focus-visible:after:scale-x-100 motion-reduce:after:transition-none">
+                            {item.label}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              </div>
 
-                <Link
-                  href="/all-products"
-                  onClick={closeMenu}
-                  className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <CartIcon size={18} />
-                  <span className="text-sm">All Products</span>
-                </Link>
-
-                {isAuthenticated ? (
-                  <>
-                    <Link
-                      href="/profile?tab=orders"
-                      onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <ClipboardList size={18} />
-                      <span className="text-sm">My Orders</span>
-                    </Link>
-
-                    <Link
-                      href="/profile?tab=profile"
-                      onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <AccountIcon size={18} />
-                      <span className="text-sm">Profile</span>
-                    </Link>
-
-                    <Link
-                      href="/profile?tab=addresses"
-                      onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <MapPin size={18} />
-                      <span className="text-sm">Addresses</span>
-                    </Link>
-
-                    <Link
-                      href="/wishlist"
-                      onClick={closeMenu}
-                      className="flex items-center gap-3 px-5 py-3 text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <HeartBagIcon size={18} />
-                      <span className="text-sm">Wishlist</span>
-                    </Link>
-
-                    <div className="border-t border-gray-100 my-2 mx-5" />
-
-                    <button
-                      onClick={() => {
-                        logout();
-                        closeMenu();
-                      }}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-brand-red hover:bg-red-50 transition-colors text-left"
-                    >
-                      <LogOut size={18} />
-                      <span className="text-sm">Sign Out</span>
-                    </button>
-                  </>
-                ) : null}
-              </nav>
-
-              <div className="p-4 border-t border-gray-100 bg-gray-50">
-                <p className="text-[12px] text-gray-400 text-center">
-                  © 2026 Urban Aana. All rights reserved.
-                </p>
+              <div className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+                <DrawerAccountCard onClose={closeMenu} onLogin={openLoginSheet} />
               </div>
             </motion.aside>
           </>
-        )}
+        ) : null}
       </AnimatePresence>
 
       <CartDrawer />
+      {loginSheetUsed || loginSheetOpen ? (
+        <LoginBottomSheet
+          open={loginSheetOpen}
+          onClose={() => setLoginSheetOpen(false)}
+          onSuccess={() => setLoginSheetOpen(false)}
+        />
+      ) : null}
     </>
   );
 };

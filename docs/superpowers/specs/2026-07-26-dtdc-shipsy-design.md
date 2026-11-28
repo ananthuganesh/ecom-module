@@ -1,11 +1,11 @@
 # DTDC (Shipsy) Consignment Integration Design
 
 **Date:** 2026-07-26  
-**Status:** Approved (replace Shiprocket; manual create; all four APIs; origin from company/warehouse)
+**Status:** Approved (replace DTDC; manual create; all four APIs; origin from company/warehouse)
 
 ## Decisions
 
-- **Replace** Shiprocket as the live fulfillment provider.
+- **Replace** DTDC as the live fulfillment provider.
 - Consignments are created **only when admin clicks Create shipment** (no auto-ship on COD/paid).
 - v1 actions: **create (softdata)**, **track**, **label PDF**, **cancel**.
 - Pickup/origin from **company profile + default warehouse**.
@@ -26,7 +26,7 @@ Reuse / extend:
 - `awb` / reference number from DTDC
 - `courier` = `"DTDC"`
 - `shippingStatus` from track events
-- `shiprocketOrderId` deprecated; store Shipsy ref in `awb` + `transactionDetails.dtdc` or add `dtdcReference` / keep using `awb` as `reference_number`
+- `dtdcOrderId` deprecated; store Shipsy ref in `awb` + `transactionDetails.dtdc` or add `dtdcReference` / keep using `awb` as `reference_number`
 
 ## Admin order actions
 
@@ -47,7 +47,7 @@ Reuse / extend:
 
 ## Remove from live path
 
-- Calls to `process_full_order_flow` (Shiprocket) on checkout/pay/webhook — set status to awaiting shipment instead
+- Calls to `process_full_order_flow` (DTDC) on checkout/pay/webhook — set status to awaiting shipment instead
 - Admin retry shipping becomes DTDC create/retry
 
 ## Out of scope

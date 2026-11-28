@@ -1,7 +1,41 @@
 /**
  * Size-led catalog: each product variant is a size row (color optional/empty).
  * Falls back to legacy nested `variant.sizes` / `product.sizes` when present.
+ * Standard size gaps (e.g. missing XL between L and XXL) stay visible as stock 0.
  */
+const STANDARD_SIZES = ["S", "M", "L", "XL", "XXL", "XXXL"];
+
+function fillStandardSizeGaps(sizes) {
+  if (!Array.isArray(sizes) || sizes.length === 0) return sizes;
+  const byKey = new Map();
+  for (const row of sizes) {
+    const key = String(row?.size || "")
+      .trim()
+      .toUpperCase();
+    if (!key) continue;
+    byKey.set(key, { ...row, size: String(row.size).trim() });
+  }
+  const indices = [...byKey.keys()]
+    .map((key) => STANDARD_SIZES.indexOf(key))
+    .filter((i) => i >= 0);
+  if (indices.length < 1) return sizes;
+
+  const min = Math.min(...indices);
+  const max = Math.max(...indices);
+  return STANDARD_SIZES.slice(min, max + 1).map((size) => {
+    const existing = byKey.get(size);
+    if (existing) return existing;
+    return {
+      size,
+      stock: 0,
+      quantity: 0,
+      sku: "",
+      color: "",
+      images: [],
+    };
+  });
+}
+
 export function getProductSizeOptions(product, selectedVariant = null) {
   const variants = (product?.variants || []).filter((v) => v && !v.isDeleted);
 
@@ -16,7 +50,7 @@ export function getProductSizeOptions(product, selectedVariant = null) {
       images: Array.isArray(v.images) ? v.images : [],
     }));
 
-  if (flat.length) return flat;
+  if (flat.length) return fillStandardSizeGaps(flat);
 
   const nested =
     selectedVariant?.sizes?.length
@@ -25,7 +59,7 @@ export function getProductSizeOptions(product, selectedVariant = null) {
         ? product.sizes
         : [];
 
-  return nested
+  const mapped = nested
     .map((s) => (typeof s === "string" ? { size: s } : s))
     .filter((s) => s?.size)
     .map((s) => ({
@@ -36,4 +70,6 @@ export function getProductSizeOptions(product, selectedVariant = null) {
       color: String(selectedVariant?.color || "").trim(),
       images: [],
     }));
+
+  return fillStandardSizeGaps(mapped);
 }

@@ -3,71 +3,99 @@ import { adminEndpoints } from "../../endpoints/admin.js";
 
 const { products: e } = adminEndpoints;
 
+const PAGE_SIZE = 200;
+
+async function fetchProductPage(params = {}) {
+  const query = new URLSearchParams({ _t: String(Date.now()) });
+  if (params.category) query.set("category", params.category);
+  if (params.page) query.set("page", String(params.page));
+  if (params.limit) query.set("limit", String(params.limit));
+  if (params.skip != null) query.set("skip", String(params.skip));
+  const data = await client.get(`${e.base}?${query.toString()}`).then((res) => res.data);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.products)) return data.products;
+  return [];
+}
+
 export const adminProductService = {
-  getProducts: (params = {}) => {
-    console.log('[ProductService] Fetching products with params:', params);
-    let url = `${e.base}?_t=${Date.now()}`;
-    if (params.category) {
-      url += `&category=${params.category}`;
+  /** Persist the storefront listing order. Send every product id, in order. */
+  reorder: async (ids) => {
+    const response = await client.put(`${e.base}/reorder`, { ids });
+    return response.data;
+  },
+
+  /** Distinct values already used for free-text attributes (fit, pattern, …). */
+  getAttributeOptions: async () => {
+    const response = await client.get(`${e.base}/attribute-options`);
+    return response.data;
+  },
+
+  getProducts: (params = {}) => fetchProductPage(params),
+
+  /** Page through the admin products API (max 200/page). */
+  getAllProducts: async (params = {}) => {
+    const pageSize = Math.min(Number(params.limit) || PAGE_SIZE, PAGE_SIZE);
+    const all = [];
+    let page = 1;
+    for (;;) {
+      const batch = await fetchProductPage({
+        ...params,
+        page,
+        limit: pageSize,
+      });
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+      page += 1;
+      if (page > 50) break;
     }
-    return client.get(url).then((res) => res.data);
+    return all;
   },
 
   getById: (id) =>
-    client.get(e.byId(id)).then((res) => res.data),
+    client
+      .get(`/admin/products/${encodeURIComponent(String(id))}`)
+      .then((res) => res.data),
 
   getNeighbors: (id) =>
     client
-      .get(`/admin/products/${encodeURIComponent(id)}/neighbors`)
+      .get(`/admin/products/${encodeURIComponent(String(id))}/neighbors`)
       .then((res) => res.data),
 
   create: (data) =>
     client.post(e.base, data).then((res) => res.data),
 
   update: (id, data) =>
-    client.put(e.byId(id), data).then((res) => res.data),
-
-  updatePricing: (id, data) =>
-    client.patch(e.pricing(id), data).then((res) => res.data),
-
-  updateStock: (id, data) =>
-    client.patch(e.stock(id), data).then((res) => res.data),
-
-  updateVariant: (id, data) =>
-    client.patch(e.variant(id), data).then((res) => res.data),
+    client
+      .put(`/admin/products/${encodeURIComponent(String(id))}`, data)
+      .then((res) => res.data),
 
   bulkUpdate: (data) =>
     client.patch(e.bulkUpdate, data).then((res) => res.data),
 
   uploadImage: (file) => {
-    const maxBytes = 10 * 1024 * 1024;
+    const maxBytes = 25 * 1024 * 1024;
     if (file?.size > maxBytes) {
       return Promise.reject({
-        response: { data: { detail: "Image must be 10 MB or smaller" } },
-        message: "Image must be 10 MB or smaller",
+        response: { data: { detail: "Image must be 25 MB or smaller" } },
+        message: "Image must be 25 MB or smaller",
       });
     }
     const form = new FormData();
     form.append("file", file);
     return client
       .post("/admin/upload/image", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      .then((res) => res.data);
-  },
-
-  importProducts: (file) => {
-    const form = new FormData();
-    form.append("file", file);
-    return client
-      .post(`${e.base}/import`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: { "Content-Type": false },
+        timeout: 2 * 60 * 1000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
       })
       .then((res) => res.data);
   },
 
   delete: (id) =>
-    client.delete(e.byId(id)).then((res) => res.data),
+    client
+      .delete(`/admin/products/${encodeURIComponent(String(id))}`)
+      .then((res) => res.data),
 };
 
 export default adminProductService;

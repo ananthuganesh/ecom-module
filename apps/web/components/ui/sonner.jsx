@@ -1,7 +1,7 @@
 "use client"
 
 import { Toaster as Sonner } from "sonner";
-import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "@/components/icons"
 
 const Toaster = ({
   theme = "light",
@@ -23,7 +23,10 @@ const Toaster = ({
         "--normal-text": "var(--popover-foreground)",
         "--normal-border": "var(--border)",
         "--border-radius": "var(--radius)",
+        zIndex: 400,
       }}
+      duration={4000}
+      visibleToasts={3}
       toastOptions={{
         classNames: {
           toast: "cn-toast",

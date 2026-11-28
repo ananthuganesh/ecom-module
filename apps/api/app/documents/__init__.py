@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from beanie import Document, Indexed
@@ -21,6 +21,8 @@ class MongoModel(BaseModel):
 
 
 class Address(MongoModel):
+    id: str = ""
+    label: str = ""
     name: str = ""
     phone: str = ""
     house: str = ""
@@ -42,8 +44,7 @@ class User(Document):
     password: Optional[str] = None
     addresses: list[Address] = Field(default_factory=list)
     cartId: Optional[Any] = None
-    wishlistId: Optional[Any] = None
-    walletBalance: float = 0
+    # Legacy flags — staff live in `admins` now. Kept for migration / old docs only.
     isAdmin: bool = False
     roleId: Optional[str] = None
     gstin: Optional[str] = None
@@ -64,11 +65,70 @@ class User(Document):
         ]
 
 
+class LoginOtp(Document):
+    """Hashed 6-digit email OTP for customer passwordless sign-in."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    email: Indexed(str, unique=True)  # type: ignore[valid-type]
+    codeHash: str
+    expiresAt: datetime
+    attempts: int = 0
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "login_otps"
+        indexes = [
+            IndexModel([("expiresAt", 1)], expireAfterSeconds=0),
+        ]
+
+
+class AdminAccount(Document):
+    """Staff / admin panel accounts — separate from storefront customers (`users`)."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    name: str
+    email: Optional[Indexed(str, unique=True)] = None  # type: ignore[valid-type]
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    # True = owner / full Admin role (wildcard permissions)
+    isAdmin: bool = False
+    roleId: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "admins"
+        indexes = [
+            IndexModel([("email", 1)], unique=True, sparse=True),
+            IndexModel([("roleId", 1)]),
+        ]
+
+
 class Pricing(MongoModel):
     buyingPrice: Optional[float] = None
     mrp: Optional[float] = None
     sellingPrice: Optional[float] = None
     offerPrice: Optional[float] = None
+
+
+class ProductSale(MongoModel):
+    """Scheduled sale price. While ``live``, pricing.sellingPrice holds ``price`` and
+    ``regularPrice`` keeps the pre-sale price to restore — see services/sale_pricing."""
+
+    price: Optional[float] = None
+    startsAt: Optional[datetime] = None
+    endsAt: Optional[datetime] = None
+    # Optional daily flash window, "HH:MM" in India time — the price is on only
+    # between these each day, inside startsAt..endsAt.
+    dailyStart: Optional[str] = None
+    dailyEnd: Optional[str] = None
+    live: bool = False
+    regularPrice: Optional[float] = None
+    # While live: when this stretch of the sale stops (today's window close or
+    # endsAt, whichever is first). Drives the storefront countdown.
+    liveUntil: Optional[datetime] = None
 
 
 class Variant(MongoModel):
@@ -106,6 +166,8 @@ class Product(Document):
     name: Optional[str] = None
     slug: Optional[str] = None
     category: Optional[str] = None
+    # Category (collection) ids, as strings — a product can sit in several.
+    collections: list[str] = Field(default_factory=list)
     type: Optional[str] = None
     brand: Optional[str] = None
     description: Optional[str] = None
@@ -121,16 +183,25 @@ class Product(Document):
     sleeveType: Optional[str] = None
     pricing: Optional[Pricing] = None
     price: Optional[float] = None
+    sale: Optional[ProductSale] = None
     variants: list[Variant] = Field(default_factory=list)
     thumbnails: list[str] = Field(default_factory=list)
     totalStock: int = 0
+    # Manual storefront position, lowest first. Products without one sort ahead
+    # of ordered products, newest first, so a new arrival leads until placed.
+    sortOrder: Optional[int] = None
     status: str = "active"
+    # Storefront card badge: new_arrival | trending | best_seller
+    badge: Optional[str] = None
     hsnCode: Optional[str] = None
     taxClassId: Optional[str] = None
     priceTaxMode: Optional[str] = "inclusive"
     lowStockThreshold: Optional[int] = None
     metaTitle: Optional[str] = None
     metaDescription: Optional[str] = None
+    # Denormalised from published reviews so listings and JSON-LD need no join.
+    ratingAverage: float = 0
+    ratingCount: int = 0
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -181,6 +252,20 @@ class Product(Document):
             return out
         return data
 
+    @field_validator("description", mode="before")
+    @classmethod
+    def sanitize_description(cls, value: Any) -> str | None:
+        from app.services.html_sanitize import sanitize_rich_text
+
+        return sanitize_rich_text(value)
+
+    @field_validator("collections", mode="before")
+    @classmethod
+    def coerce_collection_ids(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(str(v) for v in value if v))
+
     @field_validator("totalStock", mode="before")
     @classmethod
     def coerce_stock(cls, value: Any) -> int:
@@ -193,13 +278,18 @@ class Product(Document):
         name = "products"
         indexes = [
             IndexModel([("slug", 1)], sparse=True),
+            # Storefront listing order.
+            IndexModel([("sortOrder", 1), ("createdAt", -1)]),
             IndexModel([("productUrlId", 1)], unique=True, sparse=True),
             IndexModel([("createdAt", -1)]),
+            IndexModel([("collections", 1)]),
         ]
 
 
 class OrderItem(MongoModel):
     productId: Optional[Any] = None
+    productName: Optional[str] = None
+    image: Optional[str] = None
     color: str = ""
     size: str = ""
     quantity: int = 1
@@ -233,9 +323,11 @@ class Order(Document):
     transactionDetails: dict = Field(default_factory=dict)
     razorpayOrderId: Optional[str] = None
     razorpayPaymentId: Optional[str] = None
-    shiprocketOrderId: Optional[str] = None
     awb: Optional[str] = None
     courier: Optional[str] = None
+    # Normalized carrier code ("dtdc" / "delhivery") used to route track/cancel/label
+    # calls. `courier` stays the human label the carrier API reports back.
+    carrier: Optional[str] = None
     shippingStatus: Optional[str] = None
     invoiceId: Optional[str] = None
     invoiceNumber: Optional[str] = None
@@ -266,21 +358,43 @@ class Order(Document):
             IndexModel([("customerId", 1), ("createdAt", -1)]),
             IndexModel([("status", 1), ("createdAt", -1)]),
             IndexModel([("razorpayOrderId", 1)], sparse=True),
-            IndexModel([("orderNumber", 1)], unique=True, sparse=True),
+            # Partial, not sparse: unpaid checkouts carry orderNumber=None, and a
+            # sparse index still indexes nulls, so two of them would collide.
+            IndexModel(
+                [("orderNumber", 1)],
+                name="orderNumber_1",
+                unique=True,
+                partialFilterExpression={"orderNumber": {"$type": "string"}},
+            ),
             IndexModel([("orderUrlId", 1)], unique=True, sparse=True),
             IndexModel([("createdAt", -1)]),
         ]
 
 
 class Category(Document):
+    """A storefront collection (/collections/{slug}). Products join via Product.collections."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
     name: str
     slug: Optional[str] = None
     parent: Optional[Any] = None
     description: Optional[str] = None
+    image: Optional[str] = None
     isActive: bool = True
+    metaTitle: Optional[str] = None
+    metaDescription: Optional[str] = None
+    # None = manual (products join via Product.collections). Otherwise an
+    # automatic rule from services/collection_rules.py: new_arrivals | best_sellers.
+    rule: Optional[str] = None
+    ruleLimit: int = 24
+    ruleDays: int = 60
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "categories"
+        indexes = [IndexModel([("slug", 1)], sparse=True)]
 
 
 class Brand(Document):
@@ -291,23 +405,6 @@ class Brand(Document):
 
     class Settings:
         name = "brands"
-
-
-class CollectionDoc(Document):
-    title: str
-    summary: Optional[str] = None
-    image: Optional[str] = None
-    products: list[Any] = Field(default_factory=list)
-    category: Optional[str] = None
-    slug: Optional[str] = None
-
-    @field_validator("category", "slug", mode="before")
-    @classmethod
-    def coerce_id_fields(cls, value: Any) -> str | None:
-        return _as_optional_str(value)
-
-    class Settings:
-        name = "collections"
 
 
 class Coupon(Document):
@@ -324,31 +421,131 @@ class Coupon(Document):
     usedCount: int = 0
     expiryDate: Optional[datetime] = None
     status: str = "active"
-    # Amount off products — target products and/or collections
+    # Amount off products — target specific products
     productIds: list[str] = Field(default_factory=list)
-    collectionIds: list[str] = Field(default_factory=list)
     # Buy X get Y
     buyQuantity: int = 1
     getQuantity: int = 1
     getDiscountPercent: float = 100.0
     buyProductIds: list[str] = Field(default_factory=list)
     getProductIds: list[str] = Field(default_factory=list)
+    # Opt-in: listed (with its code) in "Active offers" on product pages it applies to.
+    showOnProduct: bool = False
+    badge: Optional[str] = None
+
+    # ── Shopify-style rules. Defaults keep coupons saved before these existed
+    # behaving exactly as they did. ──
+    # Amount off products: target products or collections (Category ids).
+    appliesTo: str = "products"  # products | collections
+    collectionIds: list[str] = Field(default_factory=list)
+    # Fixed amount off products: once per order (legacy) or off each eligible item.
+    oncePerOrder: bool = True
+    # Minimum purchase: none | amount (minOrderAmount) | quantity (minQuantity).
+    minRequirement: Optional[str] = None
+    minQuantity: int = 0
+    # Eligibility: all | customers (customerIds — User ids, matched by phone/email for guests).
+    eligibility: str = "all"
+    customerIds: list[str] = Field(default_factory=list)
+    oncePerCustomer: bool = False
+    # Schedule: active from startsAt (None = immediately) until expiryDate (None = no end).
+    startsAt: Optional[datetime] = None
+    tags: list[str] = Field(default_factory=list)
+    # Buy X get Y
+    buyRequirement: str = "quantity"  # quantity | amount
+    buyAmount: float = 0
+    buyAppliesTo: str = "products"  # products | collections
+    buyCollectionIds: list[str] = Field(default_factory=list)
+    getAppliesTo: str = "products"  # products | collections
+    getCollectionIds: list[str] = Field(default_factory=list)
+    getValueType: str = "percentage"  # percentage | amount | free
+    getAmountOff: float = 0
+    maxUsesPerOrder: Optional[int] = None
+    # ── Automatic discounts, combinations, free shipping ──
+    # code: shopper types `code` | automatic: applies by itself; `name` is the title
+    # shoppers see, `code` is an internal unique id ("AUTO-…").
+    method: str = "code"
+    # Which other discount classes this one may stack with (both sides must allow it).
+    combinesWithProduct: bool = False
+    combinesWithOrder: bool = False
+    combinesWithShipping: bool = False
+    # Free shipping (kind "shipping"): skip delivery fees above this amount; None = any fee.
+    maxShippingRate: Optional[float] = None
+
+    @field_validator("maxShippingRate", mode="before")
+    @classmethod
+    def blank_rate_is_none(cls, value: Any) -> float | None:
+        if value in ("", None):
+            return None
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return None
+
+    @field_validator("usageLimit", "maxUsesPerOrder", mode="before")
+    @classmethod
+    def zero_limit_is_unlimited(cls, value: Any) -> int | None:
+        # The admin form shows a blank limit as "Unlimited", so 0 means the same.
+        try:
+            limit = int(value)
+        except (TypeError, ValueError):
+            return None
+        return limit if limit > 0 else None
+
+    @field_validator(
+        "productIds", "buyProductIds", "getProductIds", "collectionIds",
+        "buyCollectionIds", "getCollectionIds", "customerIds", mode="before",
+    )
+    @classmethod
+    def coerce_id_list(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return list(dict.fromkeys(str(v) for v in value if v))
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def coerce_tags(cls, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        out: list[str] = []
+        for v in value:
+            tag = " ".join(str(v or "").split())[:40]
+            if tag and tag.lower() not in {t.lower() for t in out}:
+                out.append(tag)
+        return out[:20]
+
+    @field_validator("discountValue", "minOrderAmount", "buyAmount", "getAmountOff", mode="before")
+    @classmethod
+    def coerce_money(cls, value: Any) -> float:
+        try:
+            return max(0.0, float(value or 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @field_validator("minQuantity", mode="before")
+    @classmethod
+    def coerce_min_quantity(cls, value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @field_validator("startsAt", "expiryDate", mode="before")
+    @classmethod
+    def naive_utc_date(cls, value: Any) -> Any:
+        """Store plain UTC (as Mongo returns it) so comparisons with utcnow() work."""
+        if value in ("", None):
+            return None
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            except ValueError:
+                return value  # let pydantic report it
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
 
     class Settings:
         name = "coupons"
-
-
-class Inventory(Document):
-    productName: str
-    supplier: Optional[str] = None
-    purchasePrice: float = 0
-    quantity: int = 0
-    totalCost: float = 0
-    purchaseDate: Optional[datetime] = None
-    notes: Optional[str] = None
-
-    class Settings:
-        name = "inventories"
 
 
 class Warehouse(Document):
@@ -462,15 +659,6 @@ class PaymentTransaction(Document):
         ]
 
 
-class Wallet(Document):
-    userId: Any
-    balance: float = 0
-    transactions: list[dict] = Field(default_factory=list)
-
-    class Settings:
-        name = "wallets"
-
-
 class LineItem(MongoModel):
     productId: Optional[str] = None
     productName: str = ""
@@ -478,6 +666,8 @@ class LineItem(MongoModel):
     hsnCode: Optional[str] = None
     quantity: float = 0
     unitPrice: float = 0
+    # Share of an order-level coupon taken off this line before GST (Sec 15(3)(a)).
+    discountAmount: float = 0
     taxRate: float = 0
     taxableAmount: float = 0
     taxAmount: float = 0
@@ -580,6 +770,8 @@ class SalesInvoice(Document):
     amountPaid: float = 0
     balanceDue: float = 0
     isGstInvoice: bool = False
+    # Coupon the order was placed with; its value is spread over items[].discountAmount.
+    couponCode: Optional[str] = None
     invoiceDate: datetime = Field(default_factory=datetime.utcnow)
     notes: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
@@ -643,6 +835,157 @@ class PartyPayment(Document):
         name = "partypayments"
 
 
+class ReturnItem(MongoModel):
+    """One line the customer asked to send back."""
+
+    productId: Optional[str] = None
+    productName: str = ""
+    image: Optional[str] = None
+    color: str = ""
+    size: str = ""
+    variantSku: str = ""
+    quantity: int = 1
+    unitPrice: float = 0
+    # Item value only — delivery is not refunded on a return.
+    lineRefund: float = 0
+
+
+class ReturnRequest(Document):
+    """A customer's request to send items back, and its approval workflow.
+
+    Distinct from `SalesReturn`, which is the accounting document posted once the
+    goods are physically back. A ReturnRequest becomes a SalesReturn on receipt.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    number: str
+    orderId: str
+    orderNumber: Optional[str] = None
+    customerId: Optional[str] = None
+    customerName: Optional[str] = None
+    items: list[ReturnItem] = Field(default_factory=list)
+    reason: str = ""
+    customerNote: str = ""
+    # requested -> approved -> picked_up -> received, or rejected / cancelled
+    status: str = "requested"
+    refundAmount: float = 0
+    rejectionReason: Optional[str] = None
+    # Reverse pickup (always Delhivery) — absent when the pincode cannot be collected.
+    carrier: Optional[str] = None
+    awb: Optional[str] = None
+    pickupServiceable: Optional[bool] = None
+    pickupNote: Optional[str] = None
+    salesReturnId: Optional[str] = None
+    requestedAt: datetime = Field(default_factory=datetime.utcnow)
+    approvedAt: Optional[datetime] = None
+    rejectedAt: Optional[datetime] = None
+    pickedUpAt: Optional[datetime] = None
+    receivedAt: Optional[datetime] = None
+    # Refund of refundAmount through Razorpay, only after receipt:
+    # None -> processing -> refunded, or failed (retryable).
+    refundStatus: Optional[str] = None
+    refundedAmount: float = 0
+    refundedAt: Optional[datetime] = None
+    refundId: Optional[str] = None
+    refundError: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "return_requests"
+        indexes = [
+            IndexModel([("number", 1)], unique=True),
+            IndexModel([("orderId", 1)]),
+            IndexModel([("customerId", 1), ("createdAt", -1)]),
+            IndexModel([("status", 1), ("createdAt", -1)]),
+            IndexModel([("createdAt", -1)]),
+        ]
+
+
+class StockAlert(Document):
+    """A shopper asking to hear when a sold-out size comes back."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    productId: str
+    # "" when the whole product was sold out rather than one size.
+    size: str = ""
+    email: str
+    customerId: Optional[str] = None
+    # pending -> sent, or cancelled if the product disappears.
+    status: str = "pending"
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    notifiedAt: Optional[datetime] = None
+    lastError: Optional[str] = None
+
+    class Settings:
+        name = "stock_alerts"
+        indexes = [
+            IndexModel([("productId", 1), ("size", 1), ("email", 1), ("status", 1)]),
+            IndexModel([("status", 1), ("createdAt", 1)]),
+        ]
+
+
+class Review(Document):
+    """A verified buyer's rating of a product. One per customer per product."""
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    productId: str
+    customerId: str
+    orderId: Optional[str] = None
+    rating: int
+    title: str = ""
+    body: str = ""
+    # Shown publicly: first name and last initial, never the full name or email.
+    authorName: str = ""
+    size: str = ""
+    # published -> hidden by an admin, and back.
+    status: str = "published"
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "reviews"
+        indexes = [
+            IndexModel([("productId", 1), ("customerId", 1)], unique=True),
+            IndexModel([("productId", 1), ("status", 1), ("createdAt", -1)]),
+            IndexModel([("status", 1), ("createdAt", -1)]),
+        ]
+
+
+class PincodeRoute(Document):
+    """Destination pincode → carrier override.
+
+    Seeded from DTDC's IP-dispatch branch list: pincodes DTDC will not deliver
+    normally, which route to Delhivery instead. Anything absent here falls back
+    to the default carrier.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
+
+    pincode: str
+    carrier: str
+    reason: str = ""
+    # Which import produced this row, so a re-import can replace one cleanly.
+    source: str = ""
+    city: Optional[str] = None
+    state: Optional[str] = None
+    branch: Optional[str] = None
+    tatDays: Optional[int] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        name = "pincode_routes"
+        indexes = [
+            IndexModel([("pincode", 1)], unique=True),
+            IndexModel([("carrier", 1)]),
+            IndexModel([("source", 1)]),
+        ]
+
+
 class Role(Document):
     name: Indexed(str, unique=True)  # type: ignore[valid-type]
     description: Optional[str] = None
@@ -655,44 +998,6 @@ class Role(Document):
         name = "roles"
 
 
-class AuditLog(Document):
-    actorId: Optional[str] = None
-    actorEmail: Optional[str] = None
-    action: str
-    entityType: Optional[str] = None
-    entityId: Optional[str] = None
-    meta: dict = Field(default_factory=dict)
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-
-    class Settings:
-        name = "auditlogs"
-        indexes = [IndexModel([("createdAt", -1)])]
-
-
-class AiMediaJob(Document):
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True, extra="ignore")
-
-    prompt: str = ""
-    referenceUrl: Optional[str] = None
-    productImageUrls: list[str] = Field(default_factory=list)
-    outputUrl: Optional[str] = None
-    publishedUrl: Optional[str] = None
-    status: str = "pending"  # pending | processing | succeeded | failed
-    reviewStatus: str = "pending"  # pending | approved | rejected
-    error: Optional[str] = None
-    model: Optional[str] = None
-    productId: Optional[Any] = None
-    createdBy: Optional[Any] = None
-    approvedBy: Optional[Any] = None
-    approvedAt: Optional[datetime] = None
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
-
-    class Settings:
-        name = "aimedediajobs"
-        indexes = [IndexModel([("createdAt", -1)])]
-
-
 class MediaAsset(Document):
     """Metadata for files in the media library (alt text, etc.)."""
 
@@ -702,6 +1007,7 @@ class MediaAsset(Document):
     folder: str
     name: str
     altText: str = ""
+    visible: bool = True
     url: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
@@ -713,20 +1019,19 @@ class MediaAsset(Document):
 
 ALL_DOCUMENTS = [
     User,
+    LoginOtp,
+    AdminAccount,
     Product,
     Order,
     Category,
     Brand,
-    CollectionDoc,
     Coupon,
-    Inventory,
     Warehouse,
     StockBalance,
     StockMovement,
     AbandonedCheckout,
     Setting,
     PaymentTransaction,
-    Wallet,
     TaxClass,
     Supplier,
     PurchaseOrder,
@@ -737,7 +1042,9 @@ ALL_DOCUMENTS = [
     SalesReturn,
     PartyPayment,
     Role,
-    AuditLog,
-    AiMediaJob,
     MediaAsset,
+    PincodeRoute,
+    ReturnRequest,
+    StockAlert,
+    Review,
 ]

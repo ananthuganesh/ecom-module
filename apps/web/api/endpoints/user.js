@@ -3,10 +3,21 @@
  */
 const users = {
   login: "users/login",
+  adminLogin: "users/admin/login",
+  adminLoginVerify: "users/admin/login/verify",
+  adminLoginResend: "users/admin/login/resend",
+  otpRequest: "users/otp/request",
+  otpVerify: "users/otp/verify",
   register: "users",
   profile: "users/profile",
+  adminProfile: "users/admin/profile",
   checkoutEmail: "users/checkout-email",
+  addresses: "users/addresses",
+  addressById: (id) => `users/addresses/${id}`,
+  addressDefault: (id) => `users/addresses/${id}/default`,
   setPassword: "users/set-password",
+  logout: "users/logout",
+  adminLogout: "users/admin/logout",
 };
 
 const products = {
@@ -15,17 +26,19 @@ const products = {
   byId: (id) => `products/${id}`,
 };
 
+const collections = {
+  base: "collections",
+  bySlug: (slug) => `collections/${encodeURIComponent(slug)}`,
+};
+
 const orders = {
   base: "orders",
   myOrders: "orders/myorders",
   byId: (id) => `orders/${id}`,
+  invoice: (id) => `orders/${id}/invoice`,
   pay: (id) => `orders/${id}/pay`,
   releaseReservation: (id) => `orders/${id}/release-reservation`,
-};
-
-const stripe = {
-  config: "stripe/config",
-  createPaymentIntent: "stripe/create-payment-intent",
+  shippingAddress: (id) => `orders/${id}/shipping-address`,
 };
 
 const razorpay = {
@@ -33,7 +46,8 @@ const razorpay = {
   verify: "payments/verify",
   webhook: "payments/webhook",
   config: "payments/config",
-  refund: "payments/refund",
+  magicStart: "payments/magic/start",
+  magicVerify: "payments/magic/verify",
 };
 
-export const userEndpoints = { users, products, orders, stripe, razorpay };
+export const userEndpoints = { users, products, collections, orders, razorpay };

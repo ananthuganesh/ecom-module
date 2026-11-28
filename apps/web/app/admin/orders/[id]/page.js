@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { adminOrderService, adminErpService, adminShippingService, paymentService, adminCompanyProfileService, adminTaxClassService } from "@/api";
-import { Package, ChevronUp, ChevronDown, RefreshCw, RotateCcw, Copy, Check, ShoppingBag as OrderIcon, X, Archive } from "lucide-react";
+import { adminOrderService, adminErpService, adminShippingService, adminCompanyProfileService, adminTaxClassService } from "@/api";
+import { Package, PackageCheck, ChevronUp, ChevronDown, Copy, Check, X, Archive, RotateCcw } from "@/components/icons";
+import { ShoppingBag } from "@/components/admin/LocalIcons";
 import SafeImage from "@/components/SafeImage";
 import {
   buildOrderTimeline,
@@ -13,13 +14,16 @@ import {
   touchesEqual,
 } from "@/lib/orderTimeline";
 import { toast } from "sonner";
+import { userErrorFromAxios, userErrorMessage } from "@/lib/userMessage";
 import { printHtml } from "@/utils/printHtml";
 import { printPdfBlob } from "@/utils/printPdfBlob";
 import { buildInvoicePrintHtml } from "@/utils/buildInvoicePrintHtml";
-import { gstRateForUnitPrice, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { gstRateForLine, roundMoney, splitInclusiveGst } from "@/utils/gstRate";
+import { orderCouponCode, orderDiscountAmount, orderDiscountNames } from "@/lib/orderDiscount";
 import { displayCustomerName } from "@/utils/displayCustomerName";
 import { formatOrderNumber, adminOrderHref, orderUrlKey } from "@/utils/formatOrderNumber";
 import { formatINR } from "@/utils/formatINR";
+import { formatAdminLongDateTime } from "@/utils/formatAdminDateTime";
 import { formatPhone } from "@/utils/formatPhone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,23 +33,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AdminStatusText, AdminHeaderButton } from "@/components/admin/list";
-import { paymentLabel, paymentTone, resolveFulfillmentDisplay } from "@/app/admin/orders/columns";
+import { canMarkDelivered, markDeliveredConfirmText } from "@/lib/orderDelivery";
+import { lastAddressChange, orderAddressEditState } from "@/lib/orderAddressEdit";
+import OrderAddressSheet from "@/components/admin/OrderAddressSheet";
+import { canPrintOrderInvoice, paymentLabel, paymentTone, resolveFulfillmentDisplay, channelDisplayName } from "@/app/admin/orders/columns";
+import { activeReturn } from "@/lib/returnStatus";
+import { courierUpdateText, pickupSummary, trackingNotice } from "@/lib/shipmentPickup";
 import {
   Card,
   CardContent,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 
 const ORDER_STATUSES = [
@@ -65,26 +71,98 @@ const ORDER_STATUS_LABELS = {
   cancelled: "Cancelled",
 };
 
-function AttributionTouchRows({ touch }) {
-  if (!touch) return <p className="text-[13px] font-medium text-muted-foreground">Direct / none</p>;
-  const rows = [
-    ["Source", touch.source],
-    ["Medium", touch.medium],
-    ["Campaign", touch.campaign],
-    ["Content", touch.content],
-    ["Term", touch.term],
-    ["gclid", touch.gclid],
-    ["fbclid", touch.fbclid],
-  ].filter(([, v]) => v);
+function campaignContentLabel(touch) {
+  const campaign = String(touch?.campaign || "").trim();
+  const content = String(touch?.content || "").trim();
+  if (campaign && content && campaign !== content) {
+    return `${campaign} / ${content}`;
+  }
+  return campaign || content || "";
+}
+
+function AttributionRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex justify-between gap-3 text-[13px] font-medium">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="break-all text-right text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function AttributionMarketingRows({ touch }) {
+  if (!touch) {
+    return <p className="admin-card-muted">Direct / none</p>;
+  }
+  const source = channelDisplayName(touch.source) || touch.source;
+  const medium = String(touch.medium || "").trim();
+  const campaignContent = campaignContentLabel(touch);
+  if (!source && !medium && !campaignContent) {
+    return <p className="admin-card-muted">Direct / none</p>;
+  }
   return (
     <div className="space-y-2">
-      {rows.map(([label, value]) => (
-        <div key={label} className="flex justify-between gap-3 text-[13px] font-medium">
-          <span className="text-muted-foreground shrink-0">{label}</span>
-          <span className="text-foreground text-right break-all">{value}</span>
-        </div>
-      ))}
+      <AttributionRow label="Source" value={source} />
+      <AttributionRow label="Medium" value={medium} />
+      <AttributionRow label="Campaign/Content" value={campaignContent} />
     </div>
+  );
+}
+
+function AttributionTechnicalRows({ touch }) {
+  if (!touch) return null;
+  const utmRows = [
+    ["utm_source", touch.source],
+    ["utm_medium", touch.medium],
+    ["utm_campaign", touch.campaign],
+    ["utm_content", touch.content],
+    ["utm_term", touch.term],
+  ].filter(([, v]) => v);
+  const timestamp = touch.landedAt ? formatAdminLongDateTime(touch.landedAt) : "";
+  const referrer = touch.referrer || touch.referer || "";
+  const hasAnything =
+    touch.fbclid ||
+    touch.gclid ||
+    utmRows.length ||
+    touch.landingPath ||
+    referrer ||
+    timestamp;
+  if (!hasAnything) {
+    return <p className="admin-card-muted">No technical details</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <AttributionRow label="fbclid" value={touch.fbclid} />
+      <AttributionRow label="gclid" value={touch.gclid} />
+      {utmRows.length ? (
+        <div className="space-y-2">
+          <p className="admin-card-label">Full UTM parameters</p>
+          {utmRows.map(([label, value]) => (
+            <AttributionRow key={label} label={label} value={value} />
+          ))}
+        </div>
+      ) : null}
+      <AttributionRow label="Landing page" value={touch.landingPath} />
+      <AttributionRow label="Referrer" value={referrer} />
+      <AttributionRow label="Timestamp" value={timestamp} />
+    </div>
+  );
+}
+
+function hasTechnicalAttribution(touch) {
+  if (!touch) return false;
+  return Boolean(
+    touch.fbclid ||
+      touch.gclid ||
+      touch.source ||
+      touch.medium ||
+      touch.campaign ||
+      touch.content ||
+      touch.term ||
+      touch.landingPath ||
+      touch.referrer ||
+      touch.referer ||
+      touch.landedAt
   );
 }
 
@@ -93,12 +171,13 @@ function computeInvoiceGstBreakdown(order, items, _taxClasses, invoice) {
     invoice?.grandTotal ?? order?.finalPrice ?? order?.total ?? 0
   );
 
-  // Line-level apparel slabs: ≤ ₹2,500 → 5%, above → 18%
+  // Line-level apparel slabs on sale value per piece: ≤ ₹2,500 → 5%, above → 18%
   const sourceItems =
     Array.isArray(invoice?.items) && invoice.items.length
       ? invoice.items.map((line) => ({
           price: Number(line.unitPrice || 0),
           quantity: Number(line.quantity || 0),
+          discount: Number(line.discountAmount || 0),
         }))
       : (items || []).map((item) => ({
           price: Number(item.price || item.unitPrice || 0),
@@ -112,9 +191,10 @@ function computeInvoiceGstBreakdown(order, items, _taxClasses, invoice) {
     const unit = Number(line.price) || 0;
     const qty = Number(line.quantity) || 0;
     if (unit <= 0 || qty <= 0) continue;
-    const rate = gstRateForUnitPrice(unit);
+    const saleValue = Math.max(0, unit * qty - (Number(line.discount) || 0));
+    const rate = gstRateForLine(saleValue, qty);
     rates.add(rate);
-    const split = splitInclusiveGst(unit * qty, rate);
+    const split = splitInclusiveGst(saleValue, rate);
     taxable += split.taxable;
     gst += split.gst;
   }
@@ -163,22 +243,7 @@ function formatInstrumentLabel(order) {
 }
 
 function formatOrderDateTime(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const datePart = d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-  const timePart = d
-    .toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
-    .toLowerCase();
-  return `${datePart} at ${timePart}`;
+  return formatAdminLongDateTime(iso);
 }
 
 function CopyableValue({ value, uppercase = false }) {
@@ -208,7 +273,7 @@ function CopyableValue({ value, uppercase = false }) {
     >
       <span className="admin-card-muted break-all">{text}</span>
       {copied ? (
-        <Check className="size-3 text-emerald-600 shrink-0" />
+        <Check className="size-3 text-(--p-color-text-success-accent) shrink-0" />
       ) : (
         <Copy className="size-3 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0" />
       )}
@@ -249,9 +314,9 @@ function ContactCopyLine({ value, display }) {
       </span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
         {copied ? (
-          <Check className="size-3 text-[#047b5d]" aria-hidden />
+          <Check className="size-3 text-(--p-color-text-success-accent)" aria-hidden />
         ) : (
-          <Copy className="size-3 text-[#8a8a8a]" aria-hidden />
+          <Copy className="size-3 text-(--p-color-text-tertiary)" aria-hidden />
         )}
       </span>
     </button>
@@ -266,20 +331,42 @@ export default function AdminOrderDetailPage() {
   const [taxClasses, setTaxClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [addressSheetOpen, setAddressSheetOpen] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [isPrintingInvoice, setIsPrintingInvoice] = useState(false);
   const [isPrintingLabel, setIsPrintingLabel] = useState(false);
   const [fulfillLoading, setFulfillLoading] = useState(false);
-  const [refundOpen, setRefundOpen] = useState(false);
-  const [refundAmount, setRefundAmount] = useState("");
-  const [refundReason, setRefundReason] = useState("");
-  const [refundLoading, setRefundLoading] = useState(false);
+  const [pickupLoading, setPickupLoading] = useState(false);
+  const [carriers, setCarriers] = useState([]);
+  const [carrier, setCarrier] = useState("");
+  const [carrierTouched, setCarrierTouched] = useState(false);
+  const [serviceability, setServiceability] = useState(null);
+  const [suggested, setSuggested] = useState(null);
   const [neighbors, setNeighbors] = useState({ previous: null, next: null });
+  const [showAttributionTech, setShowAttributionTech] = useState(false);
 
   const loadInvoice = async (orderId) => {
     const inv = await adminErpService.salesInvoices.byOrder(orderId);
     setInvoice(inv || null);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    adminShippingService
+      .getCarriers()
+      .then((data) => {
+        if (cancelled) return;
+        const list = (data?.carriers || []).filter((c) => c.configured);
+        setCarriers(list);
+        setCarrier((current) => current || data?.default || list[0]?.code || "");
+      })
+      .catch(() => {
+        if (!cancelled) setCarriers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,33 +386,41 @@ export default function AdminOrderDetailPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchOrder = async () => {
       setLoading(true);
       try {
         const data = await adminOrderService.getById(params.id);
+        if (cancelled) return;
         setOrder(data);
         const key = orderUrlKey(data);
         if (key && String(params.id) !== key) {
           router.replace(adminOrderHref(data));
         }
         await loadInvoice(key || params.id);
+        if (cancelled) return;
         try {
           const nav = await adminOrderService.getNeighbors(key || params.id);
+          if (cancelled) return;
           setNeighbors({
             previous: nav?.previous || null,
             next: nav?.next || null,
           });
         } catch {
-          setNeighbors({ previous: null, next: null });
+          if (!cancelled) setNeighbors({ previous: null, next: null });
         }
       } catch (e) {
+        if (cancelled) return;
         console.error(e);
         toast.error("Failed to load order");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     if (params.id) fetchOrder();
+    return () => {
+      cancelled = true;
+    };
   }, [params.id]);
 
   const ensureInvoice = async ({ silent = false } = {}) => {
@@ -345,7 +440,7 @@ export default function AdminOrderDetailPage() {
       }
       return inv;
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Invoice failed");
+      toast.error(userErrorMessage(err, "Couldn’t create invoice"));
       return null;
     } finally {
       setInvoiceLoading(false);
@@ -403,7 +498,7 @@ export default function AdminOrderDetailPage() {
       });
       toast.success("Print dialog opened");
     } catch (err) {
-      toast.error(err?.message || "Invoice print failed");
+      toast.error(userErrorMessage(err, "Couldn’t print invoice"));
     } finally {
       setIsPrintingInvoice(false);
     }
@@ -433,26 +528,90 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const destinationPincode = String(
+    order?.shippingAddress?.postalCode || order?.shippingAddress?.zip || ""
+  ).trim();
+
+  useEffect(() => {
+    if (!destinationPincode || destinationPincode.length !== 6) {
+      setServiceability(null);
+      return;
+    }
+    let cancelled = false;
+    adminShippingService
+      .checkServiceability(destinationPincode)
+      .then((data) => {
+        if (cancelled) return;
+        setServiceability(data?.carriers || []);
+        setSuggested(data?.suggested || null);
+        // Preselect the auto-routed carrier unless the admin already chose one.
+        const auto = data?.suggested?.carrier;
+        if (auto && !carrierTouched) setCarrier(auto);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setServiceability(null);
+          setSuggested(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationPincode]);
+
+  /** null = carrier can't answer; true/false = a real answer from the carrier. */
+  const serviceabilityFor = (code) =>
+    (serviceability || []).find((row) => row.carrier === code) || null;
+
   const handleMarkFulfilled = async () => {
     if (!order || fulfillLoading) return;
     if (order.awbCode || order.awb) {
-      toast.message("DTDC consignment already booked");
+      toast.message("Consignment already booked");
       return;
     }
     setFulfillLoading(true);
     try {
-      const response = await adminShippingService.createShipment(order._id);
+      const response = await adminShippingService.createShipment(order._id, carrier);
       if (response?.order) {
         setOrder(response.order);
       }
-      toast.success("DTDC consignment booked");
+      const booked = carriers.find((c) => c.code === (response?.carrier || carrier));
+      toast.success(`${booked?.label || "Consignment"} booked`);
+      try {
+        await ensureInvoice({ silent: true });
+      } catch {
+        /* invoice can still be generated from Print invoice */
+      }
     } catch (e) {
       console.error(e);
-      const msg =
-        e.response?.data?.detail || e.message || "DTDC booking failed";
-      toast.error(typeof msg === "string" ? msg : "DTDC booking failed");
+      toast.error(userErrorMessage(e, "Couldn’t book the shipment"));
     } finally {
       setFulfillLoading(false);
+    }
+  };
+
+  const handleRequestPickup = async () => {
+    if (!order || pickupLoading) return;
+    setPickupLoading(true);
+    try {
+      const response = await adminShippingService.requestPickup(order._id);
+      if (response?.order) setOrder(response.order);
+      toast.success(
+        response?.pickup?.existing
+          ? "A Delhivery pickup is already booked for that day — this parcel is included"
+          : "Delhivery pickup requested"
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(await userErrorFromAxios(e, "Couldn’t request a Delhivery pickup"));
+      try {
+        const refreshed = await adminOrderService.getById(order._id);
+        if (refreshed) setOrder(refreshed);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setPickupLoading(false);
     }
   };
 
@@ -460,7 +619,7 @@ export default function AdminOrderDetailPage() {
     if (!order || isPrintingLabel) return;
     const awb = order.awbCode || order.awb;
     if (!awb) {
-      toast.error("No DTDC label yet — mark as fulfilled first");
+      toast.error("No shipping label yet — mark as fulfilled first");
       return;
     }
     setIsPrintingLabel(true);
@@ -475,12 +634,13 @@ export default function AdminOrderDetailPage() {
         } catch {
           /* ignore */
         }
-        toast.error(detail);
+        toast.error(
+          userErrorMessage(detail, "Couldn’t print the shipping label")
+        );
         return;
       }
-      await printPdfBlob(blob, { filename: `label-${awb}.pdf` });
+      await printPdfBlob(blob, { filename: `label-${awb}.pdf`, autoPrint: true });
       toast.success("Print dialog opened");
-      // Label print may advance shippingStatus to Ready To Ship
       try {
         const refreshed = await adminOrderService.getById(order._id);
         if (refreshed) setOrder(refreshed);
@@ -489,8 +649,7 @@ export default function AdminOrderDetailPage() {
       }
     } catch (e) {
       console.error(e);
-      const msg = e.response?.data?.detail || e.message || "Label print failed";
-      toast.error(typeof msg === "string" ? msg : "Label print failed");
+      toast.error(await userErrorFromAxios(e, "Couldn’t print the shipping label"));
     } finally {
       setIsPrintingLabel(false);
     }
@@ -501,30 +660,22 @@ export default function AdminOrderDetailPage() {
     setUpdating(true);
     try {
       await adminOrderService.updatePaymentStatus(order._id, paymentStatus);
-      setOrder((prev) => (prev ? { 
-        ...prev, 
-        transactionDetails: { ...(prev.transactionDetails || {}), paymentStatus }
-      } : null));
+      setOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              paymentStatus,
+              transactionDetails: {
+                ...(prev.transactionDetails || {}),
+                paymentStatus,
+              },
+            }
+          : null
+      );
       toast.success(`Payment set to ${paymentStatus}`);
     } catch (e) {
       console.error(e);
       toast.error("Payment update failed");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleReturn = async (action) => {
-    if (!order) return;
-    setUpdating(true);
-    try {
-      await adminOrderService.handleReturn(order._id, action);
-      const newStatus = action === "approve" ? "returned" : "delivered";
-      setOrder((prev) => (prev ? { ...prev, status: newStatus } : null));
-      toast.success(`Return ${action}ed`);
-    } catch (e) {
-      console.error(e);
-      toast.error("Return processing failed");
     } finally {
       setUpdating(false);
     }
@@ -536,14 +687,132 @@ export default function AdminOrderDetailPage() {
       toast.message("Order is already cancelled");
       return;
     }
+    const hasShipment = Boolean(order.awbCode || order.awb);
+    const carrierName = order.courierName || order.courier || "The courier";
+    const willRefund = ["paid", "captured"].includes(
+      String(order.paymentStatus || "").toLowerCase()
+    );
+    const message = [
+      "Cancel this order?",
+      hasShipment ? `${carrierName} shipment will be cancelled.` : null,
+      "Stock will be restocked and the order archived.",
+      willRefund ? "The customer will be refunded in full." : null,
+      "Customer will be emailed.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (!confirm(message)) return;
+
+    setUpdating(true);
+    try {
+      const updated = await adminOrderService.cancel(order._id);
+      setOrder((prev) => (prev ? { ...prev, ...(updated || {}), status: "cancelled", archived: true } : null));
+      const cancelResult = updated?.cancelResult || {};
+      const parts = ["Order cancelled"];
+      if (cancelResult.shipmentCancelled) parts.push("shipment cancelled");
+      if (cancelResult.restocked) parts.push("stock restocked");
+      if (cancelResult.refunded) parts.push("refunded");
+      toast.success(parts.join(" · "));
+      if (cancelResult.refundError) {
+        toast.error("Refund didn't go through — retry it from Refund payment.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error(userErrorMessage(e, "Couldn’t cancel this order"));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleEditAddress = async () => {
+    if (!order) return;
+    const state = orderAddressEditState(order, "admin");
+    if (state.editable) {
+      setAddressSheetOpen(true);
+      return;
+    }
+    if (!state.needsShipmentCancel) {
+      toast.message(state.reason);
+      return;
+    }
+    const carrierName = order.courierName || order.courier || "courier";
     if (
       !confirm(
-        "Cancel this order? Status becomes Cancelled and stock is restored if it was committed."
+        `Cancel the ${carrierName} shipment to change the address? ` +
+          "You'll need to book the shipment again afterwards."
       )
     ) {
       return;
     }
-    await handleStatusChange("cancelled");
+    setUpdating(true);
+    try {
+      const response = await adminShippingService.cancelShipment(order._id);
+      if (response?.order) setOrder((prev) => (prev ? { ...prev, ...response.order } : prev));
+      toast.success("Shipment cancelled — now update the address");
+      setAddressSheetOpen(true);
+    } catch (e) {
+      console.error(e);
+      toast.error(userErrorMessage(e, "Couldn’t cancel the shipment"));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleMarkDelivered = async () => {
+    if (!order || !canMarkDelivered(order)) return;
+    if (!confirm(markDeliveredConfirmText(order))) return;
+    setUpdating(true);
+    try {
+      const updated = await adminOrderService.markDelivered(order._id);
+      setOrder((prev) => (prev ? { ...prev, ...(updated || {}) } : null));
+      toast.success(
+        updated?.deliveryResult?.changed === false
+          ? "Order was already delivered"
+          : "Order marked as delivered"
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(userErrorMessage(e, "Couldn’t mark this order as delivered"));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleRefundOrder = async () => {
+    if (!order) return;
+    if (String(order.status || "").toLowerCase() !== "cancelled") {
+      toast.message("Cancel the order before issuing a refund");
+      return;
+    }
+    const pay = String(order.paymentStatus || order.transactionDetails?.paymentStatus || "").toLowerCase();
+    if (pay === "refunded") {
+      toast.message("Order is already refunded");
+      return;
+    }
+    if (
+      !confirm(
+        "Issue a full Razorpay refund to the customer’s original payment method?"
+      )
+    ) {
+      return;
+    }
+    setUpdating(true);
+    try {
+      const updated = await adminOrderService.refund(order._id);
+      setOrder((prev) => (prev ? { ...prev, ...(updated || {}) } : null));
+      toast.success("Razorpay refund issued");
+    } catch (e) {
+      console.error(e);
+      toast.error(userErrorMessage(e, "Couldn’t issue the refund"));
+      try {
+        const refreshed = await adminOrderService.getById(order._id);
+        if (refreshed) setOrder(refreshed);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleArchiveOrder = async () => {
@@ -558,50 +827,12 @@ export default function AdminOrderDetailPage() {
       toast.success(next ? "Order archived" : "Order unarchived");
     } catch (e) {
       console.error(e);
-      toast.error(e.response?.data?.detail || e.message || "Archive failed");
+      toast.error(userErrorMessage(e, "Couldn’t update archive"));
     } finally {
       setUpdating(false);
     }
   };
 
-  const openRefundModal = () => {
-    if (!order) return;
-    const total = Number(order.finalPrice ?? order.total ?? 0);
-    const already = Number(order.refundedAmount || order.transactionDetails?.refundedAmount || 0);
-    const remaining = Math.max(0, total - already);
-    setRefundAmount(remaining ? remaining.toFixed(2) : "");
-    setRefundReason("");
-    setRefundOpen(true);
-  };
-
-  const handleRefund = async () => {
-    if (!order) return;
-    const amount = Number(refundAmount);
-    if (!amount || amount <= 0) {
-      toast.error("Enter a valid refund amount");
-      return;
-    }
-    setRefundLoading(true);
-    try {
-      const res = await paymentService.refund({
-        localOrderId: order._id,
-        amount,
-        reason: refundReason || "Admin refund",
-      });
-      setOrder(res.order);
-      setRefundOpen(false);
-      toast.success(
-        res.order?.paymentStatus === "refunded"
-          ? "Full refund processed"
-          : `Refunded ₹${amount.toFixed(2)}`
-      );
-    } catch (e) {
-      const msg = e.response?.data?.detail || e.response?.data?.message || e.message || "Refund failed";
-      toast.error(typeof msg === "string" ? msg : "Refund failed");
-    } finally {
-      setRefundLoading(false);
-    }
-  };
 
   if (loading) return (
     <div className="flex h-screen items-center justify-center bg-background">
@@ -613,7 +844,7 @@ export default function AdminOrderDetailPage() {
     <main className="h-screen p-10 flex flex-col items-center justify-center bg-background">
       <Package className="w-12 h-12 text-muted-foreground/40 mb-4" />
       <p className="text-sm font-medium text-muted-foreground">Order Not Found</p>
-      <Link href="/admin/orders" className="mt-6 text-xs font-medium text-primary border-b border-primary pb-1">Return to Archive</Link>
+      <Link href="/admin/orders" className="mt-6 text-xs font-medium text-primary border-b border-primary pb-1">Back to orders</Link>
     </main>
   );
 
@@ -621,15 +852,28 @@ export default function AdminOrderDetailPage() {
   const customerPublicId =
     customer.customerUrlId || customer._id || customer.id || null;
   const customerOrdersCount = Number(customer.ordersCount || 0);
+  const customerAbandonedCount = Number(customer.abandonedCount || 0);
   const customerOrdersHref = customerPublicId
     ? `/admin/orders?q=${encodeURIComponent(`customer_id:"${customerPublicId}"`)}`
     : null;
+  const abandonedSearch =
+    String(customer.email || "").trim() ||
+    String(customer.phone || "").trim() ||
+    displayCustomerName(order, "") ||
+    String(customerPublicId || "");
+  const customerAbandonedHref = abandonedSearch
+    ? `/admin/orders/abandoned?q=${encodeURIComponent(abandonedSearch)}`
+    : "/admin/orders/abandoned";
   const items = order.items || [];
   
   // Use order-specific shipping / billing addresses
   const shippingAddr = order.shippingAddress || {};
   const formatAddrLines = (addr) => ({
-    name: addr.name || "",
+    name:
+      [addr.firstName, addr.lastName].filter(Boolean).join(" ").trim() ||
+      addr.fullName ||
+      addr.name ||
+      "",
     street: addr.address || addr.house || "",
     address2: addr.address2 || "",
     city: addr.city || "",
@@ -676,16 +920,28 @@ export default function AdminOrderDetailPage() {
     order.paymentStatus || order.transactionDetails?.paymentStatus || ""
   ).toLowerCase();
   const fulfillment = resolveFulfillmentDisplay(order);
+  const currentReturn = activeReturn(order);
   const isCancelled = String(order.status || "").toLowerCase() === "cancelled";
+  const hasAwb = Boolean(order.awbCode || order.awb);
+  const addressEdit = orderAddressEditState(order, "admin");
+  const addressChange = lastAddressChange(order);
+  // Invoice print is the post-fulfillment document on this page (labels live under Shipments).
+  const showPrintInvoice = canPrintOrderInvoice(order);
+  const canRefund =
+    isCancelled &&
+    !["refunded"].includes(payStatus) &&
+    Boolean(
+      order.razorpayPaymentId ||
+        order.transactionDetails?.razorpayPaymentId ||
+        order.transactionDetails?.paymentId
+    );
 
   return (
-    <main className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 flex-col overflow-y-auto bg-background">
+    <main className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4 overflow-y-auto bg-background md:gap-6">
       {/* Action Header */}
-      <header className="px-4 py-3 flex justify-between items-center gap-3 shrink-0 z-20 bg-transparent sticky top-0 backdrop-blur-sm">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="inline-flex items-center justify-center w-8 h-8 shrink-0 text-foreground">
-            <OrderIcon className="w-5 h-5" />
-          </span>
+      <header className="flex shrink-0 items-center justify-between gap-3 bg-transparent py-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShoppingBag active className="size-[18px] shrink-0 text-(--p-color-text)" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[16px] leading-5 font-medium text-foreground truncate m-0">
@@ -710,19 +966,16 @@ export default function AdminOrderDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {order.status === "return requested" ? (
+          {currentReturn ? (
+            // Returns are approved on the Returns page, where approval books the
+            // Delhivery pickup and receipt restocks.
             <div className="flex gap-2">
               <AdminHeaderButton
-                onClick={() => handleReturn("approve")}
-                disabled={updating}
+                onClick={() =>
+                  router.push(`/admin/returns?q=${encodeURIComponent(currentReturn.number)}`)
+                }
               >
-                Approve Return
-              </AdminHeaderButton>
-              <AdminHeaderButton
-                onClick={() => handleReturn("reject")}
-                disabled={updating}
-              >
-                Reject Request
+                View return {currentReturn.number}
               </AdminHeaderButton>
             </div>
           ) : (
@@ -739,28 +992,40 @@ export default function AdminOrderDetailPage() {
                 </AdminHeaderButton>
               )}
 
-              <AdminHeaderButton
-                onClick={handlePrintInvoice}
-                disabled={isPrintingInvoice || invoiceLoading}
-              >
-                {isPrintingInvoice ? (
-                  <>
-                    <Spinner className="size-3.5 text-[#303030]" />
-                    Preparing…
-                  </>
-                ) : (
-                  "Print invoice"
-                )}
-              </AdminHeaderButton>
+              {canMarkDelivered(order) ? (
+                <AdminHeaderButton
+                  onClick={handleMarkDelivered}
+                  disabled={updating}
+                >
+                  <PackageCheck className="size-3.5" />
+                  Mark as delivered
+                </AdminHeaderButton>
+              ) : null}
 
-              {(order.awbCode || order.awb) ? (
+              {showPrintInvoice ? (
+                <AdminHeaderButton
+                  onClick={handlePrintInvoice}
+                  disabled={isPrintingInvoice || invoiceLoading}
+                >
+                  {isPrintingInvoice ? (
+                    <>
+                      <Spinner className="size-3.5 text-(--p-color-text)" />
+                      Preparing…
+                    </>
+                  ) : (
+                    "Print invoice"
+                  )}
+                </AdminHeaderButton>
+              ) : null}
+
+              {hasAwb ? (
                 <AdminHeaderButton
                   onClick={handlePrintLabel}
                   disabled={isPrintingLabel}
                 >
                   {isPrintingLabel ? (
                     <>
-                      <Spinner className="size-3.5 text-[#303030]" />
+                      <Spinner className="size-3.5 text-(--p-color-text)" />
                       Preparing…
                     </>
                   ) : (
@@ -769,57 +1034,61 @@ export default function AdminOrderDetailPage() {
                 </AdminHeaderButton>
               ) : null}
 
+              {canRefund ? (
+                <AdminHeaderButton
+                  onClick={handleRefundOrder}
+                  disabled={updating}
+                >
+                  {updating ? (
+                    <>
+                      <Spinner className="size-3.5 text-(--p-color-text)" />
+                      Refunding…
+                    </>
+                  ) : (
+                    "Refund"
+                  )}
+                </AdminHeaderButton>
+              ) : null}
+
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  disabled={updating || refundLoading}
+                  disabled={updating}
                   render={
                     <Button
                       type="button"
                       variant="secondary"
                       size="lg"
-                      disabled={updating || refundLoading}
-                      className="h-8 min-h-8 gap-1.5 rounded-lg border-transparent bg-[#e3e3e3] px-3 text-[0.8125rem] font-[550] leading-5 text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc] aria-expanded:bg-[#d4d4d4]"
+                      disabled={updating}
+                      className="admin-btn-secondary h-8 min-h-8 gap-1.5 rounded-lg border-transparent px-3 text-[0.8125rem] font-medium leading-5 text-(--p-color-text) hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active) aria-expanded:bg-(--p-color-button-bg-fill-hover)"
                     />
                   }
                 >
                   More actions
                   <ChevronDown className="size-3.5 opacity-70" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[13.5rem]">
-                  {(() => {
-                    const payStatus = (
-                      order.paymentStatus ||
-                      order.transactionDetails?.paymentStatus ||
-                      ""
-                    ).toLowerCase();
-                    const canRefund =
-                      !!order.razorpayPaymentId &&
-                      (payStatus === "paid" || payStatus === "partially_refunded");
-                    if (!canRefund) return null;
-                    return (
-                      <DropdownMenuItem
-                        className="gap-2 text-[0.8125rem]"
-                        disabled={updating || refundLoading}
-                        onClick={openRefundModal}
-                      >
-                        <RotateCcw className="size-3.5 text-[#616161]" />
-                        Refund
-                      </DropdownMenuItem>
-                    );
-                  })()}
+                <DropdownMenuContent align="end" className="w-max min-w-(--anchor-width)">
                   <DropdownMenuItem
                     className="gap-2 text-[0.8125rem]"
                     disabled={isCancelled}
                     onClick={handleCancelOrder}
                   >
-                    <X className="size-3.5 text-[#616161]" />
+                    <X className="size-3.5 text-(--p-color-text-secondary)" />
                     Cancel order
                   </DropdownMenuItem>
+                  {canRefund ? (
+                    <DropdownMenuItem
+                      className="gap-2 text-[0.8125rem]"
+                      onClick={handleRefundOrder}
+                    >
+                      <RotateCcw className="size-3.5 text-(--p-color-text-secondary)" />
+                      Refund via Razorpay
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem
                     className="gap-2 text-[0.8125rem]"
                     onClick={handleArchiveOrder}
                   >
-                    <Archive className="size-3.5 text-[#616161]" />
+                    <Archive className="size-3.5 text-(--p-color-text-secondary)" />
                     {order.archived ? "Unarchive" : "Archive"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -834,7 +1103,7 @@ export default function AdminOrderDetailPage() {
               size="icon-lg"
               title="Previous order"
               disabled={!neighbors.previous}
-              className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+              className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
               onClick={() => {
                 if (!neighbors.previous) return;
                 router.push(`/admin/orders/${encodeURIComponent(neighbors.previous.key)}`);
@@ -848,7 +1117,7 @@ export default function AdminOrderDetailPage() {
               size="icon-lg"
               title="Next order"
               disabled={!neighbors.next}
-              className="size-8 rounded-lg border-transparent bg-[#e3e3e3] text-[#303030] shadow-none hover:bg-[#d4d4d4] active:bg-[#ccc]"
+              className="size-8 rounded-lg border-transparent bg-(--p-color-button-bg-fill) text-(--p-color-text) shadow-none hover:bg-(--p-color-button-bg-fill-hover) active:bg-(--p-color-button-bg-fill-active)"
               onClick={() => {
                 if (!neighbors.next) return;
                 router.push(`/admin/orders/${encodeURIComponent(neighbors.next.key)}`);
@@ -861,11 +1130,11 @@ export default function AdminOrderDetailPage() {
       </header>
 
       {/* Main Container - Three Column Grid (equal side cards; Unfulfilled flexes) */}
-      <div className="grid grid-cols-1 items-start gap-3 p-3 pb-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,20rem)]">
+      <div className="grid grid-cols-1 items-start gap-4 pb-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,20rem)]">
         
         {/* Column 1: Customer & addresses */}
-        <aside className="flex flex-col gap-3">
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+        <aside className="flex flex-col gap-4">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="flex flex-col gap-4 p-4">
               <div>
                 <CardTitle className="admin-card-heading mb-2">
@@ -897,6 +1166,15 @@ export default function AdminOrderDetailPage() {
                     {customerOrdersCount === 1 ? "order" : "orders"}
                   </p>
                 )}
+                <Link
+                  href={customerAbandonedHref}
+                  className="mt-1 block admin-card-link hover:underline"
+                >
+                  {customerAbandonedCount}{" "}
+                  {customerAbandonedCount === 1
+                    ? "abandoned cart"
+                    : "abandoned carts"}
+                </Link>
               </div>
 
               <div>
@@ -914,17 +1192,39 @@ export default function AdminOrderDetailPage() {
               </div>
 
               <div>
-                <CardTitle className="admin-card-heading mb-2">
-                  Shipping address
-                </CardTitle>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <CardTitle className="admin-card-heading m-0">
+                    Shipping address
+                  </CardTitle>
+                  {addressEdit.editable || addressEdit.needsShipmentCancel ? (
+                    <button
+                      type="button"
+                      disabled={updating}
+                      onClick={handleEditAddress}
+                      title={addressEdit.needsShipmentCancel ? addressEdit.reason : undefined}
+                      className="admin-card-link text-[13px] hover:underline disabled:opacity-50"
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
                 <div className="admin-card-muted leading-relaxed">
                   {renderAddressBlock(shipping, "No shipping address")}
                 </div>
+                {addressChange ? (
+                  <p className="mt-2 text-[12px] leading-4 text-(--p-color-text-caution)">
+                    Changed by {addressChange.by === "customer" ? "the customer" : "staff"}
+                    {addressChange.at ? ` on ${formatOrderDateTime(addressChange.at)}` : ""}
+                    {addressChange.from?.postalCode
+                      ? ` · was ${[addressChange.from.city, addressChange.from.postalCode].filter(Boolean).join(" ")}`
+                      : ""}
+                  </p>
+                ) : null}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="flex flex-col gap-4 p-4">
               <div>
                 <CardTitle className="admin-card-heading mb-3">
@@ -949,12 +1249,67 @@ export default function AdminOrderDetailPage() {
                     </Badge>
                   </div>
                   {(order.awbCode || order.awb) && (
-                    <div>
-                      <p className="mb-1 admin-card-label">AWB / Ref</p>
-                      <p className="font-mono admin-card-muted">
-                        {order.awbCode || order.awb}
-                      </p>
-                    </div>
+                    <>
+                      <div>
+                        <p className="mb-1 admin-card-label">Carrier</p>
+                        <p className="admin-card-muted">
+                          {order.courier ||
+                            carriers.find((c) => c.code === order.carrier)?.label ||
+                            "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="mb-1 admin-card-label">AWB / Ref</p>
+                        <p className="font-mono admin-card-muted">
+                          {order.awbCode || order.awb}
+                        </p>
+                      </div>
+                      {courierUpdateText(order) ? (
+                        <div>
+                          <p className="mb-1 admin-card-label">Courier update</p>
+                          <p className="admin-card-muted">{courierUpdateText(order)}</p>
+                        </div>
+                      ) : null}
+                      {trackingNotice(order) ? (
+                        <div>
+                          <p className="mb-1 admin-card-label">Tracking</p>
+                          <p
+                            className={
+                              trackingNotice(order).stopped
+                                ? "text-destructive text-[13px]"
+                                : "admin-card-muted"
+                            }
+                          >
+                            {trackingNotice(order).text}
+                          </p>
+                        </div>
+                      ) : null}
+                      {pickupSummary(order) ? (
+                        <div>
+                          <p className="mb-1 admin-card-label">Pickup</p>
+                          <p
+                            className={
+                              pickupSummary(order).problem
+                                ? "text-destructive text-[13px]"
+                                : "admin-card-muted"
+                            }
+                          >
+                            {pickupSummary(order).text}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-2"
+                            disabled={pickupLoading}
+                            onClick={handleRequestPickup}
+                          >
+                            {pickupLoading ? <Spinner className="size-3.5" /> : null}
+                            Request pickup
+                          </Button>
+                        </div>
+                      ) : null}
+                    </>
                   )}
                 </div>
               </div>
@@ -967,7 +1322,7 @@ export default function AdminOrderDetailPage() {
                     </CardTitle>
                     <p className="mb-1 admin-card-muted">Marked as Gift</p>
                     {order.giftMessage ? (
-                      <p className="admin-card-muted italic">"{order.giftMessage}"</p>
+                      <p className="admin-card-muted italic">&ldquo;{order.giftMessage}&rdquo;</p>
                     ) : (
                       <p className="admin-card-muted italic">No message provided</p>
                     )}
@@ -979,8 +1334,8 @@ export default function AdminOrderDetailPage() {
         </aside>
 
         {/* Column 2: Order details / fulfillment + timeline */}
-        <div className="flex min-w-0 flex-col gap-3">
-        <Card className="admin-surface flex flex-col gap-0 overflow-visible rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+        <div className="flex min-w-0 flex-col gap-4">
+        <Card className="@container/card flex flex-col gap-0 overflow-visible py-0">
           <CardContent className="admin-fulfillment p-4">
             <div className="admin-fulfillment-header">
               <AdminStatusText tone={fulfillment.tone} size="large" dot solid>
@@ -1034,13 +1389,40 @@ export default function AdminOrderDetailPage() {
                   );
                 })}
               </div>
-              {fulfillment.key === "Unfulfilled" &&
-              !(order.awbCode || order.awb) ? (
-                <div className="admin-fulfillment-actions">
+              {fulfillment.key === "Unfulfilled" && !hasAwb ? (
+                <div className="admin-fulfillment-actions flex flex-wrap items-center gap-2">
+                  {carriers.length > 1 ? (
+                    <Select
+                      value={carrier}
+                      onValueChange={(value) => {
+                        setCarrierTouched(true);
+                        setCarrier(value);
+                      }}
+                    >
+                      <SelectTrigger
+                        aria-label="Carrier"
+                        className="admin-btn-secondary h-8 min-h-8 gap-1.5 rounded-lg border-transparent px-3 text-[0.8125rem] font-medium leading-5 text-(--p-color-text) transition-colors [&_svg]:text-(--p-color-text) [&_svg]:opacity-70"
+                      >
+                        <SelectValue placeholder="Carrier">
+                          {(value) =>
+                            carriers.find((c) => c.code === value)?.label ||
+                            "Carrier"
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {carriers.map((option) => (
+                          <SelectItem key={option.code} value={option.code}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
                   <Button
                     type="button"
                     size="lg"
-                    disabled={updating || fulfillLoading}
+                    disabled={updating || fulfillLoading || !carrier}
                     onClick={handleMarkFulfilled}
                   >
                     {fulfillLoading ? (
@@ -1052,13 +1434,55 @@ export default function AdminOrderDetailPage() {
                       "Mark as fulfilled"
                     )}
                   </Button>
+                  {serviceabilityFor(carrier)?.serviceable === false ? (
+                    <p className="admin-card-muted basis-full text-destructive">
+                      {carriers.find((c) => c.code === carrier)?.label} does not deliver to{" "}
+                      {destinationPincode}. Pick another carrier.
+                    </p>
+                  ) : null}
+                </div>
+              ) : showPrintInvoice ? (
+                <div className="admin-fulfillment-actions flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="lg"
+                    disabled={isPrintingInvoice || invoiceLoading}
+                    onClick={handlePrintInvoice}
+                  >
+                    {isPrintingInvoice ? (
+                      <>
+                        <Spinner className="size-3.5" />
+                        Preparing…
+                      </>
+                    ) : (
+                      "Print invoice"
+                    )}
+                  </Button>
+                  {hasAwb ? (
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="secondary"
+                      disabled={isPrintingLabel}
+                      onClick={handlePrintLabel}
+                    >
+                      {isPrintingLabel ? (
+                        <>
+                          <Spinner className="size-3.5" />
+                          Preparing…
+                        </>
+                      ) : (
+                        "Print label"
+                      )}
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
           </CardContent>
         </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="p-4">
               <CardTitle className="admin-card-heading mb-3">
                 Activity
@@ -1130,8 +1554,8 @@ export default function AdminOrderDetailPage() {
         </div>
 
         {/* Column 3: Payment, Invoice, Attribution */}
-        <aside className="flex flex-col gap-3">
-          <Card className="admin-surface gap-0 overflow-visible rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+        <aside className="flex flex-col gap-4">
+          <Card className="@container/card gap-0 overflow-visible py-0">
             <CardContent className="space-y-4 p-4">
             <div>
                <CardTitle className="admin-card-heading mb-3">
@@ -1175,29 +1599,12 @@ export default function AdminOrderDetailPage() {
                      />
                    </div>
                  )}
-                 {(order.razorpayOrderId || order.transactionDetails?.razorpayOrderId) && (
-                   <div>
-                     <p className="mb-1 admin-card-label">Razorpay order</p>
-                     <CopyableValue
-                       uppercase
-                       value={order.razorpayOrderId || order.transactionDetails?.razorpayOrderId}
-                     />
-                   </div>
-                 )}
-                 {order.transactionDetails?.rrn && (
-                   <div>
-                     <p className="mb-1 admin-card-label">Reference (RRN)</p>
-                     <CopyableValue value={order.transactionDetails.rrn} />
-                   </div>
-                 )}
                  {!order.razorpayPaymentId &&
                    !order.transactionDetails?.razorpayPaymentId &&
                    !order.transactionDetails?.paymentId &&
-                   !order.razorpayOrderId &&
-                   !order.transactionDetails?.razorpayOrderId &&
-                   String(order.paymentMethod || order.transactionDetails?.paymentMethod || "").toLowerCase() === "cod" && (
+                   String(order.paymentStatus || order.transactionDetails?.paymentStatus || "").toLowerCase() !== "paid" && (
                      <p className="admin-card-muted">
-                       Collect on delivery — no online payment reference.
+                       Awaiting online payment — no Razorpay reference yet.
                      </p>
                    )}
                  {(order.refunds?.length > 0 || order.transactionDetails?.refunds?.length > 0) && (
@@ -1218,20 +1625,36 @@ export default function AdminOrderDetailPage() {
             </div>
 
             <div className="space-y-3">
-               {order.discount > 0 && (
-                  <div className="flex items-center justify-between text-[0.8125rem] font-[450]">
-                    <span className="text-foreground">Offer Applied</span>
-                    <span className="text-muted-foreground">{formatINR(-(Number(order.discount) || 0), { signed: true })}</span>
+               {orderDiscountAmount(order) > 0 && (
+                  <div className="flex items-center justify-between gap-3 text-[0.8125rem] font-normal">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2 text-foreground">
+                      {orderDiscountNames(order).length > 1 || !orderCouponCode(order)
+                        ? orderDiscountNames(order).length
+                          ? "Discounts"
+                          : "Offer Applied"
+                        : "Coupon"}
+                      {orderDiscountNames(order).map((name) => (
+                        <span
+                          key={name}
+                          className={`truncate rounded-[0.375rem] bg-black/[0.06] px-1.5 py-0.5 text-[0.75rem] font-medium text-(--p-color-text-secondary) ${
+                            name === orderCouponCode(order) ? "font-mono" : ""
+                          }`}
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">{formatINR(-orderDiscountAmount(order), { signed: true })}</span>
                   </div>
                )}
                {order.isGift && (
-                  <div className="flex items-center justify-between text-[0.8125rem] font-[450]">
+                  <div className="flex items-center justify-between text-[0.8125rem] font-normal">
                     <span className="text-foreground">Gift Wrap Fee</span>
                     <span className="text-muted-foreground">{formatINR(order.giftFee || 39, { signed: true })}</span>
                   </div>
                )}
                {order.deliveryAmount > 0 && (
-                  <div className="flex items-center justify-between text-[0.8125rem] font-[450]">
+                  <div className="flex items-center justify-between text-[0.8125rem] font-normal">
                     <span className="text-foreground">Delivery Fee</span>
                     <span className="text-muted-foreground">{formatINR(order.deliveryAmount)}</span>
                   </div>
@@ -1240,12 +1663,12 @@ export default function AdminOrderDetailPage() {
             </CardContent>
           </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="p-4">
               <CardTitle className="admin-card-heading mb-3">
                 Invoice Details
               </CardTitle>
-              <div className="mb-5 space-y-4">
+              <div className="space-y-4">
                 <div>
                   <p className="mb-1 admin-card-label">Taxable Value</p>
                   <p className="admin-card-muted">{formatINR(invoiceTaxable)}</p>
@@ -1259,105 +1682,97 @@ export default function AdminOrderDetailPage() {
                   <p className="admin-card-muted">{formatINR(invoiceTotal)}</p>
                 </div>
               </div>
-              {!invoice ? (
-                <AdminHeaderButton
-                  onClick={() => ensureInvoice()}
-                  disabled={invoiceLoading || isPrintingInvoice}
-                >
-                  {invoiceLoading ? (
-                    <>
-                      <Spinner className="size-3.5 text-[#303030]" />
-                      Creating…
-                    </>
-                  ) : (
-                    "Generate invoice"
-                  )}
-                </AdminHeaderButton>
+              {!invoice && showPrintInvoice ? (
+                <div className="mt-5">
+                  <AdminHeaderButton
+                    onClick={() => ensureInvoice()}
+                    disabled={invoiceLoading || isPrintingInvoice}
+                  >
+                    {invoiceLoading ? (
+                      <>
+                        <Spinner className="size-3.5 text-(--p-color-text)" />
+                        Creating…
+                      </>
+                    ) : (
+                      "Generate invoice"
+                    )}
+                  </AdminHeaderButton>
+                </div>
               ) : null}
             </CardContent>
           </Card>
 
-          <Card className="admin-surface gap-0 rounded-[0.75rem] border-0 bg-white py-0 shadow-none ring-0">
+          <Card className="@container/card gap-0 py-0">
             <CardContent className="space-y-4 p-4">
-              <CardTitle className="admin-card-heading mb-3">
+              <CardTitle className="admin-card-heading">
                 Attribution
               </CardTitle>
               {!firstTouch && !lastTouch ? (
                 <p className="admin-card-muted">Direct / none</p>
-              ) : sameTouch ? (
-                <AttributionTouchRows touch={firstTouch || lastTouch} />
               ) : (
-                <div className="space-y-4">
-                  <div>
-                    <p className="mb-2 admin-card-label">First touch</p>
-                    <AttributionTouchRows touch={firstTouch} />
+                <>
+                  <div className="space-y-4">
+                    {firstTouch ? (
+                      <div>
+                        <p className="mb-2 admin-card-label">First touch</p>
+                        <AttributionMarketingRows touch={firstTouch} />
+                      </div>
+                    ) : null}
+                    {lastTouch ? (
+                      <div>
+                        <p className="mb-2 admin-card-label">Last touch</p>
+                        <AttributionMarketingRows touch={lastTouch} />
+                      </div>
+                    ) : null}
                   </div>
-                  <div>
-                    <p className="mb-2 admin-card-label">Last touch</p>
-                    <AttributionTouchRows touch={lastTouch} />
-                  </div>
-                </div>
+                  {hasTechnicalAttribution(firstTouch) ||
+                  hasTechnicalAttribution(lastTouch) ? (
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowAttributionTech((open) => !open)}
+                        className="admin-card-link text-left hover:underline"
+                        aria-expanded={showAttributionTech}
+                      >
+                        {showAttributionTech
+                          ? "Hide technical details"
+                          : "View technical details →"}
+                      </button>
+                      {showAttributionTech ? (
+                        sameTouch ? (
+                          <AttributionTechnicalRows
+                            touch={firstTouch || lastTouch}
+                          />
+                        ) : (
+                          <div className="space-y-4">
+                            {firstTouch ? (
+                              <div>
+                                <p className="mb-2 admin-card-label">
+                                  First touch
+                                </p>
+                                <AttributionTechnicalRows touch={firstTouch} />
+                              </div>
+                            ) : null}
+                            {lastTouch ? (
+                              <div>
+                                <p className="mb-2 admin-card-label">
+                                  Last touch
+                                </p>
+                                <AttributionTechnicalRows touch={lastTouch} />
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
               )}
             </CardContent>
           </Card>
         </aside>
       </div>
 
-      <Dialog open={refundOpen} onOpenChange={setRefundOpen}>
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Refund via Razorpay</DialogTitle>
-            <DialogDescription>
-              Money returns to the customer&apos;s original payment method. Leave amount as remaining for a full refund.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="refund-amount">Amount (₹)</Label>
-              <Input
-                id="refund-amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                className="h-8"
-                value={refundAmount}
-                onChange={(e) => setRefundAmount(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="refund-reason">Reason (optional)</Label>
-              <Input
-                id="refund-reason"
-                type="text"
-                className="h-8"
-                value={refundReason}
-                onChange={(e) => setRefundReason(e.target.value)}
-                placeholder="Return / cancel / goodwill"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={() => setRefundOpen(false)}
-              disabled={refundLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              onClick={handleRefund}
-              disabled={refundLoading}
-            >
-              {refundLoading && <RefreshCw className="animate-spin" />}
-              Process refund
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -1365,6 +1780,17 @@ export default function AdminOrderDetailPage() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
       `}</style>
+
+      <OrderAddressSheet
+        open={addressSheetOpen}
+        onClose={() => setAddressSheetOpen(false)}
+        order={order}
+        onSaved={(updated) => {
+          if (updated) setOrder((prev) => (prev ? { ...prev, ...updated } : updated));
+          // GST split may have moved; reload the invoice shown on this page.
+          if (updated?.addressResult?.invoiceUpdated) loadInvoice(updated._id || order._id).catch(() => {});
+        }}
+      />
     </main>
   );
 }

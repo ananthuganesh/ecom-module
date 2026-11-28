@@ -20,7 +20,7 @@
 5. Success:
    - Prepaid: client verify and/or webhooks `payment.captured` / `order.paid`
    - COD: webhooks `order.placed` / `payment.pending`
-6. Server fetches Razorpay order, writes address/fees/promo onto draft, assigns order number, marks placed/paid, Shiprocket.
+6. Server fetches Razorpay order, writes address/fees/promo onto draft, assigns order number, marks placed/paid, DTDC.
 
 ## Public APIs (no auth)
 

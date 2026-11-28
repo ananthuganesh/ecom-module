@@ -1,8 +1,12 @@
 export { authService } from "./authService.js";
 export { productService } from "./productService.js";
+export { collectionService } from "./collectionService.js";
 export { orderService } from "./orderService.js";
-export { stripeService } from "./stripeService.js";
 export { paymentService } from "./paymentService.js";
 export { shippingService } from "./shippingService.js";
 export { couponService } from "./couponService.js";
-export { collectionService } from "./collectionService.js";
+export { reelsService } from "./reelsService.js";
+export { contactService } from "./contactService.js";
+export { returnService } from "./returnService.js";
+export { reviewService } from "./reviewService.js";
+export { trackingService } from "./trackingService.js";

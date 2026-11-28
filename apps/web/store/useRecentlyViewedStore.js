@@ -7,31 +7,52 @@ import {
 
 ensureStorageKey(RECENTLY_VIEWED_STORAGE_KEY);
 
+function firstImage(product) {
+  const candidates = [
+    product?.image,
+    ...(Array.isArray(product?.thumbnails) ? product.thumbnails : []),
+    ...(Array.isArray(product?.images) ? product.images : []),
+    ...(Array.isArray(product?.variants)
+      ? product.variants.flatMap((variant) =>
+          Array.isArray(variant?.images) ? variant.images : []
+        )
+      : []),
+  ];
+  return candidates.map((url) => String(url || "").trim()).find(Boolean) || "";
+}
+
+/** Lightweight history entry — UI rehydrates full product from API. */
+function toHistoryEntry(product) {
+  if (!product?._id) return null;
+  const image = firstImage(product);
+  return {
+    _id: product._id,
+    slug: product.slug || "",
+    productName: product.productName || product.name || "Product",
+    name: product.name || product.productName || "Product",
+    image,
+  };
+}
+
 export const useRecentlyViewedStore = create(
   persist(
     (set, get) => ({
       recentlyViewed: [],
       addProduct: (product) => {
+        const entry = toHistoryEntry(product);
+        if (!entry) return;
         const current = get().recentlyViewed;
-        const filtered = current.filter((p) => p._id !== product._id);
-        const essentialInfo = {
-          _id: product._id,
-          name: product.name || product.productName,
-          productName: product.productName || product.name,
-          price: product.price,
-          image:
-            product.image ||
-            product.thumbnails?.[0] ||
-            product.variants?.[0]?.images?.[0],
-          slug: product.slug,
-        };
-        const updated = [essentialInfo, ...filtered].slice(0, 10);
-        set({ recentlyViewed: updated });
+        const filtered = current.filter(
+          (item) => String(item._id) !== String(entry._id)
+        );
+        set({ recentlyViewed: [entry, ...filtered].slice(0, 8) });
       },
       clearRecentlyViewed: () => set({ recentlyViewed: [] }),
     }),
     {
       name: RECENTLY_VIEWED_STORAGE_KEY,
+      version: 2,
+      migrate: () => ({ recentlyViewed: [] }),
     }
   )
 );
